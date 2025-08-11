@@ -1,0 +1,16 @@
+.env.local
+.env.test
+node_modules
+.next
+.git
+.github
+tests
+scripts
+terraform
+*.log
+*.md
+.DS_Store
+coverage
+.nyc_output
+playwright-report
+test-results

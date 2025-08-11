@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-slate-200;
+  }
+  
+  body {
+    @apply bg-slate-50 text-slate-900;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg shadow-sm p-6;
+  }
+  
+  .card-header {
+    @apply text-lg font-semibold text-slate-900 pb-4 mb-4 border-b border-slate-200;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors;
+  }
+
+  .badge {
+    @apply px-2 py-1 text-xs font-medium rounded-md;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .badge-warning {
+    @apply bg-amber-100 text-amber-700;
+  }
+
+  .badge-danger {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .badge-info {
+    @apply bg-indigo-100 text-indigo-700;
+  }
+}
+
+/* Force all SVG icons to reasonable size */
+svg {
+  max-width: 1.5rem !important;
+  max-height: 1.5rem !important;
+}
+
+/* Override for specific larger icons if needed */
+.icon-large svg {
+  max-width: 2rem !important;
+  max-height: 2rem !important;
+}
+
+/* Override for extra large icons */
+.icon-xl svg {
+  max-width: 3rem !important;
+  max-height: 3rem !important;
+}
+
+/* Worker View Styles - High Contrast & Large Touch Targets */
+@layer components {
+  /* Worker view button styles */
+  .worker-btn {
+    @apply min-h-[60px] px-8 py-4 text-worker-lg font-bold rounded-lg transition-all transform active:scale-95;
+  }
+  
+  .worker-btn-green {
+    @apply worker-btn bg-worker-green text-white hover:bg-green-700 shadow-lg hover:shadow-xl;
+  }
+  
+  .worker-btn-red {
+    @apply worker-btn bg-worker-red text-white hover:bg-red-700 shadow-lg hover:shadow-xl;
+  }
+  
+  .worker-btn-blue {
+    @apply worker-btn bg-worker-blue text-white hover:bg-blue-700 shadow-lg hover:shadow-xl;
+  }
+  
+  .worker-btn-gray {
+    @apply worker-btn bg-gray-200 text-worker-gray hover:bg-gray-300;
+  }
+  
+  /* Worker view text styles */
+  .worker-title {
+    @apply text-worker-3xl font-bold text-worker-gray;
+  }
+  
+  .worker-subtitle {
+    @apply text-worker-2xl font-semibold text-worker-gray;
+  }
+  
+  .worker-text {
+    @apply text-worker-lg text-worker-gray;
+  }
+  
+  .worker-label {
+    @apply text-worker-xl font-bold text-worker-gray;
+  }
+  
+  /* Worker view container styles */
+  .worker-screen {
+    @apply min-h-screen bg-white p-6;
+  }
+  
+  .worker-card {
+    @apply bg-white rounded-xl shadow-xl border-2 border-gray-200 p-8;
+  }
+  
+  /* Worker progress bar */
+  .worker-progress {
+    @apply h-4 bg-gray-200 rounded-full overflow-hidden;
+  }
+  
+  .worker-progress-bar {
+    @apply h-full bg-worker-green transition-all duration-300;
+  }
+}
+
+/* Worker view icon overrides */
+.worker-icon svg {
+  max-width: 4rem !important;
+  max-height: 4rem !important;
+}
+
+.worker-icon-large svg {
+  max-width: 6rem !important;
+  max-height: 6rem !important;
+}

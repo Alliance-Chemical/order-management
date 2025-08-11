@@ -1,0 +1,65 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "outputDirectory": ".next",
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "build": {
+    "env": {
+      "NODE_ENV": "production"
+    }
+  },
+  "functions": {
+    "app/api/qr/print/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/source-containers/print-labels/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/shopify/sync-products/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/freight-orders/poll/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/ai/anomaly-detection/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/ai/document-ocr/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/ai/issue-report/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ]
+}

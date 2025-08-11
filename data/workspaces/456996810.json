@@ -1,0 +1,102 @@
+{
+  "id": "456996810",
+  "orderId": 456996810,
+  "orderNumber": "TEST-001",
+  "status": "active",
+  "workflowPhase": "pre_mix",
+  "shipstationData": {
+    "orderDate": "2025-08-10T00:47:58.151Z",
+    "shipDate": null,
+    "trackingNumber": null,
+    "carrier": null,
+    "serviceCode": null,
+    "items": [
+      {
+        "orderItemId": "item_001",
+        "name": "Test Chemical Product",
+        "sku": "CHEM-001",
+        "quantity": 5,
+        "unitPrice": 49.99,
+        "weight": {
+          "value": 10,
+          "units": "pounds"
+        }
+      },
+      {
+        "orderItemId": "item_002",
+        "name": "Another Test Product",
+        "sku": "CHEM-002",
+        "quantity": 3,
+        "unitPrice": 75,
+        "weight": {
+          "value": 15,
+          "units": "pounds"
+        }
+      }
+    ],
+    "shipTo": {
+      "name": "John Doe",
+      "company": "Alliance Test Co",
+      "street1": "123 Test St",
+      "city": "Houston",
+      "state": "TX",
+      "postal_code": "77001",
+      "country": "US",
+      "phone": "555-0123"
+    },
+    "customerEmail": "test@example.com",
+    "customerNotes": "Please handle with care",
+    "internalNotes": "Priority customer",
+    "requestedShippingService": "FedEx Ground",
+    "weight": {
+      "value": 25,
+      "units": "pounds"
+    },
+    "dimensions": {
+      "length": 12,
+      "width": 8,
+      "height": 6,
+      "units": "inches"
+    },
+    "insuranceOptions": {
+      "provider": "carrier",
+      "insure_shipment": true,
+      "insured_value": 324.95
+    },
+    "advancedOptions": {
+      "warehouse_id": 12345,
+      "non_machinable": false,
+      "saturday_delivery": false,
+      "contains_alcohol": false,
+      "custom_field1": "Custom Value 1",
+      "custom_field2": "Custom Value 2",
+      "custom_field3": null
+    },
+    "orderTotal": 474.95000000000005
+  },
+  "documents": [],
+  "activities": [
+    {
+      "id": "activity_1754786878416",
+      "timestamp": "2025-08-10T00:47:58.416Z",
+      "type": "webhook",
+      "description": "Order synced from ShipStation",
+      "metadata": {
+        "status": "awaiting_shipment",
+        "itemCount": 2
+      }
+    }
+  ],
+  "moduleStates": {
+    "pre_mix": {
+      "status": "pending",
+      "items": []
+    },
+    "pre_ship": {
+      "status": "pending",
+      "items": []
+    }
+  },
+  "createdAt": "2025-08-10T00:47:58.416Z",
+  "updatedAt": "2025-08-10T00:47:58.416Z"
+}
