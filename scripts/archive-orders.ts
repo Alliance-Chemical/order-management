@@ -46,19 +46,19 @@ async function archiveOldWorkspaces() {
       );
       
       // Move documents to archive bucket
-      if (workspace.s3BucketName) {
-        const objects = await listS3Objects(workspace.s3BucketName);
-        
-        if (objects.Contents) {
-          for (const object of objects.Contents) {
-            if (object.Key) {
-              // Copy to archive
-              const archiveDocKey = `archives/${workspace.orderNumber}/documents/${object.Key}`;
-              // Note: In production, you'd use S3 copy operation instead of download/upload
-              
-              // Delete from active bucket
-              await deleteFromS3(workspace.s3BucketName, object.Key);
-            }
+      // Documents are stored in the centralized S3 bucket defined in environment variables
+      const s3BucketName = process.env.S3_DOCUMENTS_BUCKET || 'alliance-chemical-documents';
+      const objects = await listS3Objects(s3BucketName, `workspace/${workspace.orderId}/`);
+      
+      if (objects.Contents) {
+        for (const object of objects.Contents) {
+          if (object.Key) {
+            // Copy to archive
+            const archiveDocKey = `archives/${workspace.orderNumber}/documents/${object.Key}`;
+            // Note: In production, you'd use S3 copy operation instead of download/upload
+            
+            // Delete from active bucket
+            await deleteFromS3(s3BucketName, object.Key);
           }
         }
       }
