@@ -401,7 +401,57 @@ Implemented a comprehensive source container assignment system that requires sup
 - **Clear Communication**: Source info appears on labels and in worker interface
 - **Flexibility**: Supports multiple container types for different storage needs
 
+## GitHub Repository
+The project is now hosted on GitHub at: https://github.com/andretaki/order-management
+
+- Clean repository with no secrets in history
+- Comprehensive README documentation
+- All sensitive files properly gitignored
+- Ready for collaboration and CI/CD integration
+
 ## Recent Fixes and Improvements
+
+### Archive Script S3 Bucket Fix (January 11, 2025)
+**Problem**: TypeScript errors in archive-orders.ts referencing removed `s3BucketName` column
+
+**Solution**: Updated script to use centralized S3_DOCUMENTS_BUCKET environment variable instead of per-workspace bucket names
+
+### QR Code Scanning and Inspection Updates (January 11, 2025)
+**Problems Addressed**:
+1. Pre-mix inspection had inappropriate documentation question
+2. QR scanning steps showed "Scan" but had no camera functionality
+3. Workers couldn't see order details during inspection
+4. QR URLs had newline characters breaking mobile scanning
+
+**Solutions Implemented**:
+1. **Removed Documentation Check from Pre-Mix**:
+   - Removed "Verify COA, SDS, and other docs present" from pre-mix inspection
+   - Documentation check remains only in pre-ship where appropriate
+   
+2. **Added Functional QR Scanning**:
+   - Integrated QRScanner component with camera access
+   - "SCAN QR" button with camera icon for scan-required items
+   - Visual confirmation when QR successfully scanned
+   - Scan data sent to backend for tracking
+   
+3. **Enhanced Order Context Display**:
+   - Added order information bar showing Order #, Customer Name
+   - Display list of items being inspected with quantities
+   - Workers and agents can see exactly what products are in the order
+   
+4. **Fixed QR URL Generation**:
+   - Added `.trim()` to base URLs to remove whitespace/newlines
+   - Fixed mobile scanning issues with %0A character in URLs
+
+5. **Updated Pre-Mix Inspection Checklist**:
+   - Scan Source QR (new)
+   - Verify Source Chemical (new)
+   - Container Condition
+   - Label Verification
+   - Quantity Check
+   - Scan Destination QR (new)
+   - Hazmat Placards
+   - Seal Integrity
 
 ### Database and QR Code System Cleanup (Aug 11, 2025)
 **Problem**: Order #36311 was showing incorrect label count (6 instead of 3) due to database inconsistencies and redundant schema columns.
