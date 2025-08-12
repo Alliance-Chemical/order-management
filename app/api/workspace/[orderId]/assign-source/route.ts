@@ -8,12 +8,27 @@ export async function POST(
   { params }: { params: { orderId: string } }
 ) {
   try {
-    const { lineItemId, sourceContainerId, sourceContainerName, mode = 'add' } = await request.json();
+    const { 
+      lineItemId, 
+      productName,
+      workflowType,
+      sourceContainerId, 
+      sourceContainerName, 
+      mode = 'add' 
+    } = await request.json();
     const orderId = Number(params.orderId);
 
-    if (!lineItemId || !sourceContainerId) {
+    if (!lineItemId || !workflowType) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
+        { success: false, error: 'Missing required fields: lineItemId and workflowType are required' },
+        { status: 400 }
+      );
+    }
+
+    // For pump_and_fill, source container is required
+    if (workflowType === 'pump_and_fill' && !sourceContainerId) {
+      return NextResponse.json(
+        { success: false, error: 'Source container is required for pump_and_fill workflow' },
         { status: 400 }
       );
     }
@@ -38,32 +53,76 @@ export async function POST(
     const existingAssignments = (workspaceRecord.moduleStates as any)?.sourceAssignments || [];
     
     let updatedAssignments;
-    if (mode === 'replace') {
-      // Replace all assignments for this lineItemId
+    
+    // For direct_resell workflow, just store the workflow type
+    if (workflowType === 'direct_resell') {
+      // Remove any existing assignments for this lineItemId and add new workflow-only entry
       updatedAssignments = existingAssignments.filter((a: any) => a.lineItemId !== lineItemId);
       updatedAssignments.push({
         lineItemId,
-        sourceContainerId,
-        sourceContainerName,
+        productName,
+        workflowType: 'direct_resell',
+        sourceContainers: [], // Empty for direct resell
         assignedAt: new Date().toISOString(),
         assignedBy: 'supervisor' // In production, get from auth context
       });
     } else {
-      // Add mode - keep existing assignments and add new one
-      updatedAssignments = [...existingAssignments];
-      // Don't add duplicate source containers
-      const isDuplicate = updatedAssignments.some((a: any) => 
-        a.lineItemId === lineItemId && a.sourceContainerId === sourceContainerId
-      );
-      
-      if (!isDuplicate) {
+      // For pump_and_fill workflow
+      if (mode === 'replace') {
+        // Replace all assignments for this lineItemId
+        updatedAssignments = existingAssignments.filter((a: any) => a.lineItemId !== lineItemId);
         updatedAssignments.push({
           lineItemId,
-          sourceContainerId,
-          sourceContainerName,
+          productName,
+          workflowType: 'pump_and_fill',
+          sourceContainers: [{
+            id: sourceContainerId,
+            name: sourceContainerName
+          }],
           assignedAt: new Date().toISOString(),
           assignedBy: 'supervisor' // In production, get from auth context
         });
+      } else {
+        // Add mode - keep existing assignments and add new source container
+        const existingAssignment = existingAssignments.find((a: any) => a.lineItemId === lineItemId);
+        
+        if (existingAssignment) {
+          // Update existing assignment
+          updatedAssignments = existingAssignments.map((a: any) => {
+            if (a.lineItemId === lineItemId) {
+              const sourceContainers = a.sourceContainers || [];
+              // Don't add duplicate source containers
+              const isDuplicate = sourceContainers.some((s: any) => s.id === sourceContainerId);
+              
+              if (!isDuplicate) {
+                sourceContainers.push({ id: sourceContainerId, name: sourceContainerName });
+              }
+              
+              return {
+                ...a,
+                workflowType: 'pump_and_fill',
+                sourceContainers,
+                productName,
+                assignedAt: new Date().toISOString(),
+                assignedBy: 'supervisor'
+              };
+            }
+            return a;
+          });
+        } else {
+          // Create new assignment
+          updatedAssignments = [...existingAssignments, {
+            lineItemId,
+            productName,
+            workflowType: 'pump_and_fill',
+            sourceContainers: [{
+              id: sourceContainerId,
+              name: sourceContainerName
+            }],
+            assignedAt: new Date().toISOString(),
+            assignedBy: 'supervisor'
+          }];
+        }
       }
     }
 
@@ -82,9 +141,11 @@ export async function POST(
     // Log the activity
     await db.insert(activityLog).values({
       workspaceId: workspaceRecord.id,
-      activityType: 'source_assigned',
+      activityType: workflowType === 'direct_resell' ? 'workflow_assigned' : 'source_assigned',
       metadata: {
         lineItemId,
+        productName,
+        workflowType,
         sourceContainerId,
         sourceContainerName,
         mode

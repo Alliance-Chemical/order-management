@@ -46,6 +46,14 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
   workflowPhase: varchar('workflow_phase', { length: 50 }).default('pre_mix'),
   phaseCompletedAt: jsonb('phase_completed_at').$type<Record<string, string>>().default({}),
   
+  // Final Measurements (post-production)
+  finalMeasurements: jsonb('final_measurements').$type<{
+    weight: { value: number; units: string; };
+    dimensions: { length: number; width: number; height: number; units: string; };
+    measuredBy?: string;
+    measuredAt?: string;
+  }>(),
+  
   // Archive Management
   shippedAt: timestamp('shipped_at'),
   archiveScheduledFor: timestamp('archive_scheduled_for'),
@@ -300,6 +308,9 @@ export const batchHistory = qrWorkspaceSchema.table('batch_history', {
   
   // QR Code Reference (if batch QR was generated)
   qrCodeId: uuid('qr_code_id').references(() => qrCodes.id),
+  
+  // Destination Container Links (QR codes this batch was used to fill)
+  destinationQrIds: jsonb('destination_qr_ids').$type<string[]>().default([]), // Array of destination qr_codes.id
 });
 
 // Source Containers Table - for tracking inventory at source

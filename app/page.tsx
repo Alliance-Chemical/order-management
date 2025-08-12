@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, Fragment } from 'react';
-import { PrinterIcon, ClipboardDocumentCheckIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
+import { useRouter } from 'next/navigation';
+import { PrinterIcon, ClipboardDocumentCheckIcon, ChevronDownIcon, ChevronRightIcon, ArrowRightIcon } from '@heroicons/react/24/solid';
 import PrintPreparationModal from '@/components/desktop/PrintPreparationModal';
 
 interface OrderItem {
@@ -21,6 +22,7 @@ interface FreightOrder {
 }
 
 export default function WorkQueueDashboard() {
+  const router = useRouter();
   const [orders, setOrders] = useState<FreightOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<FreightOrder | null>(null);
@@ -77,6 +79,11 @@ export default function WorkQueueDashboard() {
       newExpanded.add(orderId);
     }
     setExpandedOrders(newExpanded);
+  };
+
+  const navigateToWorkspace = (orderId: number) => {
+    // Navigate to workspace with supervisor view
+    router.push(`/workspace/${orderId}?view=supervisor`);
   };
 
   return (
@@ -152,7 +159,8 @@ export default function WorkQueueDashboard() {
                       <tr className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-4 whitespace-nowrap">
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               console.log('Toggling order:', order.orderId, 'Items:', order.items);
                               toggleOrderExpanded(order.orderId);
                             }}
@@ -192,13 +200,29 @@ export default function WorkQueueDashboard() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <button
-                            onClick={() => handlePrepareAndPrint(order)}
-                            className="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-sm transition-colors"
-                          >
-                            <PrinterIcon className="h-5 w-5 mr-2" />
-                            Prepare & Print Labels
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigateToWorkspace(order.orderId);
+                              }}
+                              className="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition-colors"
+                              title="Open Workspace"
+                            >
+                              <ArrowRightIcon className="h-4 w-4 mr-1" />
+                              Workspace
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePrepareAndPrint(order);
+                              }}
+                              className="inline-flex items-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-sm transition-colors"
+                            >
+                              <PrinterIcon className="h-4 w-4 mr-1" />
+                              Print Labels
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       {expandedOrders.has(order.orderId) && order.items && order.items.length > 0 && (

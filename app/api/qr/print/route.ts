@@ -10,10 +10,9 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { qrCodes, labelSize = '4x6', sourceAssignments = [], workflowType = 'pump_and_fill' } = body;
+    const { qrCodes, labelSize = '4x6', sourceAssignments = [] } = body;
     console.log(`[PRINT API] Received request to print ${qrCodes?.length || 0} labels with size: ${labelSize}`);
-    console.log(`[PRINT API] Workflow type:`, workflowType);
-    console.log(`[PRINT API] Source assignments:`, sourceAssignments);
+    console.log(`[PRINT API] Source assignments (with workflow types):`, sourceAssignments);
 
     if (!qrCodes || !Array.isArray(qrCodes) || qrCodes.length === 0) {
       console.error('[PRINT API] Validation failed: qrCodes array is missing or empty.');
@@ -54,8 +53,8 @@ export async function POST(request: NextRequest) {
       await repository.updateQRPrintCount(qrRecord.id, 'system');
     }
 
-    // Generate HTML page for printing with full data, source assignments, and workflow type
-    const html = generatePrintHTML(labelsData, labelSize, sourceAssignments, workflowType);
+    // Generate HTML page for printing with full data and source assignments (including workflow types)
+    const html = generatePrintHTML(labelsData, labelSize, sourceAssignments);
     
     console.log(`[PRINT API] HTML generated successfully for ${labelsData.length} QR codes`);
     
@@ -123,11 +122,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], labelSize: string, sourceAssignments: any[] = [], workflowType: string = 'pump_and_fill'): string {
+function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], labelSize: string, sourceAssignments: any[] = []): string {
   const isLetter = labelSize === '8.5x11';
   const is4x6 = labelSize === '4x6';
   
-  // Helper function to find source assignment for an item (kept for future use, not currently used)
+  // Helper function to find source assignment for an item
   const findSourceAssignment = (record: any): any => {
     if (!sourceAssignments || sourceAssignments.length === 0) return null;
     
@@ -143,9 +142,13 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   
   // Helper function to get label type badge text
   const getLabelType = (record: any): string => {
-    // For Direct Resell workflow, container labels get special treatment
-    if (workflowType === 'direct_resell' && record.qrType === 'container') {
-      return 'SCAN TO START INSPECTION';
+    // For container labels, check if this specific item is direct resell
+    if (record.qrType === 'container') {
+      const assignment = findSourceAssignment(record);
+      if (assignment?.workflowType === 'direct_resell') {
+        return 'SCAN TO INSPECT';
+      }
+      return ''; // No badge for pump_and_fill containers
     }
     
     switch (record.qrType) {
@@ -153,8 +156,6 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
       case 'order_master':
         const isSource = record.encodedData?.isSource;
         return isSource ? 'SCAN AT SOURCE' : 'SCAN AT START';
-      case 'container':
-        return ''; // No badge for container labels in pump_and_fill
       default:
         return '';
     }
@@ -192,8 +193,9 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         // For master labels, show order number is already handled by label header
         return '';
       case 'container':
-        // For Direct Resell, don't show "Drum X of Y" since it's the original container
-        if (workflowType === 'direct_resell') {
+        // Check if this specific item is direct resell
+        const assignment = findSourceAssignment(record);
+        if (assignment?.workflowType === 'direct_resell') {
           return ''; // No numbering for direct resell containers
         }
         // Container labels ONLY show which container this is, no source info

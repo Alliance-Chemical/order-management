@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { batchHistory, qrCodes, activityLog } from '@/lib/db/schema/qr-workspace';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +11,10 @@ export async function POST(request: NextRequest) {
       orderId,
       batchNumber,
       chemicalName,
+      chemicalId,
+      shopifyProductId,
+      shopifyTitle,
+      shopifySKU,
       initialConcentration,
       desiredConcentration,
       totalVolumeGallons,
@@ -21,7 +25,10 @@ export async function POST(request: NextRequest) {
       notes,
       completedBy,
       methodUsed,
-      initialSpecificGravity
+      initialSpecificGravity,
+      hazardClass,
+      ppeSuggestion,
+      destinationQrShortCodes // Array of short codes from the dilution calculator
     } = body;
 
     // Validate required fields
@@ -32,7 +39,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert batch history record
+    // Look up destination QR codes by short codes if provided
+    let destinationQrIds: string[] = [];
+    if (destinationQrShortCodes && destinationQrShortCodes.length > 0) {
+      const destinationQrs = await db
+        .select({ id: qrCodes.id })
+        .from(qrCodes)
+        .where(inArray(qrCodes.shortCode, destinationQrShortCodes));
+      
+      destinationQrIds = destinationQrs.map(qr => qr.id);
+      
+      console.log('[Batch Save] Found destination QR IDs:', destinationQrIds, 'from short codes:', destinationQrShortCodes);
+    }
+
+    // Insert batch history record with destination QR links
     const [newBatch] = await db.insert(batchHistory).values({
       workspaceId: workspaceId || null,
       batchNumber,
@@ -48,62 +68,35 @@ export async function POST(request: NextRequest) {
       completedBy,
       methodUsed,
       initialSpecificGravity: initialSpecificGravity.toString(),
+      destinationQrIds, // Store the array of destination QR IDs
     }).returning();
 
-    // Generate QR code for the batch
-    if (orderId) {
-      const qrData = {
-        type: 'batch',
-        batchId: batchNumber,
-        orderId,
-        chemicalName,
-        concentration: `${desiredConcentration}%`,
-        quantity: `${totalVolumeGallons} gal`,
-        createdBy: completedBy,
-        sourceConcentration: `${initialConcentration}%`,
-        dilutionPerformed: true
-      };
-
-      const [newQR] = await db.insert(qrCodes).values({
-        workspaceId: workspaceId || null,
-        qrType: 'batch',
-        code: batchNumber,
-        encodedData: qrData,
+    // Log activity if workspace exists (NO QR code generation)
+    if (workspaceId) {
+      await db.insert(activityLog).values({
+        workspaceId,
+        activityType: 'dilution_performed',
         metadata: {
+          batchNumber,
           chemicalName,
-          desiredConcentration,
-          totalVolumeGallons,
-          completedBy
-        }
-      }).returning();
-
-      // Update batch history with QR code reference
-      await db.update(batchHistory)
-        .set({ qrCodeId: newQR.id })
-        .where(eq(batchHistory.id, newBatch.id));
-
-      // Log activity if workspace exists
-      if (workspaceId) {
-        await db.insert(activityLog).values({
-          workspaceId,
-          activityType: 'dilution_performed',
-          metadata: {
-            batchNumber,
-            chemicalName,
-            initialConcentration: `${initialConcentration}%`,
-            desiredConcentration: `${desiredConcentration}%`,
-            totalVolume: `${totalVolumeGallons} gal`
-          },
-          performedBy: completedBy,
-          performedAt: new Date()
-        });
-      }
+          initialConcentration: `${initialConcentration}%`,
+          desiredConcentration: `${desiredConcentration}%`,
+          totalVolume: `${totalVolumeGallons} gal`,
+          destinationContainers: destinationQrShortCodes || [],
+          shopifyProductId,
+          hazardClass
+        },
+        performedBy: completedBy,
+        performedAt: new Date()
+      });
     }
+
+    console.log('[Batch Save] Successfully saved batch:', newBatch.id, 'linked to destination QRs:', destinationQrIds);
 
     return NextResponse.json({
       success: true,
       batch: newBatch,
-      message: 'Batch saved successfully'
+      message: 'Batch saved successfully and linked to destination containers'
     });
 
   } catch (error) {

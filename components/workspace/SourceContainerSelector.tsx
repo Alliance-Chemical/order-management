@@ -12,12 +12,14 @@ interface SourceContainerSelectorProps {
   productName: string;
   quantity: number;
   onSelect: (selection: any) => void;
+  existingSource?: any; // For duplicating an existing source
 }
 
 export default function SourceContainerSelector({ 
   productName, 
   quantity, 
-  onSelect 
+  onSelect,
+  existingSource 
 }: SourceContainerSelectorProps) {
   const [products, setProducts] = useState<ShopifyProduct[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<ShopifyProduct | null>(null);
@@ -26,9 +28,20 @@ export default function SourceContainerSelector({
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [duplicateCount, setDuplicateCount] = useState(1);
 
   useEffect(() => {
     fetchProducts();
+    
+    // Pre-fill if duplicating an existing source
+    if (existingSource) {
+      setSelectedProduct({
+        id: existingSource.productId,
+        title: existingSource.productTitle || existingSource.chemicalName
+      });
+      setSourceType(existingSource.containerType || existingSource.sourceType);
+      setSourceId(existingSource.sourceId || existingSource.shortCode || '');
+    }
   }, []);
 
   const fetchProducts = async () => {
@@ -171,18 +184,22 @@ export default function SourceContainerSelector({
 
     const containerSize = sourceType === 'drum55' ? '55gal' : sourceType === 'tote275' ? '275gal' : '330gal';
     
-    const selection = {
-      id: sourceId ? `${sourceType}-${sourceId}` : `${selectedProduct.id}-${containerSize}`,
-      chemicalName: selectedProduct.title,
-      productId: selectedProduct.id,
-      sourceType,
-      sourceId: sourceId || '',
-      containerType: sourceType,
-      shortCode: sourceId || '',
-      productTitle: selectedProduct.title
-    };
+    const selections = [];
+    for (let i = 0; i < duplicateCount; i++) {
+      const idSuffix = duplicateCount > 1 && sourceId ? `${sourceId}-${i + 1}` : sourceId;
+      selections.push({
+        id: idSuffix ? `${sourceType}-${idSuffix}` : `${selectedProduct.id}-${containerSize}-${Date.now()}-${i}`,
+        chemicalName: selectedProduct.title,
+        productId: selectedProduct.id,
+        sourceType,
+        sourceId: idSuffix || '',
+        containerType: sourceType,
+        shortCode: idSuffix || '',
+        productTitle: selectedProduct.title
+      });
+    }
 
-    onSelect([selection]);
+    onSelect(selections);
   };
 
   if (loading) {
@@ -397,6 +414,46 @@ export default function SourceContainerSelector({
         </div>
       )}
 
+      {/* Duplicate Control */}
+      {selectedProduct && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <label className="block text-sm font-medium text-blue-900 mb-2">
+            Number of Duplicate Containers
+          </label>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setDuplicateCount(Math.max(1, duplicateCount - 1))}
+              className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              </svg>
+            </button>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={duplicateCount}
+              onChange={(e) => setDuplicateCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+              className="w-20 text-center px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => setDuplicateCount(Math.min(20, duplicateCount + 1))}
+              className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </button>
+          </div>
+          <p className="text-xs text-gray-600 mt-2">
+            {existingSource ? 'Creating duplicates of the existing source container' : 
+             duplicateCount > 1 ? `Will create ${duplicateCount} identical source containers` : 
+             'Adjust to create multiple identical source containers'}
+          </p>
+        </div>
+      )}
+
       {/* Action Button */}
       <button
         onClick={handleConfirm}
@@ -407,7 +464,7 @@ export default function SourceContainerSelector({
             : 'bg-gray-300 text-gray-500 cursor-not-allowed'
         }`}
       >
-        Confirm Source Assignment
+        {duplicateCount > 1 ? `Confirm ${duplicateCount} Source Assignments` : 'Confirm Source Assignment'}
       </button>
     </div>
   );

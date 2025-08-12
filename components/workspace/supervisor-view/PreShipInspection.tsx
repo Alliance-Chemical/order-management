@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CheckCircleIcon, TruckIcon, DocumentTextIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import FinalMeasurements from '@/components/workspace/FinalMeasurements';
 
 interface PreShipInspectionProps {
   orderId: string;
@@ -31,6 +32,7 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
     readyToShip: initialState.readyToShip || false,
     shippedAt: initialState.shippedAt || null,
     shippedBy: initialState.shippedBy || null,
+    finalMeasurements: initialState.finalMeasurements || null,
   });
 
   const [newSealNumber, setNewSealNumber] = useState('');
@@ -81,6 +83,28 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
     };
     setState(newState);
     onStateChange(newState);
+  };
+
+  const handleMeasurementsSave = async (measurements: any) => {
+    // Save measurements to workspace via API
+    try {
+      const response = await fetch(`/api/workspace/${orderId}/measurements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(measurements),
+      });
+      
+      if (response.ok) {
+        const newState = { ...state, finalMeasurements: measurements };
+        setState(newState);
+        onStateChange(newState);
+      } else {
+        throw new Error('Failed to save measurements');
+      }
+    } catch (error) {
+      console.error('Error saving measurements:', error);
+      throw error;
+    }
   };
 
   const handleMarkReadyToShip = () => {
@@ -272,6 +296,13 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
           ))}
         </div>
       </div>
+
+      {/* Final Measurements Section */}
+      <FinalMeasurements
+        orderId={orderId}
+        initialData={state.finalMeasurements}
+        onSave={handleMeasurementsSave}
+      />
 
       {/* Loading Photos */}
       <div className="bg-white rounded-lg shadow p-6">

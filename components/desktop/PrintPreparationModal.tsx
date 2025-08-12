@@ -29,6 +29,7 @@ interface SourceAssignment {
   lineItemId: string;
   productName: string;
   quantity: number;
+  workflowType: 'pump_and_fill' | 'direct_resell';
   sourceContainers: Array<{
     id: string;
     name: string;
@@ -51,13 +52,11 @@ export default function PrintPreparationModal({
     pallets: number;
   }>({ master: 0, source: 0, drums: 0, totes: 0, pallets: 0 });
   
-  // Workflow type state
-  const [workflowType, setWorkflowType] = useState<'pump_and_fill' | 'direct_resell'>('pump_and_fill');
-  
   // Source container assignment state
   const [sourceAssignments, setSourceAssignments] = useState<SourceAssignment[]>([]);
   const [selectingSourceFor, setSelectingSourceFor] = useState<string | null>(null);
   const [editingMode, setEditingMode] = useState<'add' | 'replace'>('add');
+  const [duplicatingSource, setDuplicatingSource] = useState<any | null>(null);
 
   useEffect(() => {
     fetchQRCodes();
@@ -74,16 +73,14 @@ export default function PrintPreparationModal({
         // Merge existing assignments with initialized ones
         setSourceAssignments(prevAssignments => {
           return prevAssignments.map(assignment => {
-            const existing = data.sourceAssignments.filter((sa: any) => 
+            const existing = data.sourceAssignments.find((sa: any) => 
               sa.lineItemId === assignment.lineItemId
             );
-            if (existing.length > 0) {
+            if (existing) {
               return {
                 ...assignment,
-                sourceContainers: existing.map((e: any) => ({
-                  id: e.sourceContainerId,
-                  name: e.sourceContainerName
-                }))
+                workflowType: existing.workflowType || 'pump_and_fill',
+                sourceContainers: existing.sourceContainers || []
               };
             }
             return assignment;
@@ -103,12 +100,12 @@ export default function PrintPreparationModal({
       order.items.forEach((item: any) => {
         const productName = item.name || '';
         
-        // For pump & fill workflow, ALL items need source assignment
-        // Every single item needs to specify where it's being pumped from
+        // Initialize each item with default workflow type
         assignments.push({
           lineItemId: item.orderItemId || item.lineItemKey || `item-${assignments.length}`,
           productName: productName,
           quantity: item.quantity || 1,
+          workflowType: 'pump_and_fill', // Default to pump_and_fill
           sourceContainers: []
         });
       });
@@ -200,36 +197,22 @@ export default function PrintPreparationModal({
     }
   };
 
-  const handleSourceSelection = async (lineItemId: string, containers: any[]) => {
-    if (containers.length > 0) {
-      const container = containers[0]; // Take first selected container
-      
-      // Update local state
-      setSourceAssignments(prev => prev.map(assignment => {
-        if (assignment.lineItemId === lineItemId) {
-          const newContainer = {
-            id: container.id,
-            name: `${container.containerType} #${container.shortCode} - ${container.productTitle}`
-          };
-          
-          if (editingMode === 'replace') {
-            // Replace all existing containers
-            return {
-              ...assignment,
-              sourceContainers: [newContainer]
-            };
-          } else {
-            // Add to existing containers
-            return {
-              ...assignment,
-              sourceContainers: [...assignment.sourceContainers, newContainer]
-            };
-          }
-        }
-        return assignment;
-      }));
-      
-      // Save to backend
+  const handleWorkflowTypeChange = async (lineItemId: string, newWorkflowType: 'pump_and_fill' | 'direct_resell') => {
+    // Update local state
+    setSourceAssignments(prev => prev.map(assignment => {
+      if (assignment.lineItemId === lineItemId) {
+        return {
+          ...assignment,
+          workflowType: newWorkflowType,
+          sourceContainers: newWorkflowType === 'direct_resell' ? [] : assignment.sourceContainers
+        };
+      }
+      return assignment;
+    }));
+
+    // Save to backend
+    const assignment = sourceAssignments.find(a => a.lineItemId === lineItemId);
+    if (assignment) {
       try {
         await fetch(`/api/workspace/${order.orderId}/assign-source`, {
           method: 'POST',
@@ -237,38 +220,102 @@ export default function PrintPreparationModal({
           body: JSON.stringify({
             workspaceId: order.orderId,
             lineItemId,
-            sourceContainerId: container.id,
-            sourceContainerName: `${container.containerType} #${container.shortCode}`,
-            mode: editingMode // Send mode to backend
+            productName: assignment.productName,
+            workflowType: newWorkflowType,
+            sourceContainerId: newWorkflowType === 'direct_resell' ? 'DIRECT' : undefined,
+            sourceContainerName: newWorkflowType === 'direct_resell' ? 'Direct Resell' : undefined,
+            mode: 'replace'
           })
         });
       } catch (error) {
-        console.error('Failed to save source assignment:', error);
+        console.error('Failed to save workflow type:', error);
+      }
+    }
+  };
+
+  const handleSourceSelection = async (lineItemId: string, containers: any[]) => {
+    const assignment = sourceAssignments.find(a => a.lineItemId === lineItemId);
+    if (!assignment) return;
+
+    if (containers.length > 0) {
+      // Handle multiple containers (for duplicates)
+      const newContainers = containers.map(container => ({
+        id: container.id,
+        name: `${container.containerType} #${container.shortCode} - ${container.productTitle}`,
+        ...container
+      }));
+      
+      // Update local state
+      setSourceAssignments(prev => prev.map(assignment => {
+        if (assignment.lineItemId === lineItemId) {
+          if (editingMode === 'replace') {
+            // Replace all existing containers
+            return {
+              ...assignment,
+              sourceContainers: newContainers
+            };
+          } else {
+            // Add to existing containers
+            return {
+              ...assignment,
+              sourceContainers: [...assignment.sourceContainers, ...newContainers]
+            };
+          }
+        }
+        return assignment;
+      }));
+      
+      // Save each container to backend
+      for (const container of containers) {
+        try {
+          await fetch(`/api/workspace/${order.orderId}/assign-source`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              workspaceId: order.orderId,
+              lineItemId,
+              productName: assignment.productName,
+              workflowType: assignment.workflowType,
+              sourceContainerId: container.id,
+              sourceContainerName: `${container.containerType} #${container.shortCode}`,
+              mode: editingMode // Send mode to backend
+            })
+          });
+        } catch (error) {
+          console.error('Failed to save source assignment:', error);
+        }
       }
     }
     
     setSelectingSourceFor(null);
     setEditingMode('add'); // Reset to add mode
+    setDuplicatingSource(null); // Clear duplicate source
   };
 
-  // For Direct Resell, no source assignment needed
-  const allSourcesAssigned = workflowType === 'direct_resell' 
-    ? true 
-    : sourceAssignments.every(a => a.sourceContainers.length > 0);
+  // Check if all items meet their workflow requirements
+  const allItemsReady = sourceAssignments.every(assignment => {
+    if (assignment.workflowType === 'direct_resell') {
+      return true; // Direct resell items don't need source containers
+    } else {
+      return assignment.sourceContainers.length > 0; // Pump & fill items need at least one source
+    }
+  });
 
   const handlePrintAll = async () => {
-    // Check if all sources are assigned
-    if (!allSourcesAssigned) {
-      alert('Please assign source containers for all items before printing.');
+    // Check if all items are ready
+    if (!allItemsReady) {
+      alert('Please complete all item assignments before printing. Pump & Fill items need source containers.');
       return;
     }
 
     setPrinting(true);
     try {
-      // For Direct Resell, filter out source QR codes
-      const qrCodesToPrint = workflowType === 'direct_resell' 
-        ? qrCodes.filter(qr => !qr.metadata?.isSource)
-        : qrCodes;
+      // Filter QR codes based on individual item workflow types
+      // Only include source QR if at least one item is pump_and_fill
+      const hasPumpAndFill = sourceAssignments.some(a => a.workflowType === 'pump_and_fill');
+      const qrCodesToPrint = hasPumpAndFill 
+        ? qrCodes // Include all QR codes including source
+        : qrCodes.filter(qr => !qr.metadata?.isSource); // Exclude source for all-direct-resell orders
       
       const response = await fetch('/api/qr/print', {
         method: 'POST',
@@ -278,8 +325,7 @@ export default function PrintPreparationModal({
           orderId: order.orderId,
           orderNumber: order.orderNumber,
           customerName: order.customerName,
-          sourceAssignments: sourceAssignments, // Include source assignments
-          workflowType: workflowType // Pass workflow type
+          sourceAssignments: sourceAssignments // Include source assignments with workflow types
         })
       });
 
@@ -328,44 +374,7 @@ export default function PrintPreparationModal({
         </div>
 
         {/* Content */}
-        <div className="p-6">
-          {/* Workflow Type Selection */}
-          <div className="mb-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-3">
-              How will this order be fulfilled?
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => setWorkflowType('pump_and_fill')}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  workflowType === 'pump_and_fill'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-gray-400'
-                }`}
-              >
-                <div className="text-2xl mb-2">🏭</div>
-                <div className="font-semibold text-gray-900">Pump & Fill</div>
-                <div className="text-sm text-gray-600 mt-1">
-                  Transfer from bulk source to new containers
-                </div>
-              </button>
-              <button
-                onClick={() => setWorkflowType('direct_resell')}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  workflowType === 'direct_resell'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-gray-400'
-                }`}
-              >
-                <div className="text-2xl mb-2">📦</div>
-                <div className="font-semibold text-gray-900">Direct Resell</div>
-                <div className="text-sm text-gray-600 mt-1">
-                  Ship existing pre-packaged containers
-                </div>
-              </button>
-            </div>
-          </div>
-
+        <div className="p-6 max-h-[70vh] overflow-y-auto">
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
@@ -388,21 +397,55 @@ export default function PrintPreparationModal({
                 </div>
               </div>
 
-              {/* Source Container Assignment Section - Only for Pump & Fill */}
-              {workflowType === 'pump_and_fill' && sourceAssignments.length > 0 && (
+              {/* Item-by-Item Workflow Assignment */}
+              {sourceAssignments.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                     <BeakerIcon className="h-6 w-6 mr-2 text-blue-600" />
-                    Source Container Assignment
+                    Fulfillment Method & Source Assignment
                   </h3>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {sourceAssignments.map((assignment) => (
-                      <div key={assignment.lineItemId} className="bg-gray-50 rounded-lg px-4 py-3">
-                        <div className="flex justify-between items-center">
+                      <div key={assignment.lineItemId} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        {/* Item Header */}
+                        <div className="flex justify-between items-start mb-3">
                           <div className="flex-1">
-                            <p className="font-medium text-gray-900">
+                            <p className="font-medium text-gray-900 text-lg">
                               {assignment.quantity}x {assignment.productName}
                             </p>
+                          </div>
+                        </div>
+                        
+                        {/* Workflow Type Toggle for this item */}
+                        <div className="mb-3">
+                          <label className="text-sm font-medium text-gray-600 mb-2 block">Fulfillment Method:</label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleWorkflowTypeChange(assignment.lineItemId, 'pump_and_fill')}
+                              className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all text-sm font-medium ${
+                                assignment.workflowType === 'pump_and_fill'
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                  : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                              }`}
+                            >
+                              🏭 Pump & Fill
+                            </button>
+                            <button
+                              onClick={() => handleWorkflowTypeChange(assignment.lineItemId, 'direct_resell')}
+                              className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all text-sm font-medium ${
+                                assignment.workflowType === 'direct_resell'
+                                  ? 'border-green-500 bg-green-50 text-green-700'
+                                  : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                              }`}
+                            >
+                              📦 Direct Resell
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {/* Show source assignment section only for pump_and_fill items */}
+                        {assignment.workflowType === 'pump_and_fill' && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
                             {assignment.sourceContainers.length > 0 ? (
                               <div className="mt-1">
                                 {assignment.sourceContainers.map((container, idx) => {
@@ -413,9 +456,22 @@ export default function PrintPreparationModal({
                                   
                                   return (
                                     <div key={idx}>
-                                      <p className="text-sm text-green-600">
-                                        ✓ Source {idx + 1}: {container.name}
-                                      </p>
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-sm text-green-600">
+                                          ✓ Source {idx + 1}: {container.name}
+                                        </p>
+                                        <button
+                                          onClick={() => {
+                                            setDuplicatingSource(container);
+                                            setEditingMode('add');
+                                            setSelectingSourceFor(assignment.lineItemId);
+                                          }}
+                                          className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                                          title="Duplicate this source container"
+                                        >
+                                          + Duplicate
+                                        </button>
+                                      </div>
                                       {needsDilution && (
                                         <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded">
                                           <p className="text-sm text-orange-800 font-medium">
@@ -425,7 +481,14 @@ export default function PrintPreparationModal({
                                             onClick={() => {
                                               // Open dilution calculator with parameters
                                               const chemName = container.name.split(/\d+(?:\.\d+)?\s*%/)[0].trim();
-                                              const dilutionUrl = `/dilution-calculator?chem=${encodeURIComponent(chemName)}&ic=${sourceConc}&dc=${targetConc}&target=${assignment.quantity}&orderId=${order.orderId}&return=${encodeURIComponent(window.location.pathname)}`;
+                                              
+                                              // Find destination QR codes for this line item
+                                              const destinationQRs = qrCodes.filter(qr => 
+                                                qr.type === 'container' && 
+                                                qr.encodedData?.itemId === assignment.lineItemId
+                                              ).map(qr => qr.encodedData?.shortCode || qr.shortCode).filter(Boolean);
+                                              
+                                              const dilutionUrl = `/dilution-calculator?chem=${encodeURIComponent(chemName)}&ic=${sourceConc}&dc=${targetConc}&target=${assignment.quantity}&orderId=${order.orderId}&destQRs=${encodeURIComponent(JSON.stringify(destinationQRs))}&return=${encodeURIComponent(window.location.pathname)}`;
                                               window.open(dilutionUrl, '_blank');
                                             }}
                                             className="mt-1 px-3 py-1 bg-orange-600 text-white text-sm rounded hover:bg-orange-700"
@@ -443,40 +506,49 @@ export default function PrintPreparationModal({
                                 ⚠ No source assigned
                               </p>
                             )}
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingMode('add');
-                                setSelectingSourceFor(assignment.lineItemId);
-                              }}
-                              className="px-4 py-2 rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700"
-                              title="Add another source container"
-                            >
-                              + Add Source
-                            </button>
-                            {assignment.sourceContainers.length > 0 && (
+                            <div className="flex gap-2 mt-3">
                               <button
                                 onClick={() => {
-                                  setEditingMode('replace');
+                                  setEditingMode('add');
                                   setSelectingSourceFor(assignment.lineItemId);
                                 }}
-                                className="px-4 py-2 rounded-lg font-medium transition-colors bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-                                title="Replace all source containers"
+                                className="px-4 py-2 rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 text-sm"
+                                title="Add another source container"
                               >
-                                Replace All
+                                + Add Source
                               </button>
-                            )}
+                              {assignment.sourceContainers.length > 0 && (
+                                <button
+                                  onClick={() => {
+                                    setEditingMode('replace');
+                                    setSelectingSourceFor(assignment.lineItemId);
+                                  }}
+                                  className="px-4 py-2 rounded-lg font-medium transition-colors bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"
+                                  title="Replace all source containers"
+                                >
+                                  Replace All
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        )}
+                        
+                        {/* Show checkmark for direct resell items */}
+                        {assignment.workflowType === 'direct_resell' && (
+                          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <p className="text-sm text-green-700 font-medium">
+                              ✓ Ready for Direct Resell - No source assignment needed
+                            </p>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                   
-                  {!allSourcesAssigned && (
+                  {!allItemsReady && (
                     <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                       <p className="text-sm text-yellow-800">
-                        <strong>Important:</strong> All items must have source containers assigned before labels can be printed.
+                        <strong>Important:</strong> All Pump & Fill items must have source containers assigned before labels can be printed.
                       </p>
                     </div>
                   )}
@@ -494,12 +566,16 @@ export default function PrintPreparationModal({
                       <SourceContainerSelector
                         productName={sourceAssignments.find(a => a.lineItemId === selectingSourceFor)?.productName || ''}
                         quantity={sourceAssignments.find(a => a.lineItemId === selectingSourceFor)?.quantity || 1}
+                        existingSource={duplicatingSource}
                         onSelect={(containers) => handleSourceSelection(selectingSourceFor, containers)}
                       />
                     </div>
                     <div className="p-4 border-t">
                       <button
-                        onClick={() => setSelectingSourceFor(null)}
+                        onClick={() => {
+                          setSelectingSourceFor(null);
+                          setDuplicatingSource(null);
+                        }}
                         className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
                       >
                         Cancel
@@ -525,14 +601,21 @@ export default function PrintPreparationModal({
                   )}
                   
                   {(() => {
-                    // Calculate actual source label count from sourceAssignments
-                    const totalSourceContainers = sourceAssignments.reduce((total, assignment) => 
-                      total + assignment.sourceContainers.length, 0);
+                    // Only show source labels if there are pump_and_fill items
+                    const hasPumpAndFill = sourceAssignments.some(a => a.workflowType === 'pump_and_fill');
+                    if (!hasPumpAndFill) {
+                      return null; // No source labels needed if all items are direct resell
+                    }
                     
-                    if (workflowType === 'pump_and_fill' && totalSourceContainers > 0) {
+                    // Calculate actual source label count from pump_and_fill assignments only
+                    const totalSourceContainers = sourceAssignments
+                      .filter(a => a.workflowType === 'pump_and_fill')
+                      .reduce((total, assignment) => total + assignment.sourceContainers.length, 0);
+                    
+                    if (totalSourceContainers > 0) {
                       return (
                         <div className="flex justify-between items-center bg-yellow-50 rounded-lg px-4 py-3">
-                          <span className="text-gray-700">Source Container Label{totalSourceContainers > 1 ? 's' : ''}</span>
+                          <span className="text-gray-700">Source Container Label{totalSourceContainers > 1 ? 's' : ''} (Pump & Fill)</span>
                           <span className="font-semibold text-gray-900">
                             {totalSourceContainers} label{totalSourceContainers > 1 ? 's' : ''}
                           </span>
@@ -540,7 +623,7 @@ export default function PrintPreparationModal({
                       );
                     }
                     // Fallback to original source count from QR codes if no assignments yet
-                    if (labelSummary.source > 0) {
+                    if (labelSummary.source > 0 && hasPumpAndFill) {
                       return (
                         <div className="flex justify-between items-center bg-yellow-50 rounded-lg px-4 py-3">
                           <span className="text-gray-700">Source Container Label</span>
@@ -588,10 +671,10 @@ export default function PrintPreparationModal({
                     </span>
                     <span className="text-lg font-bold text-blue-600">
                       {(() => {
-                        // Calculate actual source count from assignments if in pump_and_fill mode
-                        const actualSourceCount = workflowType === 'pump_and_fill' 
-                          ? sourceAssignments.reduce((total, assignment) => total + assignment.sourceContainers.length, 0)
-                          : labelSummary.source;
+                        // Calculate actual source count from pump_and_fill assignments only
+                        const actualSourceCount = sourceAssignments
+                          .filter(a => a.workflowType === 'pump_and_fill')
+                          .reduce((total, assignment) => total + assignment.sourceContainers.length, 0);
                         
                         return labelSummary.master + actualSourceCount + labelSummary.drums + 
                                labelSummary.totes + labelSummary.pallets || qrCodes.length;
@@ -618,13 +701,13 @@ export default function PrintPreparationModal({
                 </button>
                 <button
                   onClick={handlePrintAll}
-                  disabled={printing || qrCodes.length === 0 || !allSourcesAssigned}
+                  disabled={printing || qrCodes.length === 0 || !allItemsReady}
                   className={`inline-flex items-center px-6 py-3 font-semibold rounded-lg shadow-sm transition-colors ${
-                    allSourcesAssigned && !printing && qrCodes.length > 0
+                    allItemsReady && !printing && qrCodes.length > 0
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-400 text-gray-200 cursor-not-allowed'
                   }`}
-                  title={!allSourcesAssigned ? 'Please assign source containers for all items' : ''}
+                  title={!allItemsReady ? 'Please complete all item assignments' : ''}
                 >
                   <PrinterIcon className="h-5 w-5 mr-2" />
                   {printing ? 'Printing...' : 'Confirm & Print All Labels'}

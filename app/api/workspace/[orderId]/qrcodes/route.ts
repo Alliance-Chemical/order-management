@@ -162,8 +162,19 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   
   // First, try to use data from workspace
   if (shipstationData?.items && Array.isArray(shipstationData.items)) {
-    items = shipstationData.items;
-    console.log(`[QR] Using ${items.length} items from workspace shipstationData`);
+    // Filter out discount items
+    items = shipstationData.items.filter((item: any) => {
+      const hasNoSku = !item.sku || item.sku === '';
+      const isDiscount = item.name?.toLowerCase().includes('discount') || 
+                       item.unitPrice < 0 || 
+                       item.lineItemKey?.includes('discount');
+      if (hasNoSku && isDiscount) {
+        console.log(`[QR] Filtering out discount item: ${item.name}`);
+        return false;
+      }
+      return true;
+    });
+    console.log(`[QR] Using ${items.length} physical items from workspace shipstationData (after filtering discounts)`);
   } else {
     // If no items in workspace, fetch from ShipStation
     try {
@@ -180,8 +191,19 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
       
       if (response.ok) {
         const orderData = await response.json();
-        items = orderData.items || [];
-        console.log(`[QR] Fetched ${items.length} items from ShipStation API`);
+        // Filter out discount items
+        items = (orderData.items || []).filter((item: any) => {
+          const hasNoSku = !item.sku || item.sku === '';
+          const isDiscount = item.name?.toLowerCase().includes('discount') || 
+                           item.unitPrice < 0 || 
+                           item.lineItemKey?.includes('discount');
+          if (hasNoSku && isDiscount) {
+            console.log(`[QR] Filtering out discount item: ${item.name}`);
+            return false;
+          }
+          return true;
+        });
+        console.log(`[QR] Fetched ${items.length} physical items from ShipStation API (after filtering discounts)`);
         
         // Update workspace with the fetched data
         await db

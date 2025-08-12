@@ -468,6 +468,32 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
    - Hazmat Placards
    - Seal Integrity
 
+### Custom Discount Import in Worker View (January 12, 2025)
+**Problem**: Discount information from ShipStation orders was being filtered out and not displayed in the worker view during pre-mix inspection.
+
+**Solution Implemented**:
+1. **Updated API Endpoints** to include discount data:
+   - `/api/freight-orders/poll/route.ts` - Now includes all items with `isDiscount` flag and `customAttributes`
+   - `/api/webhook/shipstation/route.ts` - Includes discount data in order notifications
+   - Items are no longer filtered out based on discount status
+
+2. **Enhanced Worker View Display** (`InspectionScreen.tsx`):
+   - Shows discount items with yellow "DISCOUNT" badge
+   - Displays discount amounts in green with dollar values
+   - Calculates and shows total discount applied at bottom of items list
+   - Properly handles undefined values to prevent display errors
+
+3. **Type Definitions Updated** (`lib/types/worker-view.ts`):
+   - Added `isDiscount?: boolean` to identify discount items
+   - Added `customAttributes?: Array` for custom ShipStation attributes
+   - Updated both `InspectionScreenProps` and `WorkspaceData` types
+
+**Benefits**:
+- Workers have full visibility of order discounts during inspection
+- Automatic detection of discount items (name containing "discount", negative price, or discount line item keys)
+- Clean display that only shows discount information when it exists
+- No errors when viewing demo/test orders without discount data
+
 ### Database and QR Code System Cleanup (January 12, 2025)
 **Problem**: Order #36311 was showing incorrect label count (6 instead of 3) due to database inconsistencies and redundant schema columns.
 
@@ -585,46 +611,58 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
 
 **Result**: Clear, unambiguous labels where each label only describes the physical object it's attached to.
 
-## Chemical Dilution Calculator (Completed Feature - January 12, 2025)
+## Chemical Dilution Calculator with Container Linking (Updated January 13, 2025)
 
 ### Overview
-Implemented a sophisticated dilution calculator that helps supervisors determine precise chemical-to-water ratios when source concentrations exceed target concentrations. The system supports v/v%, w/v%, and w/w% calculation methods with full PostgreSQL database integration for batch history tracking.
+Implemented a sophisticated dilution calculator that helps supervisors determine precise chemical-to-water ratios when source concentrations exceed target concentrations. The system supports v/v%, w/v%, and w/w% calculation methods with full PostgreSQL database integration. **NEW**: Dilution batches are now digitally linked to destination containers without creating additional QR codes, and includes an elegant PDF printing feature.
 
 ### Features
 1. **Automatic Dilution Detection** (`PrintPreparationModal`)
    - Compares source concentration vs target concentration
    - Shows orange warning when dilution is required (e.g., 12.5% → 10%)
    - Provides "Calculate Dilution →" button that opens calculator with pre-filled values
+   - **NEW**: Passes destination container QR codes to link dilution to specific containers
 
 2. **Dilution Calculator Page** (`/dilution-calculator`)
-   - Comprehensive chemical database with specific gravity values
+   - **Enhanced Chemical Database**: 100+ chemicals from API with Shopify product linking
+   - **Safety Features**: Critical safety warnings, specific gravity verification
    - Three calculation methods: Volume/Volume, Weight/Volume, Weight/Weight
    - Unit conversion support (gallons/liters)
    - Real-time visual mixture representation
    - Batch number generation and tracking
+   - **NEW**: Shows destination containers that will receive the diluted chemical
 
 3. **Database Integration** (`batch_history` table)
    - Permanent storage of all dilution operations
-   - Links to workspace and QR code systems
+   - **NEW**: `destinationQrIds` field links batches to specific destination containers
    - Complete audit trail with operator names and timestamps
    - Searchable history with CSV export functionality
+   - **NO NEW QR CODES**: Dilution batches link to existing container QRs
 
-4. **Integration Points**
+4. **Elegant PDF Printing** (`/api/batches/print`)
+   - Professional dilution record with gradient headers
+   - Visual concentration change display (12.5% → 10%)
+   - Color-coded volume bars showing chemical/water ratios
+   - Safety reminders and PPE requirements
+   - Signature lines for quality check and supervisor approval
+   - Linked destination containers listed on report
+
+5. **Integration Points**
    - **Launch from Source Assignment**: When supervisor assigns 12.5% source for 10% target
-   - **Parameters Passed**: Chemical name, initial/desired concentrations, target volume
+   - **Parameters Passed**: Chemical name, concentrations, volume, destination QR codes
    - **Return Navigation**: After saving batch, returns to calling page
-   - **QR Generation**: Creates batch QR codes for diluted containers
+   - **Container Linking**: Batch digitally linked to destination containers for traceability
 
 ### Workflow
 1. Supervisor assigns source container in PrintPreparationModal
 2. System detects concentration mismatch (source > target)
 3. Orange warning appears with "Calculate Dilution" button
-4. Calculator opens with pre-filled values from order
+4. Calculator opens with pre-filled values and destination container QR codes
 5. Supervisor enters total volume needed
 6. System calculates exact chemical and water amounts
-7. Batch is saved to database with unique batch number
-8. QR code generated for tracking diluted container
-9. Returns to order with dilution batch linked
+7. Batch is saved to database with links to destination containers
+8. Elegant PDF can be printed for physical documentation
+9. Returns to order with dilution batch linked to containers
 
 ### Benefits
 - **Precision**: Accurate dilution calculations considering specific gravity
@@ -632,6 +670,69 @@ Implemented a sophisticated dilution calculator that helps supervisors determine
 - **Traceability**: Every dilution tracked with batch numbers and QR codes
 - **Efficiency**: Pre-filled values and quick templates speed up common dilutions
 - **Compliance**: Complete audit trail for regulatory requirements
+
+## Hybrid Order Workflows - Per-Item Fulfillment Methods (January 13, 2025)
+
+### Overview
+Implemented a sophisticated hybrid workflow system that allows supervisors to specify fulfillment methods (Pump & Fill or Direct Resell) for each individual line item within a single order. This enables complex orders where some items are transferred from bulk sources while others are shipped as pre-packaged containers.
+
+### Key Features
+
+#### 1. Per-Item Workflow Control
+- **Individual Assignment**: Each line item can be independently set as `pump_and_fill` or `direct_resell`
+- **Visual Toggles**: Clean UI with distinct color coding (blue for Pump & Fill, green for Direct Resell)
+- **Dynamic Requirements**: Only pump & fill items require source container assignment
+- **Smart Validation**: Print button disabled until all pump & fill items have sources assigned
+
+#### 2. Updated Data Structure
+- **Enhanced sourceAssignments**: Now includes `workflowType` field for each line item
+- **API Updates**: `/api/workspace/[orderId]/assign-source` handles workflow types
+- **Flexible Storage**: Direct resell items store empty sourceContainers array
+
+#### 3. Adaptive Label Printing
+- **Mixed Label Types**: Single print job produces appropriate labels for each workflow
+- **Direct Resell Labels**: Get "SCAN TO INSPECT" badge instead of source requirements
+- **Pump & Fill Labels**: Show standard container numbering and source information
+- **Smart QR Filtering**: Source QR only included if at least one item is pump & fill
+
+#### 4. Worker Mobile View Enhancements
+- **Dynamic Inspection Steps**: Source scanning steps only appear for pump & fill items
+- **Visual Indicators**: Direct resell items show green "No source scan needed" message
+- **Mixed Order Support**: Workers see appropriate workflow for each scanned container
+- **Intelligent Source Display**: Only shows source containers for pump & fill items
+
+### Implementation Details
+
+#### Backend Changes
+```typescript
+// Updated sourceAssignment structure
+{
+  lineItemId: string,
+  productName: string,
+  quantity: number,
+  workflowType: 'pump_and_fill' | 'direct_resell',
+  sourceContainers: Array<{ id: string, name: string }>
+}
+```
+
+#### UI Components
+- **PrintPreparationModal**: Redesigned with per-item workflow toggles
+- **InspectionScreen**: Dynamically adjusts based on item workflows
+- **Label Printing**: Adapts label content based on workflowType
+
+### Workflow Example
+1. **Supervisor opens order** with 3 items: 2 chemicals and 1 pre-packaged product
+2. **Assigns workflows**: Sets chemicals to "Pump & Fill", pre-packaged to "Direct Resell"
+3. **Source assignment**: Selects source containers only for pump & fill items
+4. **Label printing**: Generates mixed labels - source-aware for chemicals, direct for pre-packaged
+5. **Worker inspection**: Sees source requirements only for pump & fill items
+
+### Benefits
+- **Flexibility**: Support complex orders with mixed fulfillment methods
+- **Efficiency**: Skip unnecessary steps for pre-packaged items
+- **Clarity**: Workers immediately understand requirements for each item
+- **Accuracy**: Reduced errors through workflow-specific validation
+- **Scalability**: Easy to add new workflow types in the future
 
 Future Improvements
 This section outlines planned enhancements to the Workspace Order Management System, categorized by focus area.

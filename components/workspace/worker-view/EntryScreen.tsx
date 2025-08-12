@@ -66,23 +66,33 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor }
               </div>
             )}
 
-            {workspace.shipstationData?.items && workspace.shipstationData.items.length > 0 && (
-              <div className="text-center">
-                <div className="worker-label text-gray-600 mb-2">Items:</div>
-                <div className="space-y-2">
-                  {workspace.shipstationData.items.slice(0, 3).map((item: any, index: number) => (
-                    <div key={index} className="worker-text">
-                      {item.quantity}x {item.name}
-                    </div>
-                  ))}
-                  {workspace.shipstationData.items.length > 3 && (
-                    <div className="worker-text text-gray-500">
-                      +{workspace.shipstationData.items.length - 3} more items
-                    </div>
-                  )}
+            {workspace.shipstationData?.items && workspace.shipstationData.items.length > 0 && (() => {
+              const filteredItems = workspace.shipstationData.items.filter((item: any) => 
+                !item.name?.toLowerCase().includes('discount') && 
+                item.unitPrice >= 0 && 
+                !item.lineItemKey?.includes('discount')
+              );
+              
+              if (filteredItems.length === 0) return null;
+              
+              return (
+                <div className="text-center">
+                  <div className="worker-label text-gray-600 mb-2">Items:</div>
+                  <div className="space-y-2">
+                    {filteredItems.slice(0, 3).map((item: any, index: number) => (
+                      <div key={index} className="worker-text">
+                        {item.quantity}x {item.name}
+                      </div>
+                    ))}
+                    {filteredItems.length > 3 && (
+                      <div className="worker-text text-gray-500">
+                        +{filteredItems.length - 3} more items
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Action button */}

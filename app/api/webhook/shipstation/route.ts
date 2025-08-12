@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         // Queue QR generation based on order items
         await queueQRGeneration(workspace.id, orderData);
         
-        // Send notification
+        // Send notification with all items including discounts
         await sendMessage(
           process.env.ALERT_QUEUE_URL!,
           {
@@ -56,7 +56,16 @@ export async function POST(request: NextRequest) {
             orderNumber: orderData.orderNumber,
             workspaceId: workspace.id,
             workspaceUrl: `${process.env.NEXT_PUBLIC_APP_URL}/workspace/${orderData.orderId}`,
-            items: orderData.items,
+            items: orderData.items?.map((item: any) => ({
+              name: item.name,
+              quantity: item.quantity,
+              sku: item.sku,
+              unitPrice: item.unitPrice,
+              isDiscount: item.name?.toLowerCase().includes('discount') || 
+                         item.unitPrice < 0 || 
+                         item.lineItemKey?.includes('discount'),
+              customAttributes: item.options || [],
+            })) || [],
           },
           `order-${orderData.orderId}`
         );
@@ -105,12 +114,28 @@ async function fetchShipStationOrder(orderId: number) {
 async function queueQRGeneration(workspaceId: string, orderData: any) {
   const items = orderData.items || [];
   
+  // Filter out discount line items (they have no SKU and typically quantity of 1)
+  const physicalItems = items.filter((item: any) => {
+    // Discount items typically have no SKU and name contains 'discount' or starts with negative price
+    const hasNoSku = !item.sku || item.sku === '';
+    const isDiscount = item.name?.toLowerCase().includes('discount') || 
+                       item.unitPrice < 0 || 
+                       item.lineItemKey?.includes('discount');
+    
+    // Exclude if it's a discount item
+    if (hasNoSku && isDiscount) {
+      console.log(`Filtering out discount item: ${item.name}`);
+      return false;
+    }
+    return true;
+  });
+  
   // Analyze items to determine QR generation strategy
   let qrStrategy = 'single_master'; // default
   let containerCount = 0;
   
   // Count drums and totes
-  items.forEach((item: any) => {
+  physicalItems.forEach((item: any) => {
     const name = item.name?.toLowerCase() || '';
     const qty = item.quantity || 1;
     
@@ -133,7 +158,7 @@ async function queueQRGeneration(workspaceId: string, orderData: any) {
       orderId: orderData.orderId,
       orderNumber: orderData.orderNumber,
       strategy: qrStrategy,
-      items: items.map((item: any) => ({
+      items: physicalItems.map((item: any) => ({
         name: item.name,
         sku: item.sku,
         quantity: item.quantity,

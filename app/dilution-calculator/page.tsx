@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, ChangeEvent, useEffect } from 'react';
+import React, { useState, useMemo, ChangeEvent, useEffect, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,12 +20,16 @@ import {
 import { useSearchParams, useRouter } from 'next/navigation';
 
 interface ChemicalData {
+  id?: string;
   name: string;
   specificGravity: number;
   initialConcentration: number;
   method: 'vv' | 'wv' | 'ww';
   hazardClass?: string;
   ppeSuggestion?: string;
+  shopifyProductId?: string;
+  shopifyTitle?: string;
+  shopifySKU?: string;
 }
 
 // Constants
@@ -97,17 +101,19 @@ const generateBatchNumber = (chemicalName: string): string => {
   return `${abbrev}${year}${month}${day}-${Date.now().toString().slice(-4)}`;
 };
 
-export default function DilutionCalculatorPage() {
+function DilutionCalculatorContent() {
   const params = useSearchParams();
   const router = useRouter();
   
-  const [chemicalData, setChemicalData] = useState<ChemicalData[]>(defaultChemicalData);
+  const [chemicalData, setChemicalData] = useState<ChemicalData[]>([]);
   const [selectedChemical, setSelectedChemical] = useState<string>('');
+  const [selectedChemicalData, setSelectedChemicalData] = useState<ChemicalData | null>(null);
   const [initialConcentration, setInitialConcentration] = useState<number>(0);
   const [desiredConcentration, setDesiredConcentration] = useState<number>(0);
   const [totalVolume, setTotalVolume] = useState<number>(0);
   const [method, setMethod] = useState<'vv' | 'wv' | 'ww'>('ww');
   const [specificGravity, setSpecificGravity] = useState<number>(1);
+  const [isLoadingChemicals, setIsLoadingChemicals] = useState<boolean>(true);
   const [result, setResult] = useState<{
     chemicalVolume: number;
     waterVolume: number;
@@ -125,12 +131,39 @@ export default function DilutionCalculatorPage() {
   const [commonSizes] = useState<number[]>([5, 15, 55, 275, 330]);
   const [selectedCommonSize, setSelectedCommonSize] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'calculator' | 'history'>('calculator');
+  const [destinationQrShortCodes, setDestinationQrShortCodes] = useState<string[]>([]);
 
   const sortedChemicalData = useMemo(() => [...chemicalData].sort((a, b) => a.name.localeCompare(b.name)), [chemicalData]);
+
+  // Fetch chemicals from API
+  const fetchChemicals = async () => {
+    setIsLoadingChemicals(true);
+    try {
+      const response = await fetch('/api/chemicals?includeShopify=true');
+      if (response.ok) {
+        const data = await response.json();
+        setChemicalData(data.chemicals || []);
+        // If we still have no data, fall back to default
+        if (!data.chemicals || data.chemicals.length === 0) {
+          setChemicalData(defaultChemicalData);
+        }
+      } else {
+        // Fall back to default data if API fails
+        setChemicalData(defaultChemicalData);
+      }
+    } catch (error) {
+      console.error('Failed to fetch chemicals:', error);
+      // Fall back to default data
+      setChemicalData(defaultChemicalData);
+    } finally {
+      setIsLoadingChemicals(false);
+    }
+  };
 
   // Load batch history from API
   useEffect(() => {
     fetchBatchHistory();
+    fetchChemicals();
   }, []);
 
   // Prefill from query params
@@ -142,6 +175,7 @@ export default function DilutionCalculatorPage() {
     const dcParam = params.get('dc');
     const targetParam = params.get('target');
     const orderIdParam = params.get('orderId');
+    const destQRsParam = params.get('destQRs');
 
     if (chemParam) {
       const matched = sortedChemicalData.find(c => 
@@ -159,6 +193,19 @@ export default function DilutionCalculatorPage() {
     if (icParam) setInitialConcentration(parseFloat(icParam));
     if (dcParam) setDesiredConcentration(parseFloat(dcParam));
     if (targetParam) setTotalVolume(parseFloat(targetParam));
+    
+    // Parse destination QR codes
+    if (destQRsParam) {
+      try {
+        const destQRs = JSON.parse(decodeURIComponent(destQRsParam));
+        if (Array.isArray(destQRs)) {
+          setDestinationQrShortCodes(destQRs);
+          console.log('[Dilution Calculator] Received destination QR codes:', destQRs);
+        }
+      } catch (error) {
+        console.error('[Dilution Calculator] Failed to parse destination QR codes:', error);
+      }
+    }
   }, [params, sortedChemicalData]);
 
   // Generate batch number when chemical is selected
@@ -261,6 +308,31 @@ export default function DilutionCalculatorPage() {
     }
   };
 
+  const printBatchPDF = async (batchId: string) => {
+    try {
+      const response = await fetch('/api/batches/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId })
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dilution-batch-${batchNumber}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('Failed to print batch:', error);
+      alert('Failed to generate PDF. Please try again.');
+    }
+  };
+
   const saveBatch = async () => {
     if (!result || !selectedChemical || !batchNumber || !completedBy) {
       setError("Cannot save batch. Please ensure calculation is done and fields are filled.");
@@ -279,6 +351,10 @@ export default function DilutionCalculatorPage() {
           orderId,
           batchNumber,
           chemicalName: selectedChemical,
+          chemicalId: selectedChemicalData?.id,
+          shopifyProductId: selectedChemicalData?.shopifyProductId,
+          shopifyTitle: selectedChemicalData?.shopifyTitle,
+          shopifySKU: selectedChemicalData?.shopifySKU,
           initialConcentration,
           desiredConcentration,
           totalVolumeGallons: totalVolume,
@@ -289,13 +365,22 @@ export default function DilutionCalculatorPage() {
           notes,
           completedBy,
           methodUsed: method,
-          initialSpecificGravity: specificGravity
+          initialSpecificGravity: specificGravity,
+          hazardClass: selectedChemicalData?.hazardClass,
+          ppeSuggestion: selectedChemicalData?.ppeSuggestion,
+          destinationQrShortCodes // Pass the destination QR codes
         })
       });
 
       if (response.ok) {
+        const data = await response.json();
         alert('Batch saved successfully!');
         fetchBatchHistory();
+        
+        // Ask if user wants to print the batch record
+        if (confirm('Would you like to print the dilution record?')) {
+          printBatchPDF(data.batch.id);
+        }
         
         // Navigate back if return URL provided
         const returnUrl = params?.get('return');
@@ -316,9 +401,19 @@ export default function DilutionCalculatorPage() {
     const chem = sortedChemicalData.find((c) => c.name === chemName);
     if (chem) {
       setSelectedChemical(chem.name);
+      setSelectedChemicalData(chem);
       setInitialConcentration(chem.initialConcentration);
       setSpecificGravity(chem.specificGravity);
       setMethod(chem.method);
+      setDesiredConcentration(0);
+      setResult(null);
+      setError(null);
+    } else {
+      setSelectedChemical('');
+      setSelectedChemicalData(null);
+      setInitialConcentration(0);
+      setSpecificGravity(1);
+      setMethod('ww');
       setDesiredConcentration(0);
       setResult(null);
       setError(null);
@@ -358,20 +453,42 @@ export default function DilutionCalculatorPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Form */}
             <div className="lg:col-span-2 space-y-6">
+              {/* Destination Containers Info */}
+              {destinationQrShortCodes.length > 0 && (
+                <Card className="p-6 bg-blue-50 border-blue-200">
+                  <h2 className="text-xl font-semibold mb-3 text-blue-900">Dilution for Containers</h2>
+                  <div className="flex flex-wrap gap-2">
+                    {destinationQrShortCodes.map((code, idx) => (
+                      <span key={idx} className="px-3 py-1 bg-white border border-blue-300 rounded-lg text-sm font-medium text-blue-800">
+                        Container: {code}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-sm text-blue-700 mt-3">
+                    This dilution batch will be linked to these destination containers for full traceability.
+                  </p>
+                </Card>
+              )}
+
               {/* Chemical Selection */}
               <Card className="p-6">
                 <h2 className="text-xl font-semibold mb-4">Chemical Selection</h2>
                 <div className="space-y-4">
                   <div>
-                    <Label>Select Chemical</Label>
+                    <Label>Select Chemical {isLoadingChemicals && "(Loading...)"}</Label>
                     <select
                       value={selectedChemical}
                       onChange={handleChemicalSelect}
                       className="w-full p-2 border rounded-lg"
+                      disabled={isLoadingChemicals}
                     >
                       <option value="">Select a chemical</option>
                       {sortedChemicalData.map((chemical, idx) => (
-                        <option key={idx} value={chemical.name}>{chemical.name}</option>
+                        <option key={idx} value={chemical.name}>
+                          {chemical.name}
+                          {chemical.shopifyTitle && chemical.shopifyTitle !== chemical.name && 
+                            ` (Shopify: ${chemical.shopifyTitle})`}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -386,6 +503,36 @@ export default function DilutionCalculatorPage() {
                       <Input type="number" value={specificGravity} readOnly className="bg-gray-50" />
                     </div>
                   </div>
+
+                  {/* Display Shopify Product Link if available */}
+                  {selectedChemicalData?.shopifyProductId && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="text-sm text-blue-800">
+                        <strong>Linked Shopify Product:</strong> {selectedChemicalData.shopifyTitle || selectedChemicalData.name}
+                        {selectedChemicalData.shopifySKU && (
+                          <span className="ml-2 text-xs">(SKU: {selectedChemicalData.shopifySKU})</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Safety Warning */}
+                  {selectedChemical && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-start">
+                        <ExclamationTriangleIcon className="w-5 h-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-red-800">
+                          <strong>CRITICAL SAFETY NOTICE:</strong> Verify these values against the current SDS. 
+                          Specific gravity and concentration method directly affect safety. 
+                          {selectedChemicalData?.hazardClass && (
+                            <div className="mt-1">
+                              <strong>Hazard Class:</strong> {selectedChemicalData.hazardClass}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <Label>Desired Concentration (%)</Label>
@@ -575,5 +722,19 @@ export default function DilutionCalculatorPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function DilutionCalculatorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-cyan-50 p-8 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Loading...</h1>
+        </div>
+      </div>
+    }>
+      <DilutionCalculatorContent />
+    </Suspense>
   );
 }

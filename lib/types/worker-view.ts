@@ -33,6 +33,11 @@ export interface InspectionScreenProps {
     quantity: number;
     sku?: string;
     unitPrice?: number;
+    isDiscount?: boolean;
+    customAttributes?: Array<{
+      name: string;
+      value: string;
+    }>;
   }>;
   workflowPhase: string;
   workflowType?: string;
@@ -75,6 +80,11 @@ export interface WorkspaceData {
       quantity: number;
       sku?: string;
       unitPrice?: number;
+      isDiscount?: boolean;
+      customAttributes?: Array<{
+        name: string;
+        value: string;
+      }>;
       weight?: {
         value: number;
         units: string;

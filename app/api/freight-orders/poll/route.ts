@@ -57,11 +57,16 @@ export async function GET(request: NextRequest) {
           customerName: order.shipTo?.name || 'Unknown Customer',
           orderDate: order.orderDate,
           orderTotal: order.orderTotal,
-          items: order.items?.map((item: any) => ({
+          items: order.items?.filter((item: any) => 
+            !item.name?.toLowerCase().includes('discount') && 
+            item.unitPrice >= 0 && 
+            !item.lineItemKey?.includes('discount')
+          ).map((item: any) => ({
             name: item.name,
             quantity: item.quantity,
             sku: item.sku,
             unitPrice: item.unitPrice,
+            customAttributes: item.options || [],
           })) || [],
         });
         continue;
@@ -84,11 +89,16 @@ export async function GET(request: NextRequest) {
         customerName: order.shipTo?.name || 'Unknown Customer',
         orderDate: order.orderDate,
         orderTotal: order.orderTotal,
-        items: order.items?.map((item: any) => ({
+        items: order.items?.filter((item: any) => 
+          !item.name?.toLowerCase().includes('discount') && 
+          item.unitPrice >= 0 && 
+          !item.lineItemKey?.includes('discount')
+        ).map((item: any) => ({
           name: item.name,
           quantity: item.quantity,
           sku: item.sku,
           unitPrice: item.unitPrice,
+          customAttributes: item.options || [],
         })) || [],
       });
     }
