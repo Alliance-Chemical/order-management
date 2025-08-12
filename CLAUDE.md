@@ -585,6 +585,54 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
 
 **Result**: Clear, unambiguous labels where each label only describes the physical object it's attached to.
 
+## Chemical Dilution Calculator (Completed Feature - January 2025)
+
+### Overview
+Implemented a sophisticated dilution calculator that helps supervisors determine precise chemical-to-water ratios when source concentrations exceed target concentrations. The system supports v/v%, w/v%, and w/w% calculation methods with full PostgreSQL database integration for batch history tracking.
+
+### Features
+1. **Automatic Dilution Detection** (`PrintPreparationModal`)
+   - Compares source concentration vs target concentration
+   - Shows orange warning when dilution is required (e.g., 12.5% → 10%)
+   - Provides "Calculate Dilution →" button that opens calculator with pre-filled values
+
+2. **Dilution Calculator Page** (`/dilution-calculator`)
+   - Comprehensive chemical database with specific gravity values
+   - Three calculation methods: Volume/Volume, Weight/Volume, Weight/Weight
+   - Unit conversion support (gallons/liters)
+   - Real-time visual mixture representation
+   - Batch number generation and tracking
+
+3. **Database Integration** (`batch_history` table)
+   - Permanent storage of all dilution operations
+   - Links to workspace and QR code systems
+   - Complete audit trail with operator names and timestamps
+   - Searchable history with CSV export functionality
+
+4. **Integration Points**
+   - **Launch from Source Assignment**: When supervisor assigns 12.5% source for 10% target
+   - **Parameters Passed**: Chemical name, initial/desired concentrations, target volume
+   - **Return Navigation**: After saving batch, returns to calling page
+   - **QR Generation**: Creates batch QR codes for diluted containers
+
+### Workflow
+1. Supervisor assigns source container in PrintPreparationModal
+2. System detects concentration mismatch (source > target)
+3. Orange warning appears with "Calculate Dilution" button
+4. Calculator opens with pre-filled values from order
+5. Supervisor enters total volume needed
+6. System calculates exact chemical and water amounts
+7. Batch is saved to database with unique batch number
+8. QR code generated for tracking diluted container
+9. Returns to order with dilution batch linked
+
+### Benefits
+- **Precision**: Accurate dilution calculations considering specific gravity
+- **Safety**: PPE recommendations and hazard classifications displayed
+- **Traceability**: Every dilution tracked with batch numbers and QR codes
+- **Efficiency**: Pre-filled values and quick templates speed up common dilutions
+- **Compliance**: Complete audit trail for regulatory requirements
+
 Future Improvements
 This section outlines planned enhancements to the Workspace Order Management System, categorized by focus area.
 🚀 Core Application & UX

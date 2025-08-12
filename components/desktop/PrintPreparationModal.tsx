@@ -405,11 +405,38 @@ export default function PrintPreparationModal({
                             </p>
                             {assignment.sourceContainers.length > 0 ? (
                               <div className="mt-1">
-                                {assignment.sourceContainers.map((container, idx) => (
-                                  <p key={idx} className="text-sm text-green-600">
-                                    ✓ Source {idx + 1}: {container.name}
-                                  </p>
-                                ))}
+                                {assignment.sourceContainers.map((container, idx) => {
+                                  // Extract concentrations for dilution check
+                                  const sourceConc = parseFloat(container.name.match(/(\d+(?:\.\d+)?)\s*%/)?.[1] || '0');
+                                  const targetConc = parseFloat(assignment.productName.match(/(\d+(?:\.\d+)?)\s*%/)?.[1] || '0');
+                                  const needsDilution = sourceConc > 0 && targetConc > 0 && sourceConc > targetConc;
+                                  
+                                  return (
+                                    <div key={idx}>
+                                      <p className="text-sm text-green-600">
+                                        ✓ Source {idx + 1}: {container.name}
+                                      </p>
+                                      {needsDilution && (
+                                        <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded">
+                                          <p className="text-sm text-orange-800 font-medium">
+                                            ⚠ Dilution Required: {sourceConc}% → {targetConc}%
+                                          </p>
+                                          <button
+                                            onClick={() => {
+                                              // Open dilution calculator with parameters
+                                              const chemName = container.name.split(/\d+(?:\.\d+)?\s*%/)[0].trim();
+                                              const dilutionUrl = `/dilution-calculator?chem=${encodeURIComponent(chemName)}&ic=${sourceConc}&dc=${targetConc}&target=${assignment.quantity}&orderId=${order.orderId}&return=${encodeURIComponent(window.location.pathname)}`;
+                                              window.open(dilutionUrl, '_blank');
+                                            }}
+                                            className="mt-1 px-3 py-1 bg-orange-600 text-white text-sm rounded hover:bg-orange-700"
+                                          >
+                                            Calculate Dilution →
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <p className="text-sm text-red-600 mt-1">

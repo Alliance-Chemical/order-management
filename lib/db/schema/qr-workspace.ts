@@ -267,9 +267,42 @@ export const activityLogRelations = relations(activityLog, ({ one }) => ({
   }),
 }));
 
-// Source Containers Table - for tracking inventory at source
+// Batch History Table - for tracking dilution operations
 import { decimal } from 'drizzle-orm/pg-core';
 
+export const batchHistory = qrWorkspaceSchema.table('batch_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').references(() => workspaces.id),
+  
+  // Batch Identification
+  batchNumber: varchar('batch_number', { length: 255 }).notNull().unique(),
+  chemicalName: varchar('chemical_name', { length: 255 }).notNull(),
+  
+  // Concentration Data
+  initialConcentration: decimal('initial_concentration', { precision: 5, scale: 2 }).notNull(),
+  desiredConcentration: decimal('desired_concentration', { precision: 5, scale: 2 }).notNull(),
+  methodUsed: varchar('method_used', { length: 10 }).notNull(), // 'vv', 'wv', or 'ww'
+  initialSpecificGravity: decimal('initial_specific_gravity', { precision: 5, scale: 3 }).notNull(),
+  
+  // Volume Data (always stored in gallons)
+  totalVolumeGallons: decimal('total_volume_gallons', { precision: 10, scale: 4 }).notNull(),
+  chemicalVolumeGallons: decimal('chemical_volume_gallons', { precision: 10, scale: 4 }).notNull(),
+  waterVolumeGallons: decimal('water_volume_gallons', { precision: 10, scale: 4 }).notNull(),
+  
+  // Weight Data (always stored in pounds)
+  chemicalWeightLbs: decimal('chemical_weight_lbs', { precision: 10, scale: 4 }).notNull(),
+  waterWeightLbs: decimal('water_weight_lbs', { precision: 10, scale: 4 }).notNull(),
+  
+  // Metadata
+  notes: varchar('notes', { length: 1000 }),
+  completedBy: varchar('completed_by', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  
+  // QR Code Reference (if batch QR was generated)
+  qrCodeId: uuid('qr_code_id').references(() => qrCodes.id),
+});
+
+// Source Containers Table - for tracking inventory at source
 export const sourceContainers = qrWorkspaceSchema.table('source_containers', {
   id: uuid('id').primaryKey().defaultRandom(),
   
@@ -315,6 +348,17 @@ export const sourceContainers = qrWorkspaceSchema.table('source_containers', {
 export const sourceContainersRelations = relations(sourceContainers, ({ one }) => ({
   qrCode: one(qrCodes, {
     fields: [sourceContainers.qrCodeId],
+    references: [qrCodes.id],
+  }),
+}));
+
+export const batchHistoryRelations = relations(batchHistory, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [batchHistory.workspaceId],
+    references: [workspaces.id],
+  }),
+  qrCode: one(qrCodes, {
+    fields: [batchHistory.qrCodeId],
     references: [qrCodes.id],
   }),
 }));
