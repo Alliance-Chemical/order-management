@@ -497,14 +497,34 @@ export default function PrintPreparationModal({
                     </div>
                   )}
                   
-                  {labelSummary.source > 0 && (
-                    <div className="flex justify-between items-center bg-yellow-50 rounded-lg px-4 py-3">
-                      <span className="text-gray-700">Source Container Label</span>
-                      <span className="font-semibold text-gray-900">
-                        {labelSummary.source} label{labelSummary.source > 1 ? 's' : ''}
-                      </span>
-                    </div>
-                  )}
+                  {(() => {
+                    // Calculate actual source label count from sourceAssignments
+                    const totalSourceContainers = sourceAssignments.reduce((total, assignment) => 
+                      total + assignment.sourceContainers.length, 0);
+                    
+                    if (workflowType === 'pump_and_fill' && totalSourceContainers > 0) {
+                      return (
+                        <div className="flex justify-between items-center bg-yellow-50 rounded-lg px-4 py-3">
+                          <span className="text-gray-700">Source Container Label{totalSourceContainers > 1 ? 's' : ''}</span>
+                          <span className="font-semibold text-gray-900">
+                            {totalSourceContainers} label{totalSourceContainers > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      );
+                    }
+                    // Fallback to original source count from QR codes if no assignments yet
+                    if (labelSummary.source > 0) {
+                      return (
+                        <div className="flex justify-between items-center bg-yellow-50 rounded-lg px-4 py-3">
+                          <span className="text-gray-700">Source Container Label</span>
+                          <span className="font-semibold text-gray-900">
+                            {labelSummary.source} label{labelSummary.source > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   
                   {labelSummary.drums > 0 && (
                     <div className="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-3">
@@ -540,8 +560,15 @@ export default function PrintPreparationModal({
                       Total Labels
                     </span>
                     <span className="text-lg font-bold text-blue-600">
-                      {(labelSummary.master + labelSummary.source + labelSummary.drums + 
-                       labelSummary.totes + labelSummary.pallets) || qrCodes.length}
+                      {(() => {
+                        // Calculate actual source count from assignments if in pump_and_fill mode
+                        const actualSourceCount = workflowType === 'pump_and_fill' 
+                          ? sourceAssignments.reduce((total, assignment) => total + assignment.sourceContainers.length, 0)
+                          : labelSummary.source;
+                        
+                        return labelSummary.master + actualSourceCount + labelSummary.drums + 
+                               labelSummary.totes + labelSummary.pallets || qrCodes.length;
+                      })()}
                     </span>
                   </div>
                 </div>
