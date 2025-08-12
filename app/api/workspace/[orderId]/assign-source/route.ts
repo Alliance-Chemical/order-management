@@ -74,6 +74,7 @@ export async function POST(
       const sourceQRId = `source-${sourceContainerId}`;
       
       // Check if we already have a source QR for this specific container
+      // More efficient: check for the specific sourceId directly
       const allSourceQRs = await db
         .select()
         .from(qrCodes)
@@ -88,7 +89,8 @@ export async function POST(
       const existingSourceQR = allSourceQRs.find(qr => 
         qr.encodedData && 
         typeof qr.encodedData === 'object' && 
-        (qr.encodedData as any).sourceId === sourceQRId
+        ((qr.encodedData as any).sourceId === sourceQRId || 
+         (qr.encodedData as any).sourceContainerId === sourceContainerId)
       );
       
       if (!existingSourceQR) {
@@ -101,32 +103,54 @@ export async function POST(
         // Extract the chemical name from the source container name (e.g., "Isopropyl Alcohol - 275 Gal Tote" -> "Isopropyl Alcohol")
         const chemicalName = sourceContainerName ? sourceContainerName.split(' - ')[0] : productName || 'Chemical';
         
-        await db.insert(qrCodes).values({
-          workspaceId: workspaceRecord.id,
-          qrType: 'source',
-          qrCode: makeCode(`SOURCE-${sourceContainerId}`),
-          shortCode: makeShort(),
-          orderId,
-          orderNumber: String(orderId),
-          containerNumber: null,
-          chemicalName: chemicalName,
-          encodedData: { 
-            type: 'source', 
-            orderId, 
-            orderNumber: String(orderId), 
-            sourceId: sourceQRId,
-            sourceContainerId,
-            sourceContainerName,
-            chemicalName,
-            isSource: true 
-          },
-          qrUrl: `${baseUrl}/workspace/${orderId}`,
-          scanCount: 0,
-          isActive: true,
-          createdAt: new Date(),
-        });
-        
-        console.log(`[SOURCE ASSIGN] Created new source QR for ${chemicalName} (${sourceContainerId})`);
+        try {
+          await db.insert(qrCodes).values({
+            workspaceId: workspaceRecord.id,
+            qrType: 'source',
+            qrCode: makeCode(`SOURCE-${sourceContainerId}`),
+            shortCode: makeShort(),
+            orderId,
+            orderNumber: String(orderId),
+            containerNumber: null,
+            chemicalName: chemicalName,
+            encodedData: { 
+              type: 'source', 
+              orderId, 
+              orderNumber: String(orderId), 
+              sourceId: sourceQRId,
+              sourceContainerId,
+              sourceContainerName,
+              chemicalName,
+              isSource: true 
+            },
+            qrUrl: `${baseUrl}/workspace/${orderId}`,
+            scanCount: 0,
+            isActive: true,
+            createdAt: new Date(),
+          });
+          
+          console.log(`[SOURCE ASSIGN] Created new source QR for ${chemicalName} (${sourceContainerId})`);
+          
+        } catch (error: any) {
+          // Check for unique constraint violation error (PostgreSQL error code '23505')
+          // Drizzle wraps the error, so we need to check the cause as well
+          const isUniqueViolation = 
+            error.code === '23505' || 
+            error.cause?.code === '23505' ||
+            error.message?.includes('unique constraint') ||
+            error.message?.includes('duplicate key');
+            
+          if (isUniqueViolation) {
+            console.log(`[SOURCE ASSIGN] Race condition detected and prevented by DB. A source QR for ${sourceContainerId} already exists.`);
+            // Gracefully ignore the error, as another process created the QR successfully.
+            // The assignment will still proceed as if the QR was found from the start.
+          } else {
+            // If it's a different error, re-throw it to be handled upstream.
+            console.error(`[SOURCE ASSIGN] Unexpected error creating source QR:`, error);
+            console.error(`[SOURCE ASSIGN] Error code:`, error.code, 'Cause code:', error.cause?.code);
+            throw error;
+          }
+        }
       }
       
       if (mode === 'replace') {
