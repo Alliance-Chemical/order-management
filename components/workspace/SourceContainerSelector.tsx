@@ -161,17 +161,7 @@ export default function SourceContainerSelector({
     return `${before}<mark class="bg-yellow-200 font-semibold">${match}</mark>${after}`;
   };
 
-  // Try to auto-match based on product name
-  useEffect(() => {
-    if (products.length > 0 && productName && !selectedProduct) {
-      const matched = products.find(p => 
-        productName.toLowerCase().includes(p.title.toLowerCase())
-      );
-      if (matched) {
-        setSelectedProduct(matched);
-      }
-    }
-  }, [products, productName, selectedProduct]);
+  // Removed auto-matching - let users choose their own product
 
   const handleConfirm = () => {
     if (!selectedProduct) {
@@ -288,7 +278,7 @@ export default function SourceContainerSelector({
                     COMMONLY USED CHEMICALS
                   </div>
                 )}
-                {filteredProducts.map((product, index) => (
+                {filteredProducts.map((product) => (
                   <button
                     key={product.id}
                     onClick={() => {

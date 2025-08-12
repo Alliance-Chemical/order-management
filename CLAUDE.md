@@ -337,7 +337,7 @@ The test helper (`/tests/helpers/db.ts`) provides:
 ## Supervisor Source Assignment System (Completed Feature)
 
 ### Overview
-Implemented a comprehensive source container assignment system that requires supervisors to digitally assign specific bulk containers to orders before printing labels. This ensures complete traceability from bulk source containers to final shipped products.
+Implemented a comprehensive source container assignment system that requires supervisors to digitally assign specific bulk containers to orders before printing labels. This ensures complete traceability from bulk source containers to final shipped products. **Updated January 12, 2025**: Now supports multiple source containers per item for complex filling operations.
 
 ### Features
 1. **Shopify Product Integration** (`/api/shopify/sync-products`)
@@ -348,46 +348,60 @@ Implemented a comprehensive source container assignment system that requires sup
 
 2. **Source Container Assignment UI** (`SourceContainerSelector` component)
    - Integrated into PrintPreparationModal (renamed to "Order Assignment & Label Printing")
+   - **Removed packing configuration details section for cleaner UI**
+   - **No longer auto-selects products** - users have full control to choose
    - Allows supervisors to select:
      - Chemical product from Shopify catalog (with search functionality)
      - Container type: 275 Gal Tote, 55 Gal Drum, or 330 Gal Drum
-     - Unique container ID (e.g., T-001, D-055)
-   - Auto-matches products based on order item names
+     - Optional container ID (e.g., T-001, D-055)
    - Shows clear summary before confirmation
 
-3. **Assignment Persistence** (`/api/workspace/[orderId]/assign-source`)
+3. **Multiple Source Container Support** (NEW)
+   - **Support for multiple source containers per line item**
+   - Useful when filling from multiple bulk containers (e.g., 2 totes used to fill 10 drums)
+   - Two assignment modes:
+     - **Add Source**: Adds additional source container to existing list
+     - **Replace All**: Clears existing sources and assigns new one
+   - Visual display shows all assigned sources with numbered list
+   - Backend API supports both add and replace modes
+
+4. **Assignment Persistence** (`/api/workspace/[orderId]/assign-source`)
    - Stores source assignments in workspace moduleStates
+   - **Now supports multiple containers per lineItemId**
    - Tracks: lineItemId, sourceContainerId, sourceContainerName, assignedBy, assignedAt
    - Creates activity log entries for audit trail
    - GET endpoint retrieves current assignments for display
+   - Prevents duplicate source containers for same item
 
-4. **Label Enhancement** (`/api/qr/print`)
+5. **Label Enhancement** (`/api/qr/print`)
    - Includes source container information on printed labels
-   - Adds green-colored "Source: [Container Type] #[ID]" text on container labels
    - Source info passed via sourceAssignments parameter
    - Maintains professional label format with source traceability
 
-5. **Worker View Integration** (`InspectionScreen`)
-   - Fetches and displays source assignments for current inspection item
-   - Shows prominent blue box with source container information
-   - Displays "Fill From Source: [Container Type] #[ID]" during inspections
-   - Workers know exactly which bulk container to use for filling
+6. **Worker View Integration** (`InspectionScreen`)
+   - Fetches and displays ALL source assignments for current inspection item
+   - Shows prominent blue box with numbered list of source containers
+   - Displays "Fill From Sources:" with all assigned containers listed
+   - Workers can see when multiple bulk containers should be used
 
 ### Business Rules Enforced
-- **Print Prevention**: Label printing is disabled until ALL items have source containers assigned
-- **Visual Indicators**: Red badges show unassigned items, green checkmarks show assigned
-- **Required Fields**: Both product selection and container ID are required
-- **Idempotent Updates**: Re-assigning a source updates existing assignment (no duplicates)
+- **Print Prevention**: Label printing is disabled until ALL items have at least one source container assigned
+- **Visual Indicators**: Shows numbered list of all assigned sources, red warning for unassigned items
+- **Multiple Sources**: Each item can have unlimited source containers assigned
+- **No Duplicates**: Same source container cannot be assigned twice to same item
 
 ### Workflow
 1. Supervisor opens PrintPreparationModal for an order
 2. System shows all order items requiring source assignment
-3. Supervisor clicks "Assign Source" for each item
-4. Selects chemical product, container type (275 gal tote, 55 gal drum, 330 gal drum), and enters ID
+3. For each item, supervisor can:
+   - Click "Add Source" to assign additional source containers
+   - Click "Replace All" to clear and reassign sources
+4. Selects chemical product, container type, and optional ID
 5. Assignment is saved to database via API
-6. Print button remains disabled until ALL items have sources assigned
-7. Labels are printed with source information included
-8. Workers see source assignments during inspection workflow
+6. Can repeat to add multiple sources per item as needed
+7. Print button remains disabled until ALL items have at least one source assigned
+8. Labels are printed with source information included
+9. Workers see all source assignments during inspection workflow
 
 ### Container Types Supported
 - **275 Gal Tote** (IBC Tote Container)
@@ -395,11 +409,12 @@ Implemented a comprehensive source container assignment system that requires sup
 - **330 Gal Drum** (Bulk Storage Drum)
 
 ### Benefits
-- **Complete Traceability**: Every container can be traced back to its bulk source
+- **Complete Traceability**: Every container can be traced back to its bulk source(s)
+- **Complex Operations**: Supports scenarios where multiple sources fill single order
 - **Error Prevention**: Workers can't start filling without proper source assignment
 - **Audit Trail**: All assignments are logged with timestamp and user
-- **Clear Communication**: Source info appears on labels and in worker interface
-- **Flexibility**: Supports multiple container types for different storage needs
+- **Clear Communication**: All source info appears on labels and in worker interface
+- **Flexibility**: Supports multiple container types and multiple sources per item
 
 ## GitHub Repository
 The project is now hosted on GitHub at: https://github.com/andretaki/order-management

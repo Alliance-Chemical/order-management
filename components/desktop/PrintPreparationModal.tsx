@@ -29,8 +29,10 @@ interface SourceAssignment {
   lineItemId: string;
   productName: string;
   quantity: number;
-  sourceContainerId?: string;
-  sourceContainerName?: string;
+  sourceContainers: Array<{
+    id: string;
+    name: string;
+  }>;
 }
 
 export default function PrintPreparationModal({ 
@@ -48,7 +50,6 @@ export default function PrintPreparationModal({
     totes: number;
     pallets: number;
   }>({ master: 0, source: 0, drums: 0, totes: 0, pallets: 0 });
-  const [includeSourceQR, setIncludeSourceQR] = useState(false);
   
   // Workflow type state
   const [workflowType, setWorkflowType] = useState<'pump_and_fill' | 'direct_resell'>('pump_and_fill');
@@ -56,6 +57,7 @@ export default function PrintPreparationModal({
   // Source container assignment state
   const [sourceAssignments, setSourceAssignments] = useState<SourceAssignment[]>([]);
   const [selectingSourceFor, setSelectingSourceFor] = useState<string | null>(null);
+  const [editingMode, setEditingMode] = useState<'add' | 'replace'>('add');
 
   useEffect(() => {
     fetchQRCodes();
@@ -72,14 +74,16 @@ export default function PrintPreparationModal({
         // Merge existing assignments with initialized ones
         setSourceAssignments(prevAssignments => {
           return prevAssignments.map(assignment => {
-            const existing = data.sourceAssignments.find((sa: any) => 
+            const existing = data.sourceAssignments.filter((sa: any) => 
               sa.lineItemId === assignment.lineItemId
             );
-            if (existing) {
+            if (existing.length > 0) {
               return {
                 ...assignment,
-                sourceContainerId: existing.sourceContainerId,
-                sourceContainerName: existing.sourceContainerName
+                sourceContainers: existing.map((e: any) => ({
+                  id: e.sourceContainerId,
+                  name: e.sourceContainerName
+                }))
               };
             }
             return assignment;
@@ -105,8 +109,7 @@ export default function PrintPreparationModal({
           lineItemId: item.orderItemId || item.lineItemKey || `item-${assignments.length}`,
           productName: productName,
           quantity: item.quantity || 1,
-          sourceContainerId: undefined,
-          sourceContainerName: undefined
+          sourceContainers: []
         });
       });
     }
@@ -202,15 +205,29 @@ export default function PrintPreparationModal({
       const container = containers[0]; // Take first selected container
       
       // Update local state
-      setSourceAssignments(prev => prev.map(assignment => 
-        assignment.lineItemId === lineItemId 
-          ? {
+      setSourceAssignments(prev => prev.map(assignment => {
+        if (assignment.lineItemId === lineItemId) {
+          const newContainer = {
+            id: container.id,
+            name: `${container.containerType} #${container.shortCode} - ${container.productTitle}`
+          };
+          
+          if (editingMode === 'replace') {
+            // Replace all existing containers
+            return {
               ...assignment,
-              sourceContainerId: container.id,
-              sourceContainerName: `${container.containerType} #${container.shortCode} - ${container.productTitle}`
-            }
-          : assignment
-      ));
+              sourceContainers: [newContainer]
+            };
+          } else {
+            // Add to existing containers
+            return {
+              ...assignment,
+              sourceContainers: [...assignment.sourceContainers, newContainer]
+            };
+          }
+        }
+        return assignment;
+      }));
       
       // Save to backend
       try {
@@ -221,7 +238,8 @@ export default function PrintPreparationModal({
             workspaceId: order.orderId,
             lineItemId,
             sourceContainerId: container.id,
-            sourceContainerName: `${container.containerType} #${container.shortCode}`
+            sourceContainerName: `${container.containerType} #${container.shortCode}`,
+            mode: editingMode // Send mode to backend
           })
         });
       } catch (error) {
@@ -230,12 +248,13 @@ export default function PrintPreparationModal({
     }
     
     setSelectingSourceFor(null);
+    setEditingMode('add'); // Reset to add mode
   };
 
   // For Direct Resell, no source assignment needed
   const allSourcesAssigned = workflowType === 'direct_resell' 
     ? true 
-    : sourceAssignments.every(a => a.sourceContainerId);
+    : sourceAssignments.every(a => a.sourceContainers.length > 0);
 
   const handlePrintAll = async () => {
     // Check if all sources are assigned
@@ -384,26 +403,44 @@ export default function PrintPreparationModal({
                             <p className="font-medium text-gray-900">
                               {assignment.quantity}x {assignment.productName}
                             </p>
-                            {assignment.sourceContainerName ? (
-                              <p className="text-sm text-green-600 mt-1">
-                                ✓ Source: {assignment.sourceContainerName}
-                              </p>
+                            {assignment.sourceContainers.length > 0 ? (
+                              <div className="mt-1">
+                                {assignment.sourceContainers.map((container, idx) => (
+                                  <p key={idx} className="text-sm text-green-600">
+                                    ✓ Source {idx + 1}: {container.name}
+                                  </p>
+                                ))}
+                              </div>
                             ) : (
                               <p className="text-sm text-red-600 mt-1">
                                 ⚠ No source assigned
                               </p>
                             )}
                           </div>
-                          <button
-                            onClick={() => setSelectingSourceFor(assignment.lineItemId)}
-                            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                              assignment.sourceContainerId 
-                                ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                                : 'bg-blue-600 text-white hover:bg-blue-700'
-                            }`}
-                          >
-                            {assignment.sourceContainerId ? 'Change Source' : 'Assign Source'}
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingMode('add');
+                                setSelectingSourceFor(assignment.lineItemId);
+                              }}
+                              className="px-4 py-2 rounded-lg font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700"
+                              title="Add another source container"
+                            >
+                              + Add Source
+                            </button>
+                            {assignment.sourceContainers.length > 0 && (
+                              <button
+                                onClick={() => {
+                                  setEditingMode('replace');
+                                  setSelectingSourceFor(assignment.lineItemId);
+                                }}
+                                className="px-4 py-2 rounded-lg font-medium transition-colors bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                title="Replace all source containers"
+                              >
+                                Replace All
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -515,20 +552,6 @@ export default function PrintPreparationModal({
                     Label count is based on order items. For "15 Gallon" drums, we generate 1 label per drum.
                   </p>
                 </div>
-              </div>
-
-              {/* Packaging Info */}
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-yellow-800">
-                  <strong>Packaging Configuration:</strong>
-                </p>
-                <ul className="text-sm text-yellow-700 mt-2 space-y-1">
-                  <li>• Drums: Individual QR code for each drum</li>
-                  <li>• Totes: Individual QR code for each tote</li>
-                  <li>• Pails: 1 QR code per pallet (36 pails)</li>
-                  <li>• Boxes: 1 QR code per pallet (144 boxes)</li>
-                  <li>• Source: QR for source container (if needed)</li>
-                </ul>
               </div>
 
               {/* Action Buttons */}

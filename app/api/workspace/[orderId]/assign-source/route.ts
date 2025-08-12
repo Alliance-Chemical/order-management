@@ -8,7 +8,7 @@ export async function POST(
   { params }: { params: { orderId: string } }
 ) {
   try {
-    const { lineItemId, sourceContainerId, sourceContainerName } = await request.json();
+    const { lineItemId, sourceContainerId, sourceContainerName, mode = 'add' } = await request.json();
     const orderId = Number(params.orderId);
 
     if (!lineItemId || !sourceContainerId) {
@@ -37,15 +37,35 @@ export async function POST(
     // Get existing source assignments or initialize empty array
     const existingAssignments = (workspaceRecord.moduleStates as any)?.sourceAssignments || [];
     
-    // Update or add the assignment
-    const updatedAssignments = existingAssignments.filter((a: any) => a.lineItemId !== lineItemId);
-    updatedAssignments.push({
-      lineItemId,
-      sourceContainerId,
-      sourceContainerName,
-      assignedAt: new Date().toISOString(),
-      assignedBy: 'supervisor' // In production, get from auth context
-    });
+    let updatedAssignments;
+    if (mode === 'replace') {
+      // Replace all assignments for this lineItemId
+      updatedAssignments = existingAssignments.filter((a: any) => a.lineItemId !== lineItemId);
+      updatedAssignments.push({
+        lineItemId,
+        sourceContainerId,
+        sourceContainerName,
+        assignedAt: new Date().toISOString(),
+        assignedBy: 'supervisor' // In production, get from auth context
+      });
+    } else {
+      // Add mode - keep existing assignments and add new one
+      updatedAssignments = [...existingAssignments];
+      // Don't add duplicate source containers
+      const isDuplicate = updatedAssignments.some((a: any) => 
+        a.lineItemId === lineItemId && a.sourceContainerId === sourceContainerId
+      );
+      
+      if (!isDuplicate) {
+        updatedAssignments.push({
+          lineItemId,
+          sourceContainerId,
+          sourceContainerName,
+          assignedAt: new Date().toISOString(),
+          assignedBy: 'supervisor' // In production, get from auth context
+        });
+      }
+    }
 
     // Update the workspace with new assignments
     await db
@@ -62,11 +82,12 @@ export async function POST(
     // Log the activity
     await db.insert(activityLog).values({
       workspaceId: workspaceRecord.id,
-      action: 'source_assigned',
-      details: {
+      activityType: 'source_assigned',
+      metadata: {
         lineItemId,
         sourceContainerId,
-        sourceContainerName
+        sourceContainerName,
+        mode
       },
       performedBy: 'supervisor', // In production, get from auth context
       performedAt: new Date()
@@ -87,7 +108,7 @@ export async function POST(
 }
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { orderId: string } }
 ) {
   try {

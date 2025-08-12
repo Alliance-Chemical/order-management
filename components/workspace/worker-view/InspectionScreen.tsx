@@ -56,17 +56,6 @@ export default function InspectionScreen({
     
     fetchSourceAssignments();
   }, [orderId, isDirectResell]);
-  
-  // Get source assignment for current item
-  const getSourceForItem = () => {
-    if (!currentItem || sourceAssignments.length === 0) return null;
-    
-    // Try to match by item label/name
-    return sourceAssignments.find(sa => 
-      currentItem.label.toLowerCase().includes(sa.productName?.toLowerCase()) ||
-      currentItem.description?.toLowerCase().includes(sa.productName?.toLowerCase())
-    );
-  };
 
   const handleQRScan = (qrData: string) => {
     // Store the scanned QR data
@@ -230,10 +219,16 @@ export default function InspectionScreen({
             <h2 className="worker-title mb-4">{currentItem.label}</h2>
             <p className="worker-subtitle text-gray-600">{currentItem.description}</p>
             
-            {/* Display source assignment if available (only for pump_and_fill) */}
+            {/* Display source assignments if available (only for pump_and_fill) */}
             {!isDirectResell && (() => {
-              const source = getSourceForItem();
-              if (source && source.sourceContainerName) {
+              // Get all source assignments for current item
+              const sources = sourceAssignments.filter(sa => {
+                if (!currentItem) return false;
+                return currentItem.label.toLowerCase().includes(sa.productName?.toLowerCase()) ||
+                       currentItem.description?.toLowerCase().includes(sa.productName?.toLowerCase());
+              });
+              
+              if (sources.length > 0) {
                 return (
                   <div className="mt-6 p-4 bg-blue-100 border-2 border-blue-500 rounded-lg">
                     <div className="flex items-center justify-center gap-2">
@@ -242,8 +237,14 @@ export default function InspectionScreen({
                           d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                       </svg>
                       <div className="text-center">
-                        <p className="text-lg font-bold text-blue-800">Fill From Source:</p>
-                        <p className="text-xl font-bold text-blue-900">{source.sourceContainerName}</p>
+                        <p className="text-lg font-bold text-blue-800">
+                          Fill From Source{sources.length > 1 ? 's' : ''}:
+                        </p>
+                        {sources.map((source, idx) => (
+                          <p key={idx} className="text-xl font-bold text-blue-900">
+                            {idx + 1}. {source.sourceContainerName}
+                          </p>
+                        ))}
                       </div>
                     </div>
                   </div>
