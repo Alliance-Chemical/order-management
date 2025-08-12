@@ -556,34 +556,56 @@ export default function PrintPreparationModal({
               )}
 
               {/* Source Container Selector Modal */}
-              {selectingSourceFor && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-                  <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
-                    <div className="p-4 border-b">
-                      <h3 className="text-lg font-semibold">Select Source Container</h3>
-                    </div>
-                    <div className="p-4 overflow-y-auto max-h-[60vh]">
-                      <SourceContainerSelector
-                        productName={sourceAssignments.find(a => a.lineItemId === selectingSourceFor)?.productName || ''}
-                        quantity={sourceAssignments.find(a => a.lineItemId === selectingSourceFor)?.quantity || 1}
-                        existingSource={duplicatingSource}
-                        onSelect={(containers) => handleSourceSelection(selectingSourceFor, containers)}
-                      />
-                    </div>
-                    <div className="p-4 border-t">
-                      <button
-                        onClick={() => {
-                          setSelectingSourceFor(null);
-                          setDuplicatingSource(null);
-                        }}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                      >
-                        Cancel
-                      </button>
+              {selectingSourceFor && (() => {
+                const selectedItem = sourceAssignments.find(a => a.lineItemId === selectingSourceFor);
+                return (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+                    <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
+                      <div className="p-4 border-b bg-gray-50">
+                        <h3 className="text-lg font-semibold mb-2">Select Source Container</h3>
+                        {/* Prominent display of the item being assigned */}
+                        <div className="bg-blue-100 border-2 border-blue-400 rounded-lg p-3 mt-2">
+                          <div className="flex items-center gap-2">
+                            <div className="bg-blue-600 text-white rounded-full px-3 py-1 text-sm font-bold">
+                              ITEM
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-lg font-bold text-blue-900">
+                                {selectedItem?.quantity || 0}x {selectedItem?.productName || 'Unknown Item'}
+                              </p>
+                              <p className="text-sm text-blue-700 mt-1">
+                                You are selecting a source container for this destination item
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 overflow-y-auto max-h-[60vh]">
+                        <SourceContainerSelector
+                          productName={selectedItem?.productName || ''}
+                          quantity={selectedItem?.quantity || 1}
+                          existingSource={duplicatingSource}
+                          onSelect={(containers) => handleSourceSelection(selectingSourceFor, containers)}
+                        />
+                      </div>
+                      <div className="p-4 border-t flex justify-between items-center">
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">Tip:</span> Ensure the source chemical matches the destination requirement
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectingSourceFor(null);
+                            setDuplicatingSource(null);
+                          }}
+                          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Label Summary */}
               <div className="mb-6">
