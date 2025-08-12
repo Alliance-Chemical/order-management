@@ -215,7 +215,7 @@ export default function SourceContainerSelector({
         </label>
         
         {/* Show selected product if one is selected */}
-        {selectedProduct ? (
+        {selectedProduct && (
           <div className="mb-2 p-3 bg-blue-50 border border-blue-200 rounded-lg flex justify-between items-center">
             <div>
               <p className="font-medium text-gray-900">{selectedProduct.title}</p>
@@ -225,18 +225,21 @@ export default function SourceContainerSelector({
               onClick={() => {
                 setSelectedProduct(null);
                 setSearchTerm('');
+                setSearchFocused(false);
               }}
               className="text-blue-600 hover:text-blue-800 text-sm font-medium"
             >
               Change
             </button>
           </div>
-        ) : (
+        )}
+        
+        {/* Always show search input */}
         <div className="relative mb-2">
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <input
             type="text"
-            placeholder="Type to search (e.g., 'sodium hypo', 'HCl', 'sulfuric')"
+            placeholder={selectedProduct ? "Search to change product..." : "Type to search (e.g., 'sodium hypo', 'HCl', 'sulfuric')"}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onFocus={() => setSearchFocused(true)}
@@ -255,7 +258,6 @@ export default function SourceContainerSelector({
             </button>
           )}
         </div>
-        )}
         
         {/* Search results with better UX */}
         {(searchFocused || searchTerm) && (
@@ -315,24 +317,6 @@ export default function SourceContainerSelector({
             )}
           </div>
         </div>
-        )}
-        
-        {/* Selected product display */}
-        {selectedProduct && (
-          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
-            <div className="flex items-center">
-              <svg className="h-5 w-5 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span className="text-sm font-medium text-green-900">Selected: {selectedProduct.title}</span>
-            </div>
-            <button
-              onClick={() => setSelectedProduct(null)}
-              className="text-sm text-green-600 hover:text-green-800"
-            >
-              Change
-            </button>
-          </div>
         )}
       </div>
 
