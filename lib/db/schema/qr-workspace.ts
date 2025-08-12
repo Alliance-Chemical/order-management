@@ -275,9 +275,45 @@ export const activityLogRelations = relations(activityLog, ({ one }) => ({
   }),
 }));
 
-// Batch History Table - for tracking dilution operations
+// Chemicals Table - for storing chemical data with specific gravity and concentration info
 import { decimal } from 'drizzle-orm/pg-core';
 
+export const chemicals = qrWorkspaceSchema.table('chemicals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // Chemical Identification
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  alternateNames: jsonb('alternate_names').$type<string[]>().default([]),
+  
+  // Physical Properties
+  specificGravity: decimal('specific_gravity', { precision: 5, scale: 3 }).notNull(),
+  initialConcentration: decimal('initial_concentration', { precision: 5, scale: 2 }).notNull(),
+  method: varchar('method', { length: 10 }).notNull(), // 'vv', 'wv', or 'ww'
+  
+  // Grade Information
+  grade: varchar('grade', { length: 50 }), // USP, FCC, ACS, Reagent, Tech, Industrial, Lab, Food Grade
+  gradeCategory: varchar('grade_category', { length: 50 }), // food, reagent, tech, standard
+  
+  // Safety Information
+  hazardClass: varchar('hazard_class', { length: 255 }),
+  ppeSuggestion: varchar('ppe_suggestion', { length: 500 }),
+  
+  // Shopify Integration
+  shopifyProductId: varchar('shopify_product_id', { length: 100 }),
+  shopifyTitle: varchar('shopify_title', { length: 255 }),
+  shopifySKU: varchar('shopify_sku', { length: 100 }),
+  
+  // Metadata
+  isActive: boolean('is_active').default(true),
+  notes: varchar('notes', { length: 1000 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  nameIdx: index('chemicals_name_idx').on(table.name),
+  gradeIdx: index('chemicals_grade_idx').on(table.grade),
+}));
+
+// Batch History Table - for tracking dilution operations
 export const batchHistory = qrWorkspaceSchema.table('batch_history', {
   id: uuid('id').primaryKey().defaultRandom(),
   workspaceId: uuid('workspace_id').references(() => workspaces.id),

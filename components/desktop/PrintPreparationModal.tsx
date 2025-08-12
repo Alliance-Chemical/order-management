@@ -57,6 +57,13 @@ export default function PrintPreparationModal({
   const [selectingSourceFor, setSelectingSourceFor] = useState<string | null>(null);
   const [editingMode, setEditingMode] = useState<'add' | 'replace'>('add');
   const [duplicatingSource, setDuplicatingSource] = useState<any | null>(null);
+  const [gradeMismatchWarning, setGradeMismatchWarning] = useState<{
+    show: boolean;
+    sourceGrade: string;
+    destinationGrade: string;
+    containers: any[];
+    lineItemId: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchQRCodes();
@@ -233,11 +240,81 @@ export default function PrintPreparationModal({
     }
   };
 
+  // Grade detection helper functions
+  const extractGrade = (productName: string): string => {
+    const gradePatterns = [
+      { pattern: /\b(USP|usp)\b/i, grade: 'USP' },
+      { pattern: /\b(FCC|fcc)\b/i, grade: 'FCC' },
+      { pattern: /\b(Food Grade|food grade|FOOD)\b/i, grade: 'Food Grade' },
+      { pattern: /\b(ACS|acs)\b/i, grade: 'ACS' },
+      { pattern: /\b(Reagent|reagent)\b/i, grade: 'Reagent' },
+      { pattern: /\b(Tech|tech|Technical)\b/i, grade: 'Tech' },
+      { pattern: /\b(Industrial|industrial)\b/i, grade: 'Industrial' },
+      { pattern: /\b(Lab|lab|Laboratory)\b/i, grade: 'Lab' }
+    ];
+    
+    for (const { pattern, grade } of gradePatterns) {
+      if (pattern.test(productName)) {
+        return grade;
+      }
+    }
+    return 'Standard';
+  };
+
+  const areGradesCompatible = (sourceGrade: string, destGrade: string): boolean => {
+    // Define grade compatibility rules
+    const foodGrades = ['USP', 'FCC', 'Food Grade'];
+    const reagentGrades = ['ACS', 'Reagent'];
+    const techGrades = ['Tech', 'Industrial', 'Lab'];
+    
+    // If grades are exactly the same, they're compatible
+    if (sourceGrade === destGrade) return true;
+    
+    // Food grades are compatible with each other
+    if (foodGrades.includes(sourceGrade) && foodGrades.includes(destGrade)) {
+      return true;
+    }
+    
+    // Reagent grades are compatible with each other
+    if (reagentGrades.includes(sourceGrade) && reagentGrades.includes(destGrade)) {
+      return true;
+    }
+    
+    // Tech grades are compatible with each other
+    if (techGrades.includes(sourceGrade) && techGrades.includes(destGrade)) {
+      return true;
+    }
+    
+    // Standard grade is compatible with tech grades
+    if ((sourceGrade === 'Standard' || destGrade === 'Standard') && 
+        (techGrades.includes(sourceGrade) || techGrades.includes(destGrade))) {
+      return true;
+    }
+    
+    return false;
+  };
+
   const handleSourceSelection = async (lineItemId: string, containers: any[]) => {
     const assignment = sourceAssignments.find(a => a.lineItemId === lineItemId);
     if (!assignment) return;
 
     if (containers.length > 0) {
+      // Check for grade mismatch
+      const destinationGrade = extractGrade(assignment.productName);
+      const sourceGrade = extractGrade(containers[0].productTitle || containers[0].name || '');
+      
+      if (!areGradesCompatible(sourceGrade, destinationGrade)) {
+        // Show warning modal
+        setGradeMismatchWarning({
+          show: true,
+          sourceGrade,
+          destinationGrade,
+          containers,
+          lineItemId
+        });
+        return; // Don't proceed with assignment yet
+      }
+      
       // Handle multiple containers (for duplicates)
       const newContainers = containers.map(container => ({
         id: container.id,
@@ -290,6 +367,65 @@ export default function PrintPreparationModal({
     setSelectingSourceFor(null);
     setEditingMode('add'); // Reset to add mode
     setDuplicatingSource(null); // Clear duplicate source
+  };
+
+  const handleConfirmGradeMismatch = async () => {
+    if (!gradeMismatchWarning) return;
+    
+    const { containers, lineItemId } = gradeMismatchWarning;
+    const assignment = sourceAssignments.find(a => a.lineItemId === lineItemId);
+    if (!assignment) return;
+    
+    // Proceed with the assignment despite the mismatch
+    const newContainers = containers.map(container => ({
+      id: container.id,
+      name: `${container.containerType} #${container.shortCode} - ${container.productTitle}`,
+      ...container
+    }));
+    
+    // Update local state
+    setSourceAssignments(prev => prev.map(assignment => {
+      if (assignment.lineItemId === lineItemId) {
+        if (editingMode === 'replace') {
+          return {
+            ...assignment,
+            sourceContainers: newContainers
+          };
+        } else {
+          return {
+            ...assignment,
+            sourceContainers: [...assignment.sourceContainers, ...newContainers]
+          };
+        }
+      }
+      return assignment;
+    }));
+    
+    // Save each container to backend
+    for (const container of containers) {
+      try {
+        await fetch(`/api/workspace/${order.orderId}/assign-source`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId: order.orderId,
+            lineItemId,
+            productName: assignment.productName,
+            workflowType: assignment.workflowType,
+            sourceContainerId: container.id,
+            sourceContainerName: `${container.containerType} #${container.shortCode}`,
+            mode: editingMode
+          })
+        });
+      } catch (error) {
+        console.error('Failed to save source assignment:', error);
+      }
+    }
+    
+    setGradeMismatchWarning(null);
+    setSelectingSourceFor(null);
+    setEditingMode('add');
+    setDuplicatingSource(null);
   };
 
   // Check if all items meet their workflow requirements
@@ -482,13 +618,42 @@ export default function PrintPreparationModal({
                                               // Open dilution calculator with parameters
                                               const chemName = container.name.split(/\d+(?:\.\d+)?\s*%/)[0].trim();
                                               
+                                              // Calculate total volume based on container size
+                                              const productName = assignment.productName.toLowerCase();
+                                              let totalVolume = assignment.quantity; // Default to quantity
+                                              
+                                              // Extract container size from product name
+                                              if (productName.includes('gallon') || productName.includes('gal')) {
+                                                const gallonMatch = productName.match(/(\d+(?:\.\d+)?)\s*(?:gallon|gal)/i);
+                                                if (gallonMatch) {
+                                                  const gallonsPerContainer = parseFloat(gallonMatch[1]);
+                                                  totalVolume = assignment.quantity * gallonsPerContainer;
+                                                }
+                                              } else if (productName.includes('liter') || productName.includes('l')) {
+                                                const literMatch = productName.match(/(\d+(?:\.\d+)?)\s*(?:liter|l)/i);
+                                                if (literMatch) {
+                                                  const litersPerContainer = parseFloat(literMatch[1]);
+                                                  // Convert liters to gallons (1 liter = 0.264172 gallons)
+                                                  totalVolume = assignment.quantity * litersPerContainer * 0.264172;
+                                                }
+                                              } else if (productName.includes('drum')) {
+                                                // Standard drum is 55 gallons
+                                                totalVolume = assignment.quantity * 55;
+                                              } else if (productName.includes('tote')) {
+                                                // Standard tote is 275 gallons
+                                                totalVolume = assignment.quantity * 275;
+                                              } else if (productName.includes('pail')) {
+                                                // Standard pail is 5 gallons unless specified
+                                                totalVolume = assignment.quantity * 5;
+                                              }
+                                              
                                               // Find destination QR codes for this line item
                                               const destinationQRs = qrCodes.filter(qr => 
                                                 qr.type === 'container' && 
                                                 qr.encodedData?.itemId === assignment.lineItemId
                                               ).map(qr => qr.encodedData?.shortCode || qr.shortCode).filter(Boolean);
                                               
-                                              const dilutionUrl = `/dilution-calculator?chem=${encodeURIComponent(chemName)}&ic=${sourceConc}&dc=${targetConc}&target=${assignment.quantity}&orderId=${order.orderId}&destQRs=${encodeURIComponent(JSON.stringify(destinationQRs))}&return=${encodeURIComponent(window.location.pathname)}`;
+                                              const dilutionUrl = `/dilution-calculator?chem=${encodeURIComponent(chemName)}&ic=${sourceConc}&dc=${targetConc}&target=${totalVolume}&orderId=${order.orderId}&destQRs=${encodeURIComponent(JSON.stringify(destinationQRs))}&return=${encodeURIComponent(window.location.pathname)}`;
                                               window.open(dilutionUrl, '_blank');
                                             }}
                                             className="mt-1 px-3 py-1 bg-orange-600 text-white text-sm rounded hover:bg-orange-700"
@@ -606,6 +771,87 @@ export default function PrintPreparationModal({
                   </div>
                 );
               })()}
+
+              {/* Grade Mismatch Warning Modal */}
+              {gradeMismatchWarning?.show && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70]">
+                  <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+                    <div className="p-6">
+                      {/* Warning Icon */}
+                      <div className="flex justify-center mb-4">
+                        <div className="bg-red-100 rounded-full p-4">
+                          <svg className="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                        </div>
+                      </div>
+                      
+                      {/* Title */}
+                      <h3 className="text-xl font-bold text-center text-gray-900 mb-4">
+                        ⚠️ Chemical Grade Mismatch Detected
+                      </h3>
+                      
+                      {/* Grade Information */}
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="font-medium text-gray-700">Destination Grade:</span>
+                            <span className="font-bold text-red-800">{gradeMismatchWarning.destinationGrade}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="font-medium text-gray-700">Source Grade:</span>
+                            <span className="font-bold text-red-800">{gradeMismatchWarning.sourceGrade}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Special warning for food grade */}
+                      {['USP', 'FCC', 'Food Grade'].includes(gradeMismatchWarning.destinationGrade) && (
+                        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-3 mb-4">
+                          <p className="text-sm font-bold text-yellow-800">
+                            🚨 CRITICAL: Food/Pharmaceutical Grade Required
+                          </p>
+                          <p className="text-sm text-yellow-700 mt-1">
+                            This destination requires {gradeMismatchWarning.destinationGrade} grade chemical. 
+                            Using {gradeMismatchWarning.sourceGrade} grade may violate food safety regulations.
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* General warning message */}
+                      <p className="text-gray-600 mb-6">
+                        The source container's grade ({gradeMismatchWarning.sourceGrade}) does not match 
+                        the destination requirement ({gradeMismatchWarning.destinationGrade}). 
+                        This may affect product quality or compliance.
+                      </p>
+                      
+                      {/* Action buttons */}
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            setGradeMismatchWarning(null);
+                            // Keep the selector open to choose a different source
+                          }}
+                          className="flex-1 px-4 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium"
+                        >
+                          Choose Different Source
+                        </button>
+                        <button
+                          onClick={handleConfirmGradeMismatch}
+                          className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                        >
+                          Override & Continue
+                        </button>
+                      </div>
+                      
+                      <p className="text-xs text-gray-500 text-center mt-3">
+                        Override only if you have supervisor approval
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Label Summary */}
               <div className="mb-6">
