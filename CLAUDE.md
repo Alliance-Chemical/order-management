@@ -94,7 +94,7 @@ Completed Features
 Migrated from a file-based system to a full PostgreSQL database.
 Implemented a comprehensive 6-table schema (workspaces, qr_codes, documents, alert_configs, alert_history, activity_log).
 All data operations are now transactional and type-safe via Drizzle ORM.
-**Schema Cleanup (Aug 11, 2025)**: Removed redundant columns (master_qr_id, container_qr_ids, qr_generation_rule, shipstation_order_id, s3_bucket_name) to simplify schema and eliminate confusion.
+**Schema Cleanup (January 12, 2025)**: Removed redundant columns (master_qr_id, container_qr_ids, qr_generation_rule, shipstation_order_id, s3_bucket_name) to simplify schema and eliminate confusion.
 ✅ QR Code System
 Backend Logic: QR codes are generated, stored, and tracked in the PostgreSQL database.
 Print Functionality: /api/qr/print endpoint generates a PDF of selected QR codes for physical labeling.
@@ -426,12 +426,12 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
 
 ## Recent Fixes and Improvements
 
-### Archive Script S3 Bucket Fix (January 11, 2025)
+### Archive Script S3 Bucket Fix (January 12, 2025)
 **Problem**: TypeScript errors in archive-orders.ts referencing removed `s3BucketName` column
 
 **Solution**: Updated script to use centralized S3_DOCUMENTS_BUCKET environment variable instead of per-workspace bucket names
 
-### QR Code Scanning and Inspection Updates (January 11, 2025)
+### QR Code Scanning and Inspection Updates (January 12, 2025)
 **Problems Addressed**:
 1. Pre-mix inspection had inappropriate documentation question
 2. QR scanning steps showed "Scan" but had no camera functionality
@@ -468,7 +468,7 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
    - Hazmat Placards
    - Seal Integrity
 
-### Database and QR Code System Cleanup (Aug 11, 2025)
+### Database and QR Code System Cleanup (January 12, 2025)
 **Problem**: Order #36311 was showing incorrect label count (6 instead of 3) due to database inconsistencies and redundant schema columns.
 
 **Solution Implemented**:
@@ -484,7 +484,7 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
 
 **Result**: Clean, simplified schema with accurate QR code generation (1 master + 1 source + N containers based on actual order items).
 
-### QR Code Generation and Label Printing System Overhaul (Aug 11, 2025)
+### QR Code Generation and Label Printing System Overhaul (January 12, 2025)
 
 #### Phase 1: Fixed Data Integrity in QR Generation
 **Problem**: Duplicate QR codes were being created on repeated API calls, and labels were missing critical product information.
@@ -562,7 +562,7 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
 - Correct production URLs for all QR codes
 - 3-page PDF output (one label per page, no orphaned elements)
 
-### Label Content Integrity Fix (Aug 11, 2025)
+### Label Content Integrity Fix (January 12, 2025)
 **Problem**: Destination container labels were incorrectly showing source information, causing confusion on the warehouse floor.
 
 **Solution Implemented**:
@@ -585,7 +585,7 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
 
 **Result**: Clear, unambiguous labels where each label only describes the physical object it's attached to.
 
-## Chemical Dilution Calculator (Completed Feature - January 2025)
+## Chemical Dilution Calculator (Completed Feature - January 12, 2025)
 
 ### Overview
 Implemented a sophisticated dilution calculator that helps supervisors determine precise chemical-to-water ratios when source concentrations exceed target concentrations. The system supports v/v%, w/v%, and w/w% calculation methods with full PostgreSQL database integration for batch history tracking.
