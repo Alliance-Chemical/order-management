@@ -87,10 +87,7 @@ export async function POST(
       
       // Check if this specific source container already has a QR
       const existingSourceQR = allSourceQRs.find(qr => 
-        qr.encodedData && 
-        typeof qr.encodedData === 'object' && 
-        ((qr.encodedData as any).sourceId === sourceQRId || 
-         (qr.encodedData as any).sourceContainerId === sourceContainerId)
+        qr.sourceContainerId === sourceContainerId
       );
       
       if (!existingSourceQR) {
@@ -109,6 +106,7 @@ export async function POST(
             qrType: 'source',
             qrCode: makeCode(`SOURCE-${sourceContainerId}`),
             shortCode: makeShort(),
+            sourceContainerId: sourceContainerId,  // Use the new dedicated column
             orderId,
             orderNumber: String(orderId),
             containerNumber: null,

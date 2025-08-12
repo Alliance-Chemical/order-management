@@ -81,6 +81,9 @@ export const qrCodes = qrWorkspaceSchema.table('qr_codes', {
   qrCode: varchar('qr_code', { length: 500 }).notNull().unique(),
   shortCode: varchar('short_code', { length: 50 }).unique(),
   
+  // Source Container Tracking (for source QRs)
+  sourceContainerId: varchar('source_container_id', { length: 255 }),
+  
   // Associated Data
   orderId: bigint('order_id', { mode: 'number' }).notNull(),
   orderNumber: varchar('order_number', { length: 100 }),
@@ -113,6 +116,8 @@ export const qrCodes = qrWorkspaceSchema.table('qr_codes', {
   orderIdIdx: index('idx_qr_order_id').on(table.orderId),
   qrTypeIdx: index('idx_qr_type').on(table.qrType),
   qrCodeIdx: index('idx_qr_code').on(table.qrCode),
+  // Unique index to prevent duplicate source QRs for the same container
+  uniqueSourceQrIdx: index('idx_unique_source_qr').on(table.workspaceId, table.sourceContainerId),
 }));
 
 export const alertConfigs = qrWorkspaceSchema.table('alert_configs', {

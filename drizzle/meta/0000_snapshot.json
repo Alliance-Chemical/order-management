@@ -1,5 +1,5 @@
 {
-  "id": "42a00206-d29c-42a5-a416-65d7a46b813b",
+  "id": "69649133-c64a-414e-a95a-0c62e9f610ff",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -414,6 +414,326 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "qr_workspace.batch_history": {
+      "name": "batch_history",
+      "schema": "qr_workspace",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_number": {
+          "name": "batch_number",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chemical_name": {
+          "name": "chemical_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_concentration": {
+          "name": "initial_concentration",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "desired_concentration": {
+          "name": "desired_concentration",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "method_used": {
+          "name": "method_used",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_specific_gravity": {
+          "name": "initial_specific_gravity",
+          "type": "numeric(5, 3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_volume_gallons": {
+          "name": "total_volume_gallons",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chemical_volume_gallons": {
+          "name": "chemical_volume_gallons",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "water_volume_gallons": {
+          "name": "water_volume_gallons",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chemical_weight_lbs": {
+          "name": "chemical_weight_lbs",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "water_weight_lbs": {
+          "name": "water_weight_lbs",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_by": {
+          "name": "completed_by",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "qr_code_id": {
+          "name": "qr_code_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_qr_ids": {
+          "name": "destination_qr_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'[]'::jsonb"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "batch_history_workspace_id_workspaces_id_fk": {
+          "name": "batch_history_workspace_id_workspaces_id_fk",
+          "tableFrom": "batch_history",
+          "tableTo": "workspaces",
+          "schemaTo": "qr_workspace",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "batch_history_qr_code_id_qr_codes_id_fk": {
+          "name": "batch_history_qr_code_id_qr_codes_id_fk",
+          "tableFrom": "batch_history",
+          "tableTo": "qr_codes",
+          "schemaTo": "qr_workspace",
+          "columnsFrom": [
+            "qr_code_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "batch_history_batch_number_unique": {
+          "name": "batch_history_batch_number_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "batch_number"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "qr_workspace.chemicals": {
+      "name": "chemicals",
+      "schema": "qr_workspace",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alternate_names": {
+          "name": "alternate_names",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'[]'::jsonb"
+        },
+        "specific_gravity": {
+          "name": "specific_gravity",
+          "type": "numeric(5, 3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_concentration": {
+          "name": "initial_concentration",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "method": {
+          "name": "method",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grade": {
+          "name": "grade",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grade_category": {
+          "name": "grade_category",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hazard_class": {
+          "name": "hazard_class",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ppe_suggestion": {
+          "name": "ppe_suggestion",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shopify_product_id": {
+          "name": "shopify_product_id",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shopify_title": {
+          "name": "shopify_title",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shopify_sku": {
+          "name": "shopify_sku",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "varchar(1000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "chemicals_name_idx": {
+          "name": "chemicals_name_idx",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chemicals_grade_idx": {
+          "name": "chemicals_grade_idx",
+          "columns": [
+            {
+              "expression": "grade",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "chemicals_name_unique": {
+          "name": "chemicals_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "qr_workspace.documents": {
       "name": "documents",
       "schema": "qr_workspace",
@@ -601,6 +921,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "source_container_id": {
+          "name": "source_container_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "order_id": {
           "name": "order_id",
           "type": "bigint",
@@ -768,6 +1094,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "idx_unique_source_qr": {
+          "name": "idx_unique_source_qr",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_container_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -807,6 +1154,203 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "qr_workspace.source_containers": {
+      "name": "source_containers",
+      "schema": "qr_workspace",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "shopify_product_id": {
+          "name": "shopify_product_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shopify_variant_id": {
+          "name": "shopify_variant_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_title": {
+          "name": "product_title",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "variant_title": {
+          "name": "variant_title",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sku": {
+          "name": "sku",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "barcode": {
+          "name": "barcode",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qr_code_id": {
+          "name": "qr_code_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "short_code": {
+          "name": "short_code",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "container_type": {
+          "name": "container_type",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "capacity": {
+          "name": "capacity",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_quantity": {
+          "name": "current_quantity",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit_of_measure": {
+          "name": "unit_of_measure",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "warehouse_location": {
+          "name": "warehouse_location",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'active'"
+        },
+        "hazmat_class": {
+          "name": "hazmat_class",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "un_number": {
+          "name": "un_number",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "packing_group": {
+          "name": "packing_group",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "flash_point": {
+          "name": "flash_point",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_refilled": {
+          "name": "last_refilled",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_inventory_check": {
+          "name": "last_inventory_check",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiration_date": {
+          "name": "expiration_date",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "source_containers_qr_code_id_qr_codes_id_fk": {
+          "name": "source_containers_qr_code_id_qr_codes_id_fk",
+          "tableFrom": "source_containers",
+          "tableTo": "qr_codes",
+          "schemaTo": "qr_workspace",
+          "columnsFrom": [
+            "qr_code_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "source_containers_shopify_variant_id_unique": {
+          "name": "source_containers_shopify_variant_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "shopify_variant_id"
+          ]
+        },
+        "source_containers_short_code_unique": {
+          "name": "source_containers_short_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "short_code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "qr_workspace.workspaces": {
       "name": "workspaces",
       "schema": "qr_workspace",
@@ -830,31 +1374,12 @@
           "primaryKey": false,
           "notNull": true
         },
-        "master_qr_id": {
-          "name": "master_qr_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "container_qr_ids": {
-          "name": "container_qr_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "'[]'::jsonb"
-        },
         "qr_print_count": {
           "name": "qr_print_count",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "default": 0
-        },
-        "qr_generation_rule": {
-          "name": "qr_generation_rule",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": false
         },
         "workspace_url": {
           "name": "workspace_url",
@@ -896,12 +1421,6 @@
           "notNull": false,
           "default": 0
         },
-        "shipstation_order_id": {
-          "name": "shipstation_order_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_shipstation_sync": {
           "name": "last_shipstation_sync",
           "type": "timestamp",
@@ -928,12 +1447,6 @@
           "notNull": false,
           "default": "'pending'"
         },
-        "s3_bucket_name": {
-          "name": "s3_bucket_name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "documents": {
           "name": "documents",
           "type": "jsonb",
@@ -955,6 +1468,13 @@
           "notNull": false,
           "default": "'active'"
         },
+        "workflow_type": {
+          "name": "workflow_type",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pump_and_fill'"
+        },
         "workflow_phase": {
           "name": "workflow_phase",
           "type": "varchar(50)",
@@ -968,6 +1488,12 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'{}'::jsonb"
+        },
+        "final_measurements": {
+          "name": "final_measurements",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "shipped_at": {
           "name": "shipped_at",

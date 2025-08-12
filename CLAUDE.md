@@ -693,6 +693,43 @@ Implemented a sophisticated dilution calculator that helps supervisors determine
 - **Efficiency**: Pre-filled values and quick templates speed up common dilutions
 - **Compliance**: Complete audit trail for regulatory requirements
 
+## Source QR Code Duplicate Prevention (January 13, 2025)
+
+### Overview
+Implemented a robust database-level constraint system to prevent race conditions when multiple users simultaneously create source QR codes for the same container. This solution uses a unique partial index on the PostgreSQL database to ensure data integrity.
+
+### Technical Implementation
+
+#### Database Schema Changes
+- **Added `source_container_id` column** to `qr_codes` table (varchar(255))
+- **Created unique partial index**: Prevents duplicate source QRs for the same container
+  ```sql
+  CREATE UNIQUE INDEX "idx_unique_source_qr" 
+  ON "qr_workspace"."qr_codes" ("workspace_id", "source_container_id")
+  WHERE "qr_type" = 'source' AND "source_container_id" IS NOT NULL;
+  ```
+
+#### API Error Handling (`/api/workspace/[orderId]/assign-source`)
+- Gracefully handles unique constraint violations (PostgreSQL error code '23505')
+- When race condition detected, silently proceeds (another process already created the QR)
+- Logs race condition events for monitoring
+- Non-constraint errors are properly re-thrown
+
+### Benefits
+- **Race Condition Prevention**: Database enforces uniqueness at the lowest level
+- **Data Integrity**: Impossible to create duplicate source QRs even under high concurrency
+- **Clean Architecture**: Constraint is part of the schema, not application logic
+- **Graceful Handling**: Users experience no errors during simultaneous operations
+- **Audit Trail**: All attempts are logged for debugging
+
+### Migration Strategy
+The solution was implemented using Drizzle ORM's migration system:
+1. Added `source_container_id` to the schema definition
+2. Generated a clean migration file with `drizzle-kit generate`
+3. Enhanced migration with data backfill from existing JSONB fields
+4. Applied changes using standard migration tooling
+5. All changes are version-controlled in `/drizzle` directory
+
 ## Hybrid Order Workflows - Per-Item Fulfillment Methods (January 13, 2025)
 
 ### Overview
