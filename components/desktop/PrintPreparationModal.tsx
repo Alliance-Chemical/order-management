@@ -57,6 +57,7 @@ export default function PrintPreparationModal({
   const [selectingSourceFor, setSelectingSourceFor] = useState<string | null>(null);
   const [editingMode, setEditingMode] = useState<'add' | 'replace'>('add');
   const [duplicatingSource, setDuplicatingSource] = useState<any | null>(null);
+  const [editingSourceIndex, setEditingSourceIndex] = useState<number | null>(null);
   const [gradeMismatchWarning, setGradeMismatchWarning] = useState<{
     show: boolean;
     sourceGrade: string;
@@ -367,6 +368,7 @@ export default function PrintPreparationModal({
     setSelectingSourceFor(null);
     setEditingMode('add'); // Reset to add mode
     setDuplicatingSource(null); // Clear duplicate source
+    setEditingSourceIndex(null); // Clear editing index
   };
 
   const handleConfirmGradeMismatch = async () => {
@@ -386,12 +388,22 @@ export default function PrintPreparationModal({
     // Update local state
     setSourceAssignments(prev => prev.map(assignment => {
       if (assignment.lineItemId === lineItemId) {
-        if (editingMode === 'replace') {
+        if (editingMode === 'replace' && editingSourceIndex !== null) {
+          // Editing a specific source container
+          const updatedContainers = [...assignment.sourceContainers];
+          updatedContainers[editingSourceIndex] = newContainers[0]; // Replace the specific container
+          return {
+            ...assignment,
+            sourceContainers: updatedContainers
+          };
+        } else if (editingMode === 'replace') {
+          // Replace all containers
           return {
             ...assignment,
             sourceContainers: newContainers
           };
         } else {
+          // Add mode - append new containers
           return {
             ...assignment,
             sourceContainers: [...assignment.sourceContainers, ...newContainers]
@@ -426,6 +438,7 @@ export default function PrintPreparationModal({
     setSelectingSourceFor(null);
     setEditingMode('add');
     setDuplicatingSource(null);
+    setEditingSourceIndex(null);
   };
 
   // Check if all items meet their workflow requirements
@@ -596,17 +609,87 @@ export default function PrintPreparationModal({
                                         <p className="text-sm text-green-600">
                                           ✓ Source {idx + 1}: {container.name}
                                         </p>
-                                        <button
-                                          onClick={() => {
-                                            setDuplicatingSource(container);
-                                            setEditingMode('add');
-                                            setSelectingSourceFor(assignment.lineItemId);
-                                          }}
-                                          className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
-                                          title="Duplicate this source container"
-                                        >
-                                          + Duplicate
-                                        </button>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => {
+                                              // Edit functionality - open selector with current source pre-selected
+                                              setDuplicatingSource(container);
+                                              setEditingSourceIndex(idx);
+                                              setEditingMode('replace');
+                                              setSelectingSourceFor(assignment.lineItemId);
+                                            }}
+                                            className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                                            title="Edit this source container"
+                                          >
+                                            ✏️ Edit
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setDuplicatingSource(container);
+                                              setEditingSourceIndex(null); // Clear any editing state
+                                              setEditingMode('add');
+                                              setSelectingSourceFor(assignment.lineItemId);
+                                            }}
+                                            className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                                            title="Duplicate this source container"
+                                          >
+                                            📋 Duplicate
+                                          </button>
+                                          <button
+                                            onClick={async () => {
+                                              // Delete this specific source container
+                                              const updatedContainers = assignment.sourceContainers.filter((_, i) => i !== idx);
+                                              
+                                              // Update local state
+                                              setSourceAssignments(prev => prev.map(a => {
+                                                if (a.lineItemId === assignment.lineItemId) {
+                                                  return { ...a, sourceContainers: updatedContainers };
+                                                }
+                                                return a;
+                                              }));
+                                              
+                                              // Update backend - replace with new list
+                                              try {
+                                                // First clear all sources
+                                                await fetch(`/api/workspace/${order.orderId}/assign-source`, {
+                                                  method: 'POST',
+                                                  headers: { 'Content-Type': 'application/json' },
+                                                  body: JSON.stringify({
+                                                    lineItemId: assignment.lineItemId,
+                                                    productName: assignment.productName,
+                                                    workflowType: 'pump_and_fill',
+                                                    sourceContainerId: '',
+                                                    sourceContainerName: '',
+                                                    mode: 'replace'
+                                                  })
+                                                });
+                                                
+                                                // Then add back the remaining sources
+                                                for (const remainingContainer of updatedContainers) {
+                                                  await fetch(`/api/workspace/${order.orderId}/assign-source`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                      lineItemId: assignment.lineItemId,
+                                                      productName: assignment.productName,
+                                                      workflowType: 'pump_and_fill',
+                                                      sourceContainerId: remainingContainer.id,
+                                                      sourceContainerName: remainingContainer.name,
+                                                      mode: 'add'
+                                                    })
+                                                  });
+                                                }
+                                              } catch (error) {
+                                                console.error('Failed to delete source:', error);
+                                                alert('Failed to delete source container');
+                                              }
+                                            }}
+                                            className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                            title="Delete this source container"
+                                          >
+                                            🗑️ Delete
+                                          </button>
+                                        </div>
                                       </div>
                                       {needsDilution && (
                                         <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded">
@@ -761,6 +844,8 @@ export default function PrintPreparationModal({
                           onClick={() => {
                             setSelectingSourceFor(null);
                             setDuplicatingSource(null);
+                            setEditingSourceIndex(null);
+                            setEditingMode('add');
                           }}
                           className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
                         >

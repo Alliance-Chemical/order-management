@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { workspaces, activityLog } from '@/lib/db/schema/qr-workspace';
-import { eq } from 'drizzle-orm';
+import { workspaces, activityLog, qrCodes } from '@/lib/db/schema/qr-workspace';
+import { eq, and } from 'drizzle-orm';
 
 export async function POST(
   request: NextRequest,
@@ -69,6 +69,66 @@ export async function POST(
       });
     } else {
       // For pump_and_fill workflow
+      
+      // Generate a unique source QR code for this specific source container if it doesn't exist
+      const sourceQRId = `source-${sourceContainerId}`;
+      
+      // Check if we already have a source QR for this specific container
+      const allSourceQRs = await db
+        .select()
+        .from(qrCodes)
+        .where(
+          and(
+            eq(qrCodes.workspaceId, workspaceRecord.id),
+            eq(qrCodes.qrType, 'source')
+          )
+        );
+      
+      // Check if this specific source container already has a QR
+      const existingSourceQR = allSourceQRs.find(qr => 
+        qr.encodedData && 
+        typeof qr.encodedData === 'object' && 
+        (qr.encodedData as any).sourceId === sourceQRId
+      );
+      
+      if (!existingSourceQR) {
+        // Create a new source QR code for this specific source container
+        const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://order-management-kappa-seven.vercel.app').trim();
+        const now = Date.now();
+        const makeCode = (suffix: string) => `QR-${orderId}-${suffix}-${now}-${Math.floor(Math.random() * 1000)}`;
+        const makeShort = () => Math.random().toString(36).slice(2, 8).toUpperCase();
+        
+        // Extract the chemical name from the source container name (e.g., "Isopropyl Alcohol - 275 Gal Tote" -> "Isopropyl Alcohol")
+        const chemicalName = sourceContainerName ? sourceContainerName.split(' - ')[0] : productName || 'Chemical';
+        
+        await db.insert(qrCodes).values({
+          workspaceId: workspaceRecord.id,
+          qrType: 'source',
+          qrCode: makeCode(`SOURCE-${sourceContainerId}`),
+          shortCode: makeShort(),
+          orderId,
+          orderNumber: String(orderId),
+          containerNumber: null,
+          chemicalName: chemicalName,
+          encodedData: { 
+            type: 'source', 
+            orderId, 
+            orderNumber: String(orderId), 
+            sourceId: sourceQRId,
+            sourceContainerId,
+            sourceContainerName,
+            chemicalName,
+            isSource: true 
+          },
+          qrUrl: `${baseUrl}/workspace/${orderId}`,
+          scanCount: 0,
+          isActive: true,
+          createdAt: new Date(),
+        });
+        
+        console.log(`[SOURCE ASSIGN] Created new source QR for ${chemicalName} (${sourceContainerId})`);
+      }
+      
       if (mode === 'replace') {
         // Replace all assignments for this lineItemId
         updatedAssignments = existingAssignments.filter((a: any) => a.lineItemId !== lineItemId);

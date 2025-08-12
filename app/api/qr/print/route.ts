@@ -166,6 +166,11 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
       return ''; // No badge for pump_and_fill containers
     }
     
+    // For source QRs created on-demand
+    if (record.qrType === 'source') {
+      return 'SCAN AT SOURCE';
+    }
+    
     switch (record.qrType) {
       case 'master':
       case 'order_master':
@@ -178,6 +183,12 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   
   // Helper function to get product name
   const getProductName = (record: any): string => {
+    // For source QRs created on-demand
+    if (record.qrType === 'source') {
+      const chemicalName = record.chemicalName || record.encodedData?.chemicalName || 'SOURCE CONTAINER';
+      return chemicalName.toUpperCase();
+    }
+    
     switch (record.qrType) {
       case 'master':
       case 'order_master':
@@ -196,12 +207,23 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   
   // Helper function to get item info - ONLY information about the label itself
   const getItemInfo = (record: any): string => {
+    // For source QRs created on-demand
+    if (record.qrType === 'source') {
+      // Source labels show the container type if available
+      const containerName = record.encodedData?.sourceContainerName || '';
+      if (containerName.includes(' - ')) {
+        // Extract container type from name (e.g., "Chemical - 275 Gal Tote" -> "275 Gal Tote")
+        return containerName.split(' - ')[1] || '';
+      }
+      return '';
+    }
+    
     switch (record.qrType) {
       case 'master':
       case 'order_master':
         const isSource = record.encodedData?.isSource;
         if (isSource) {
-          // For source labels, show the chemical name
+          // For old-style source labels, show the chemical name
           const chemicalName = record.chemicalName || record.encodedData?.itemName || '';
           return chemicalName;
         }
@@ -213,8 +235,8 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         if (assignment?.workflowType === 'direct_resell') {
           return ''; // No numbering for direct resell containers
         }
-        // Container labels ONLY show which container this is, no source info
-        const containerNum = record.containerNumber || 1;
+        // Container labels show proper numbering using encodedData values
+        const containerNum = record.encodedData?.containerNumber || 1;
         const totalContainers = record.encodedData?.totalContainers || 1;
         const containerType = record.encodedData?.containerType || 'Container';
         return `${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}`;

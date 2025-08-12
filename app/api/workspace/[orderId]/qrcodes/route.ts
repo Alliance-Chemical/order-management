@@ -78,6 +78,7 @@ export async function GET(
       .orderBy(
         sql`CASE 
           WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean IS NOT TRUE THEN 1
+          WHEN ${qrCodes.qrType} = 'source' THEN 2
           WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 2
           ELSE 3
         END`,
@@ -98,6 +99,7 @@ export async function GET(
         .orderBy(
           sql`CASE 
             WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean IS NOT TRUE THEN 1
+            WHEN ${qrCodes.qrType} = 'source' THEN 2
             WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 2
             ELSE 3
           END`,
@@ -239,34 +241,14 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     });
   }
 
-  // Only create source container label if it doesn't exist - SECOND
-  if (!hasSourceQR) {
-    console.log('[QR] Creating new source QR code');
-    // Source QR should be generic - specific chemical will be determined by supervisor assignments
-    const sourceName = 'Source Container';
-    
-    records.push({
-      workspaceId,
-      qrType: 'order_master',
-      qrCode: makeCode('SOURCE'),
-      shortCode: makeShort(),
-      orderId,
-      orderNumber,
-      containerNumber: null,
-      chemicalName: sourceName,
-      encodedData: { type: 'master', orderId, orderNumber, isSource: true, itemName: sourceName },
-      qrUrl: `${baseUrl}/workspace/${orderId}`,
-      scanCount: 0,
-      isActive: true,
-      createdAt: new Date(),
-    });
-  }
+  // NOTE: Source QRs are now created on-demand when supervisors assign sources
+  // This ensures each source container has a unique QR with the correct chemical name
 
-  // Process each item to generate container QRs - AFTER MASTER AND SOURCE
-  let globalContainerIndex = 0; // Global counter for unique container numbers across the order
+  // Process each item to generate container QRs - AFTER MASTER
+  let globalContainerIndex = 0; // Global counter for unique container IDs across the order
   
   for (const item of items) {
-    const itemId = item.orderItemId || item.sku || `item-${globalContainerIndex}`;
+    const itemId = item.orderItemId || item.sku || `item-${items.indexOf(item)}`;
     const itemName = item.name || 'Unknown Product';
     const quantity = item.quantity || 1;
     
@@ -278,30 +260,40 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     
     if (existingItemQRs.length > 0) {
       console.log(`[QR] Skipping item ${itemName} - ${existingItemQRs.length} QR codes already exist`);
+      globalContainerIndex += existingItemQRs.length; // Update global counter to maintain unique IDs
       continue;
     }
     
-    // Determine container count for this item
-    let containerCount = quantity;
+    // Determine container count and type for this specific item
+    let totalContainersForThisItem = quantity; // Default to quantity
+    let containerType = 'container'; // Default type
     const name = itemName.toLowerCase();
     const sku = (item.sku || '').toLowerCase();
     
     // Smart container logic based on product type
     if (name.includes('drum') || sku.includes('drum')) {
-      containerCount = quantity; // 1 label per drum
+      totalContainersForThisItem = quantity; // 1 label per drum
+      containerType = 'drum';
     } else if (name.includes('tote') || sku.includes('tote')) {
-      containerCount = quantity; // 1 label per tote
+      totalContainersForThisItem = quantity; // 1 label per tote
+      containerType = 'tote';
     } else if (name.includes('pail') || sku.includes('pail')) {
-      containerCount = Math.ceil(quantity / 36); // 1 label per pallet (36 pails)
+      // For pails, we create labels per pallet (36 pails per pallet)
+      totalContainersForThisItem = Math.ceil(quantity / 36); 
+      containerType = 'pallet';
     } else if (name.includes('box') || sku.includes('box')) {
-      containerCount = Math.ceil(quantity / 144); // 1 label per pallet (144 boxes)
+      // For boxes, we create labels per pallet (144 boxes per pallet)
+      totalContainersForThisItem = Math.ceil(quantity / 144);
+      containerType = 'pallet';
     }
     
-    console.log(`[QR] Creating ${containerCount} container QRs for item: ${itemName}`);
+    console.log(`[QR] Creating ${totalContainersForThisItem} ${containerType} QRs for item: ${itemName} (qty: ${quantity})`);
     
-    // Generate container labels for this item
-    for (let itemContainerIndex = 1; itemContainerIndex <= containerCount; itemContainerIndex++) {
-      globalContainerIndex++; // Increment global counter for unique IDs
+    // Generate container labels for THIS SPECIFIC ITEM
+    // Each item gets its own numbered sequence (1 of N, 2 of N, etc.)
+    for (let containerIndexForThisItem = 1; containerIndexForThisItem <= totalContainersForThisItem; containerIndexForThisItem++) {
+      globalContainerIndex++; // Increment global counter for unique database IDs
+      
       records.push({
         workspaceId,
         qrType: 'container',
@@ -309,17 +301,15 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
         shortCode: makeShort(),
         orderId,
         orderNumber,
-        containerNumber: globalContainerIndex, // Global unique container number
+        containerNumber: globalContainerIndex, // Global unique ID for database
         chemicalName: itemName, // Store the item name for the label
         encodedData: { 
           type: 'container', 
           orderId, 
           orderNumber, 
-          containerType: name.includes('drum') ? 'drum' : 
-                        name.includes('tote') ? 'tote' : 
-                        name.includes('pail') ? 'pallet' : 'container',
-          containerNumber: itemContainerIndex, // Per-item container number (1, 2, 3...)
-          totalContainers: containerCount, // Total containers for THIS specific item
+          containerType: containerType,
+          containerNumber: containerIndexForThisItem, // THIS item's container number (1, 2, 3...)
+          totalContainers: totalContainersForThisItem, // Total containers for THIS specific item only
           itemId: itemId,
           sku: item.sku,
           itemName: itemName
