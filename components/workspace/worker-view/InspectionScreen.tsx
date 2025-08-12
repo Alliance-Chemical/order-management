@@ -223,6 +223,71 @@ export default function InspectionScreen({
           </div>
         </div>
 
+        {/* Current Item Being Inspected - NEW PROMINENT DISPLAY */}
+        {(() => {
+          // For inspection, typically we're inspecting ALL items together as a batch
+          // unless there's specific item context from QR scan or selection
+          // Show which specific item this step relates to based on the current inspection step
+          
+          let itemBeingInspected = null;
+          
+          // Check if current step is specifically about scanning destination QR
+          if (currentItem?.id === 'scan_destination_qr' && orderItems && orderItems.length > 0) {
+            // For destination scanning, we might be scanning containers for any of the items
+            // Show all items being processed
+            return (
+              <div className="mb-6 p-4 bg-yellow-100 border-2 border-yellow-400 rounded-xl">
+                <div>
+                  <p className="text-sm font-bold text-yellow-800 uppercase tracking-wide mb-2">Items Being Processed:</p>
+                  {orderItems.map((item, idx) => (
+                    <p key={idx} className="text-lg font-bold text-gray-900">
+                      • {item.quantity}x {item.name}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          
+          // For source-related steps, try to match with source assignments
+          if ((currentItem?.id === 'scan_source_qr' || currentItem?.id === 'verify_source_chemical') && sourceAssignments.length > 0) {
+            // Show which items have pump & fill workflow
+            const pumpAndFillItems = orderItems?.filter(item =>
+              sourceAssignments.some(sa =>
+                sa.workflowType === 'pump_and_fill' &&
+                sa.productName &&
+                item.name?.toLowerCase().includes(sa.productName.toLowerCase())
+              )
+            );
+            
+            if (pumpAndFillItems && pumpAndFillItems.length > 0) {
+              itemBeingInspected = pumpAndFillItems[0]; // Show first pump & fill item
+            }
+          }
+          
+          // Default: show the order as a whole if no specific item context
+          if (!itemBeingInspected && orderItems && orderItems.length === 1) {
+            itemBeingInspected = orderItems[0];
+          }
+          
+          if (itemBeingInspected) {
+            return (
+              <div className="mb-6 p-4 bg-yellow-100 border-2 border-yellow-400 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-yellow-800 uppercase tracking-wide">Currently Inspecting:</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                      {itemBeingInspected.quantity}x {itemBeingInspected.name}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          
+          return null;
+        })()}
+
         {/* Current inspection item */}
         <div className="worker-card">
           <div className="text-center mb-8">
@@ -262,20 +327,34 @@ export default function InspectionScreen({
             
             {/* Display source assignments or direct resell status based on item workflow */}
             {(() => {
-              // Get all assignments for current inspection context
-              const itemAssignments = sourceAssignments.filter(sa => {
-                if (!currentItem || !orderItems) return false;
-                // Match based on product names in the order
-                return orderItems.some(item => 
-                  sa.productName && item.name && 
-                  item.name.toLowerCase().includes(sa.productName.toLowerCase())
-                );
+              // Only show source-related info on source scanning steps
+              if (currentItem?.id !== 'scan_source_qr' && currentItem?.id !== 'verify_source_chemical') {
+                return null;
+              }
+              
+              // Get the specific item being inspected
+              // For multiple items, try to determine which one based on context
+              let inspectedItem = null;
+              if (orderItems && orderItems.length === 1) {
+                inspectedItem = orderItems[0];
+              } else if (orderItems && orderItems.length > 0) {
+                // For multiple items, default to first one for now
+                // In a real scenario, this would be determined by QR scan or user selection
+                inspectedItem = orderItems[0];
+              }
+              
+              if (!inspectedItem) return null;
+              
+              // Find the assignment for this specific item
+              const itemAssignment = sourceAssignments.find(sa => {
+                if (!sa.productName || !inspectedItem.name) return false;
+                // More precise matching - check if the assignment product name is contained in the item name
+                return inspectedItem.name.toLowerCase().includes(sa.productName.toLowerCase()) ||
+                       sa.productName.toLowerCase().includes(inspectedItem.name.toLowerCase().split('-')[0].trim());
               });
               
-              // Check if this is a direct resell item
-              const isItemDirectResell = itemAssignments.some(a => a.workflowType === 'direct_resell');
-              
-              if (isItemDirectResell && currentItem.id === 'scan_source_qr') {
+              // Check if this specific item is direct resell
+              if (itemAssignment?.workflowType === 'direct_resell' && currentItem.id === 'scan_source_qr') {
                 // Skip source scanning for direct resell items
                 return (
                   <div className="mt-6 p-4 bg-green-100 border-2 border-green-500 rounded-lg">
@@ -292,10 +371,8 @@ export default function InspectionScreen({
               }
               
               // Show source containers for pump & fill items
-              const pumpAndFillAssignments = itemAssignments.filter(a => a.workflowType === 'pump_and_fill');
-              if (pumpAndFillAssignments.length > 0) {
-                // Flatten all source containers from all pump & fill assignments
-                const allSources = pumpAndFillAssignments.flatMap(a => a.sourceContainers || []);
+              if (itemAssignment?.workflowType === 'pump_and_fill') {
+                const allSources = itemAssignment.sourceContainers || [];
                 
                 if (allSources.length > 0) {
                   return (

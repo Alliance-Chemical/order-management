@@ -5,9 +5,10 @@ import { eq } from 'drizzle-orm';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const { 
       lineItemId, 
       productName,
@@ -170,9 +171,10 @@ export async function POST(
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const orderId = Number(params.orderId);
 
     // Fetch the workspace
