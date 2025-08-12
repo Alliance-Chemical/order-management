@@ -611,6 +611,28 @@ The project is now hosted on GitHub at: https://github.com/andretaki/order-manag
 
 **Result**: Clear, unambiguous labels where each label only describes the physical object it's attached to.
 
+### QR Generation and Label Printing Bug Fixes (January 13, 2025)
+**Problems Addressed**:
+1. Source container labels incorrectly listing all chemicals from the order
+2. Container numbering showing impossible values (e.g., "Drum 2 of 1", "Pallet 3 of 1")
+3. Missing "SCAN TO INSPECT" badges on direct resell container labels
+
+**Solution Implemented**:
+1. **Fixed QR Generation Logic** (`app/api/workspace/[orderId]/qrcodes/route.ts`):
+   - Source QR now generates with generic "Source Container" name instead of concatenating all chemicals
+   - Fixed container numbering by properly tracking per-item container counts
+   - Each item's containers now correctly numbered (e.g., "Pallet 1 of 1" for 6 pails on 1 pallet)
+   - Separated global container index from per-item numbering for database integrity
+
+2. **Enhanced Label Assignment Matching** (`app/api/qr/print/route.ts`):
+   - Improved `findSourceAssignment` function with multi-fallback matching:
+     - Primary: Match by lineItemId (most reliable)
+     - Secondary: Match by SKU
+     - Tertiary: Enhanced bidirectional product name matching
+   - Added debugging logs for troubleshooting label generation
+
+**Result**: Accurate container numbering, correct source labels, and proper workflow-specific badges on all label types.
+
 ## Chemical Dilution Calculator with Container Linking (Updated January 13, 2025)
 
 ### Overview

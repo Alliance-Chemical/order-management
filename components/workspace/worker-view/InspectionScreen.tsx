@@ -25,6 +25,7 @@ export default function InspectionScreen({
   const [showScanner, setShowScanner] = useState(false);
   const [scannedQRs, setScannedQRs] = useState<Record<string, string>>({});
   const [currentItemWorkflowType, setCurrentItemWorkflowType] = useState<'pump_and_fill' | 'direct_resell' | null>(null);
+  const [autoSkipping, setAutoSkipping] = useState(false);
 
   const currentItem = items[currentIndex];
   const progress = ((currentIndex + 1) / items.length) * 100;
@@ -66,6 +67,83 @@ export default function InspectionScreen({
     
     fetchSourceAssignments();
   }, [orderId, orderItems]);
+
+  // Helper function to determine if current item is Direct Resell
+  const getItemWorkflowType = () => {
+    if (!orderItems || orderItems.length === 0 || sourceAssignments.length === 0) return null;
+    
+    // Support both single item and multi-item inspection
+    const inspectedItems = orderItems.length === 1 ? [orderItems[0]] : orderItems;
+    
+    // Check if ALL items being inspected have the same workflow type
+    const workflows = inspectedItems.map(item => {
+      const itemAssignment = sourceAssignments.find(sa => {
+        if (!sa.productName || !item.name) return false;
+        
+        // Enhanced matching logic
+        const productNameLower = sa.productName.toLowerCase();
+        const itemNameLower = item.name.toLowerCase();
+        
+        // Direct match
+        if (itemNameLower.includes(productNameLower)) return true;
+        
+        // Match without size/container info (e.g., "Citric Acid USP - 55 Gal Drum" matches "Citric Acid USP")
+        const itemBaseName = itemNameLower.split('-')[0].trim();
+        if (productNameLower.includes(itemBaseName)) return true;
+        
+        // Match with partial product name (e.g., "Sodium Hypochlorite" matches "Sodium Hypochlorite 12.5%")
+        const productBaseName = productNameLower.split('%')[0].trim();
+        if (itemBaseName.includes(productBaseName)) return true;
+        
+        return false;
+      });
+      
+      return itemAssignment?.workflowType || null;
+    });
+    
+    // If all items have the same workflow type, return it
+    const uniqueWorkflows = [...new Set(workflows.filter(w => w !== null))];
+    return uniqueWorkflows.length === 1 ? uniqueWorkflows[0] : null;
+  };
+
+  // Auto-skip source scanning for direct resell items
+  useEffect(() => {
+    if (!currentItem || sourceAssignments.length === 0 || autoSkipping) return;
+    
+    // Check if current step is source-related
+    const isSourceStep = currentItem.id === 'scan_source_qr' || currentItem.id === 'verify_source_chemical';
+    if (!isSourceStep) return;
+    
+    const itemWorkflowType = getItemWorkflowType();
+    
+    // If this is a direct resell item, auto-advance with visual feedback
+    if (itemWorkflowType === 'direct_resell') {
+      setAutoSkipping(true);
+      
+      // Small delay to show the "auto-advancing" message
+      const timer = setTimeout(() => {
+        // Mark as passed
+        const newResults = { ...results, [currentItem.id]: 'pass' as const };
+        setResults(newResults);
+        
+        // Advance to next step
+        if (currentIndex < items.length - 1) {
+          setCurrentIndex(currentIndex + 1);
+          setAutoSkipping(false);
+        } else {
+          // Complete the inspection if this was the last item
+          onComplete({
+            checklist: newResults,
+            notes: Object.values(notes).join('\n'),
+            completedAt: new Date().toISOString(),
+            completedBy: 'worker',
+          });
+        }
+      }, 800); // Brief delay for visual feedback
+      
+      return () => clearTimeout(timer);
+    }
+  }, [currentItem, sourceAssignments, orderItems, currentIndex, autoSkipping]);
 
   const handleQRScan = (qrData: string) => {
     // Store the scanned QR data
@@ -223,63 +301,58 @@ export default function InspectionScreen({
           </div>
         </div>
 
-        {/* Current Item Being Inspected - NEW PROMINENT DISPLAY */}
+        {/* Current Item Being Inspected - ENHANCED FOR SINGLE ITEM FOCUS */}
         {(() => {
-          // For inspection, typically we're inspecting ALL items together as a batch
-          // unless there's specific item context from QR scan or selection
-          // Show which specific item this step relates to based on the current inspection step
-          
-          let itemBeingInspected = null;
-          
-          // Check if current step is specifically about scanning destination QR
-          if (currentItem?.id === 'scan_destination_qr' && orderItems && orderItems.length > 0) {
-            // For destination scanning, we might be scanning containers for any of the items
-            // Show all items being processed
+          // When only one item is being inspected (selected from task list)
+          if (orderItems && orderItems.length === 1) {
+            const item = orderItems[0];
+            const workflowType = getItemWorkflowType();
+            
             return (
-              <div className="mb-6 p-4 bg-yellow-100 border-2 border-yellow-400 rounded-xl">
-                <div>
-                  <p className="text-sm font-bold text-yellow-800 uppercase tracking-wide mb-2">Items Being Processed:</p>
-                  {orderItems.map((item, idx) => (
-                    <p key={idx} className="text-lg font-bold text-gray-900">
-                      • {item.quantity}x {item.name}
+              <div className="mb-6 p-6 bg-gradient-to-r from-yellow-100 to-amber-100 border-2 border-yellow-400 rounded-xl shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <p className="text-sm font-bold text-yellow-800 uppercase tracking-wide">Currently Inspecting:</p>
+                      {workflowType === 'direct_resell' && (
+                        <span className="px-3 py-1 bg-green-500 text-white text-xs font-bold rounded-full">
+                          DIRECT RESELL
+                        </span>
+                      )}
+                      {workflowType === 'pump_and_fill' && (
+                        <span className="px-3 py-1 bg-blue-500 text-white text-xs font-bold rounded-full">
+                          PUMP & FILL
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-3xl font-bold text-gray-900">
+                      {item.quantity}x {item.name}
                     </p>
-                  ))}
+                    {item.sku && (
+                      <p className="text-sm text-gray-600 mt-1">SKU: {item.sku}</p>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center text-white">
+                      <span className="text-3xl font-bold">{item.quantity}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
           }
           
-          // For source-related steps, try to match with source assignments
-          if ((currentItem?.id === 'scan_source_qr' || currentItem?.id === 'verify_source_chemical') && sourceAssignments.length > 0) {
-            // Show which items have pump & fill workflow
-            const pumpAndFillItems = orderItems?.filter(item =>
-              sourceAssignments.some(sa =>
-                sa.workflowType === 'pump_and_fill' &&
-                sa.productName &&
-                item.name?.toLowerCase().includes(sa.productName.toLowerCase())
-              )
-            );
-            
-            if (pumpAndFillItems && pumpAndFillItems.length > 0) {
-              itemBeingInspected = pumpAndFillItems[0]; // Show first pump & fill item
-            }
-          }
-          
-          // Default: show the order as a whole if no specific item context
-          if (!itemBeingInspected && orderItems && orderItems.length === 1) {
-            itemBeingInspected = orderItems[0];
-          }
-          
-          if (itemBeingInspected) {
+          // Multiple items being inspected (batch mode)
+          if (orderItems && orderItems.length > 1) {
             return (
               <div className="mb-6 p-4 bg-yellow-100 border-2 border-yellow-400 rounded-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-yellow-800 uppercase tracking-wide">Currently Inspecting:</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
-                      {itemBeingInspected.quantity}x {itemBeingInspected.name}
+                <div>
+                  <p className="text-sm font-bold text-yellow-800 uppercase tracking-wide mb-2">Items Being Processed (Batch Mode):</p>
+                  {orderItems.map((item, idx) => (
+                    <p key={idx} className="text-lg font-bold text-gray-900">
+                      • {item.quantity}x {item.name}
                     </p>
-                  </div>
+                  ))}
                 </div>
               </div>
             );
@@ -328,51 +401,51 @@ export default function InspectionScreen({
             {/* Display source assignments or direct resell status based on item workflow */}
             {(() => {
               // Only show source-related info on source scanning steps
-              if (currentItem?.id !== 'scan_source_qr' && currentItem?.id !== 'verify_source_chemical') {
-                return null;
-              }
+              const isSourceStep = currentItem?.id === 'scan_source_qr' || currentItem?.id === 'verify_source_chemical';
+              if (!isSourceStep) return null;
               
-              // Get the specific item being inspected
-              // For multiple items, try to determine which one based on context
-              let inspectedItem = null;
-              if (orderItems && orderItems.length === 1) {
-                inspectedItem = orderItems[0];
-              } else if (orderItems && orderItems.length > 0) {
-                // For multiple items, default to first one for now
-                // In a real scenario, this would be determined by QR scan or user selection
-                inspectedItem = orderItems[0];
-              }
-              
-              if (!inspectedItem) return null;
-              
-              // Find the assignment for this specific item
-              const itemAssignment = sourceAssignments.find(sa => {
-                if (!sa.productName || !inspectedItem.name) return false;
-                // More precise matching - check if the assignment product name is contained in the item name
-                return inspectedItem.name.toLowerCase().includes(sa.productName.toLowerCase()) ||
-                       sa.productName.toLowerCase().includes(inspectedItem.name.toLowerCase().split('-')[0].trim());
-              });
+              const itemWorkflowType = getItemWorkflowType();
               
               // Check if this specific item is direct resell
-              if (itemAssignment?.workflowType === 'direct_resell' && currentItem.id === 'scan_source_qr') {
-                // Skip source scanning for direct resell items
+              if (itemWorkflowType === 'direct_resell') {
+                // Clean, simple message for direct resell items
                 return (
-                  <div className="mt-6 p-4 bg-green-100 border-2 border-green-500 rounded-lg">
-                    <div className="text-center">
-                      <p className="text-lg font-bold text-green-800">
-                        📦 Direct Resell Item - No source scan needed
-                      </p>
-                      <p className="text-sm text-green-700 mt-1">
-                        This is a pre-packaged container ready for shipment
-                      </p>
+                  <div className="mt-6 p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 rounded-xl shadow-md">
+                    <div className="flex items-center justify-center space-x-3">
+                      <div className="flex-shrink-0">
+                        <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center">
+                          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xl font-bold text-green-800">
+                          Direct Resell Container
+                        </p>
+                        <p className="text-sm text-green-700 mt-1">
+                          Pre-packaged • No source scan required
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
               }
               
               // Show source containers for pump & fill items
-              if (itemAssignment?.workflowType === 'pump_and_fill') {
-                const allSources = itemAssignment.sourceContainers || [];
+              if (itemWorkflowType === 'pump_and_fill') {
+                // Find the specific assignment
+                const inspectedItem = orderItems?.[0];
+                if (!inspectedItem) return null;
+                
+                const itemAssignment = sourceAssignments.find(sa => {
+                  if (!sa.productName || !inspectedItem.name) return false;
+                  return inspectedItem.name.toLowerCase().includes(sa.productName.toLowerCase()) ||
+                         sa.productName.toLowerCase().includes(inspectedItem.name.toLowerCase().split('-')[0].trim());
+                });
+                
+                const allSources = itemAssignment?.sourceContainers || [];
                 
                 if (allSources.length > 0) {
                   return (
@@ -411,47 +484,131 @@ export default function InspectionScreen({
             </div>
           )}
 
-          {/* Action buttons */}
-          {requiresQRScan && !scannedQRs[currentItem.id] ? (
-            // Single large scan button for QR steps
-            <div className="mt-8">
-              <button
-                onClick={handlePass}
-                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-2xl p-8 flex flex-col items-center justify-center gap-4 transform transition-all hover:scale-105 shadow-xl"
-              >
-                <div className="bg-white bg-opacity-20 rounded-full p-6">
-                  <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2.5} 
-                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                    />
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2.5} 
-                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
+          {/* Action buttons - conditionally render based on workflow type */}
+          {(() => {
+            // Check if this is a direct resell item on a source scanning step
+            const isSourceStep = currentItem?.id === 'scan_source_qr' || currentItem?.id === 'verify_source_chemical';
+            const itemWorkflowType = getItemWorkflowType();
+            
+            // If direct resell item on source step, show auto-skip UI
+            if (isSourceStep && itemWorkflowType === 'direct_resell') {
+              if (autoSkipping) {
+                // Elegant auto-advancing animation with smooth transitions
+                return (
+                  <div className="mt-8 p-8 text-center">
+                    <div className="inline-flex flex-col items-center justify-center space-y-6">
+                      {/* Animated icon container */}
+                      <div className="relative">
+                        {/* Background glow effect */}
+                        <div className="absolute -inset-4 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full opacity-20 blur-xl animate-pulse"></div>
+                        
+                        {/* Main icon circle */}
+                        <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-lg transform transition-all duration-300 hover:scale-110">
+                          {/* Package icon for Direct Resell */}
+                          <svg className="w-14 h-14 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} 
+                              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                          </svg>
+                        </div>
+                        
+                        {/* Animated ring */}
+                        <div className="absolute inset-0 rounded-full border-4 border-green-400 opacity-75 animate-ping"></div>
+                        
+                        {/* Success checkmark overlay */}
+                        <div className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center">
+                          <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      </div>
+                      
+                      {/* Text content with fade-in animation */}
+                      <div className="space-y-3 animate-fadeIn">
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="h-px w-12 bg-gradient-to-r from-transparent to-green-400"></div>
+                          <p className="text-sm uppercase tracking-widest text-green-600 font-semibold">Pre-Packaged</p>
+                          <div className="h-px w-12 bg-gradient-to-l from-transparent to-green-400"></div>
+                        </div>
+                        <h3 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                          Direct Resell Container
+                        </h3>
+                        <p className="text-lg text-gray-600 flex items-center justify-center space-x-2">
+                          <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                          <span>Auto-advancing to next step</span>
+                          <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse animation-delay-200"></span>
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Add CSS animations in a style tag */}
+                    <style jsx>{`
+                      @keyframes fadeIn {
+                        from { opacity: 0; transform: translateY(10px); }
+                        to { opacity: 1; transform: translateY(0); }
+                      }
+                      .animate-fadeIn {
+                        animation: fadeIn 0.5s ease-out;
+                      }
+                      .animation-delay-200 {
+                        animation-delay: 200ms;
+                      }
+                    `}</style>
+                  </div>
+                );
+              } else {
+                // This shouldn't show as auto-skip should trigger immediately, but kept as fallback
+                return (
+                  <div className="mt-8 p-6 text-center">
+                    <div className="text-gray-500">Processing...</div>
+                  </div>
+                );
+              }
+            }
+            
+            // Regular QR scan button for pump & fill items
+            if (requiresQRScan && !scannedQRs[currentItem.id]) {
+              return (
+                <div className="mt-8">
+                  <button
+                    onClick={handlePass}
+                    className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-2xl p-8 flex flex-col items-center justify-center gap-4 transform transition-all hover:scale-105 shadow-xl"
+                  >
+                    <div className="bg-white bg-opacity-20 rounded-full p-6">
+                      <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2.5} 
+                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                        />
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2.5} 
+                          d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                    </div>
+                    <span className="text-3xl font-bold">TAP TO SCAN QR CODE</span>
+                    <span className="text-lg opacity-90">Camera will open automatically</span>
+                  </button>
+                  
+                  {/* Small skip option */}
+                  <div className="mt-4 text-center">
+                    <button
+                      onClick={handleFail}
+                      className="text-gray-500 hover:text-red-600 underline text-sm"
+                    >
+                      Report a problem instead
+                    </button>
+                  </div>
                 </div>
-                <span className="text-3xl font-bold">TAP TO SCAN QR CODE</span>
-                <span className="text-lg opacity-90">Camera will open automatically</span>
-              </button>
-              
-              {/* Small skip option */}
-              <div className="mt-4 text-center">
-                <button
-                  onClick={handleFail}
-                  className="text-gray-500 hover:text-red-600 underline text-sm"
-                >
-                  Report a problem instead
-                </button>
-              </div>
-            </div>
-          ) : (
+              );
+            }
+            
             // Regular pass/fail buttons for non-QR steps
-            <div className="grid grid-cols-2 gap-6">
+            return (
+              <div className="grid grid-cols-2 gap-6">
               <button
                 onClick={handlePass}
                 className="worker-btn-green flex flex-col items-center justify-center gap-2"
@@ -481,8 +638,9 @@ export default function InspectionScreen({
                 </svg>
                 <span>FAIL</span>
               </button>
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {/* Previous results indicator */}
           {currentIndex > 0 && (

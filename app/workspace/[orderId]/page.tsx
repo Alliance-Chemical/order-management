@@ -27,6 +27,7 @@ export default function WorkspacePage() {
   const [viewMode, setViewMode] = useState<ViewMode>('worker'); // Default to worker view
   const [workerStep, setWorkerStep] = useState<WorkerStep>('entry');
   const [activeTab, setActiveTab] = useState('overview'); // For supervisor view
+  const [selectedItem, setSelectedItem] = useState<any>(null); // Track which item is being inspected
 
   useEffect(() => {
     fetchWorkspace();
@@ -193,6 +194,10 @@ export default function WorkspacePage() {
             workspace={workspace}
             onStart={() => setWorkerStep('inspection')}
             onSwitchToSupervisor={() => setViewMode('supervisor')}
+            onSelectItem={(item) => {
+              setSelectedItem(item);
+              setWorkerStep('inspection');
+            }}
           />
         );
       } else if (workerStep === 'inspection') {
@@ -232,16 +237,24 @@ export default function WorkspacePage() {
           ];
         }
 
+        // If a specific item was selected, show only that item
+        const itemsToInspect = selectedItem ? [selectedItem] : (workspace.shipstationData?.items || []);
+        
         return (
           <InspectionScreen
             orderId={orderId}
             orderNumber={workspace.orderNumber}
             customerName={workspace.shipstationData?.shipTo?.name}
-            orderItems={workspace.shipstationData?.items}
+            orderItems={itemsToInspect}
             workflowPhase={workspace.workflowPhase}
             workflowType={workspace.workflowType}
             items={inspectionItems}
-            onComplete={handleWorkerInspectionComplete}
+            onComplete={(results) => {
+              handleWorkerInspectionComplete(results);
+              // After completing inspection for this item, go back to task list
+              setSelectedItem(null);
+              setWorkerStep('entry');
+            }}
             onSwitchToSupervisor={() => setViewMode('supervisor')}
           />
         );

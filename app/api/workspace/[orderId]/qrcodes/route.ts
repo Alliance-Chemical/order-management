@@ -242,9 +242,8 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   // Only create source container label if it doesn't exist - SECOND
   if (!hasSourceQR) {
     console.log('[QR] Creating new source QR code');
-    // Get chemical names from items for source label
-    const chemicalNames = items.map(item => item.name || 'Unknown Product').filter((v, i, a) => a.indexOf(v) === i);
-    const sourceName = chemicalNames.length > 0 ? chemicalNames.join(', ') : 'Source Container';
+    // Source QR should be generic - specific chemical will be determined by supervisor assignments
+    const sourceName = 'Source Container';
     
     records.push({
       workspaceId,
@@ -264,10 +263,10 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   }
 
   // Process each item to generate container QRs - AFTER MASTER AND SOURCE
-  let containerIndex = 0;
+  let globalContainerIndex = 0; // Global counter for unique container numbers across the order
   
   for (const item of items) {
-    const itemId = item.orderItemId || item.sku || `item-${containerIndex}`;
+    const itemId = item.orderItemId || item.sku || `item-${globalContainerIndex}`;
     const itemName = item.name || 'Unknown Product';
     const quantity = item.quantity || 1;
     
@@ -301,16 +300,16 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     console.log(`[QR] Creating ${containerCount} container QRs for item: ${itemName}`);
     
     // Generate container labels for this item
-    for (let i = 1; i <= containerCount; i++) {
-      containerIndex++;
+    for (let itemContainerIndex = 1; itemContainerIndex <= containerCount; itemContainerIndex++) {
+      globalContainerIndex++; // Increment global counter for unique IDs
       records.push({
         workspaceId,
         qrType: 'container',
-        qrCode: makeCode(`CONTAINER-${containerIndex}`),
+        qrCode: makeCode(`CONTAINER-${globalContainerIndex}`),
         shortCode: makeShort(),
         orderId,
         orderNumber,
-        containerNumber: containerIndex,
+        containerNumber: globalContainerIndex, // Global unique container number
         chemicalName: itemName, // Store the item name for the label
         encodedData: { 
           type: 'container', 
@@ -319,8 +318,8 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
           containerType: name.includes('drum') ? 'drum' : 
                         name.includes('tote') ? 'tote' : 
                         name.includes('pail') ? 'pallet' : 'container',
-          containerNumber: i,
-          totalContainers: containerCount, // Store total for this item
+          containerNumber: itemContainerIndex, // Per-item container number (1, 2, 3...)
+          totalContainers: containerCount, // Total containers for THIS specific item
           itemId: itemId,
           sku: item.sku,
           itemName: itemName

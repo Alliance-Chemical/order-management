@@ -130,14 +130,27 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   const findSourceAssignment = (record: any): any => {
     if (!sourceAssignments || sourceAssignments.length === 0) return null;
     
-    // Try to match by line item ID or product name
+    // Try multiple ways to match the record to a source assignment
     const itemId = record.encodedData?.itemId || record.encodedData?.lineItemId;
+    const sku = record.encodedData?.sku;
     const productName = record.chemicalName || record.encodedData?.itemName;
     
-    return sourceAssignments.find(sa => 
-      sa.lineItemId === itemId || 
-      (productName && sa.productName && productName.toLowerCase().includes(sa.productName.toLowerCase()))
-    );
+    return sourceAssignments.find(sa => {
+      // Match by line item ID (most reliable)
+      if (itemId && sa.lineItemId === itemId) return true;
+      
+      // Match by SKU
+      if (sku && sa.sku === sku) return true;
+      
+      // Match by product name (case-insensitive contains)
+      if (productName && sa.productName) {
+        const recordName = productName.toLowerCase().trim();
+        const assignmentName = sa.productName.toLowerCase().trim();
+        return recordName.includes(assignmentName) || assignmentName.includes(recordName);
+      }
+      
+      return false;
+    });
   };
   
   // Helper function to get label type badge text
@@ -145,6 +158,8 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     // For container labels, check if this specific item is direct resell
     if (record.qrType === 'container') {
       const assignment = findSourceAssignment(record);
+      console.log(`[PRINT] Container label - Record: ${record.chemicalName}, Assignment found: ${!!assignment}, WorkflowType: ${assignment?.workflowType}`);
+      
       if (assignment?.workflowType === 'direct_resell') {
         return 'SCAN TO INSPECT';
       }
