@@ -1,38 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
+import { withErrorHandler, AppError } from '@/lib/error-handler';
 
 const workspaceService = new WorkspaceService();
 
-export async function GET(
+export const GET = withErrorHandler(async (
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
-) {
-  try {
-    const { orderId: orderIdStr } = await params;
-    const orderId = parseInt(orderIdStr);
-    const workspace = await workspaceService.repository.findByOrderId(orderId);
-    
-    if (!workspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
-    }
-
-    // Update access time
-    await workspaceService.repository.updateAccessTime(workspace.id, 'system');
-
-    // Check if sync needed (>30 seconds old)
-    const needsSync = workspace.lastShipstationSync && 
-      (Date.now() - workspace.lastShipstationSync.getTime()) > 30000;
-    
-    if (needsSync) {
-      await workspaceService.syncWithShipStation(workspace.id, orderId);
-    }
-
-    return NextResponse.json(workspace);
-  } catch (error) {
-    console.error('Error fetching workspace:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+) => {
+  const { orderId: orderIdStr } = await params;
+  const orderId = parseInt(orderIdStr);
+  
+  if (isNaN(orderId)) {
+    throw new AppError('Invalid order ID', 400);
   }
-}
+  
+  const workspace = await workspaceService.repository.findByOrderId(orderId);
+  
+  if (!workspace) {
+    throw new AppError('Workspace not found', 404);
+  }
+
+  // Update access time
+  await workspaceService.repository.updateAccessTime(workspace.id, 'system');
+
+  // Check if sync needed (>30 seconds old)
+  const needsSync = workspace.lastShipstationSync && 
+    (Date.now() - workspace.lastShipstationSync.getTime()) > 30000;
+  
+  if (needsSync) {
+    await workspaceService.syncWithShipStation(workspace.id, orderId);
+  }
+
+  return NextResponse.json(workspace);
+});
 
 export async function PUT(
   request: NextRequest,
