@@ -14,9 +14,11 @@ interface FreightOrder {
 interface QRCode {
   id: string;
   code: string;
-  type: 'master' | 'container' | 'pallet';
+  type: 'master' | 'container' | 'pallet' | 'source';
   label?: string;
   metadata?: any;
+  shortCode?: string;
+  qrType?: string;
 }
 
 interface PrintPreparationModalProps {
@@ -960,28 +962,20 @@ export default function PrintPreparationModal({
                       return null; // No source labels needed if all items are direct resell
                     }
                     
-                    // Calculate actual source label count from pump_and_fill assignments only
-                    const totalSourceContainers = sourceAssignments
-                      .filter(a => a.workflowType === 'pump_and_fill')
-                      .reduce((total, assignment) => total + assignment.sourceContainers.length, 0);
+                    // Count actual source QRs that exist in the qrCodes array
+                    const actualSourceQRs = qrCodes.filter(qr => 
+                      qr.type === 'source' || (qr.metadata?.isSource === true)
+                    ).length;
                     
-                    if (totalSourceContainers > 0) {
+                    // Use the actual source QR count (what will actually print)
+                    const sourceCount = actualSourceQRs;
+                    
+                    if (sourceCount > 0) {
                       return (
                         <div className="flex justify-between items-center bg-yellow-50 rounded-lg px-4 py-3">
-                          <span className="text-gray-700">Source Container Label{totalSourceContainers > 1 ? 's' : ''} (Pump & Fill)</span>
+                          <span className="text-gray-700">Source Container Label{sourceCount > 1 ? 's' : ''} (Pump & Fill)</span>
                           <span className="font-semibold text-gray-900">
-                            {totalSourceContainers} label{totalSourceContainers > 1 ? 's' : ''}
-                          </span>
-                        </div>
-                      );
-                    }
-                    // Fallback to original source count from QR codes if no assignments yet
-                    if (labelSummary.source > 0 && hasPumpAndFill) {
-                      return (
-                        <div className="flex justify-between items-center bg-yellow-50 rounded-lg px-4 py-3">
-                          <span className="text-gray-700">Source Container Label</span>
-                          <span className="font-semibold text-gray-900">
-                            {labelSummary.source} label{labelSummary.source > 1 ? 's' : ''}
+                            {sourceCount} label{sourceCount > 1 ? 's' : ''}
                           </span>
                         </div>
                       );
@@ -1024,13 +1018,14 @@ export default function PrintPreparationModal({
                     </span>
                     <span className="text-lg font-bold text-blue-600">
                       {(() => {
-                        // Calculate actual source count from pump_and_fill assignments only
-                        const actualSourceCount = sourceAssignments
-                          .filter(a => a.workflowType === 'pump_and_fill')
-                          .reduce((total, assignment) => total + assignment.sourceContainers.length, 0);
+                        // Count actual source QRs that exist in the qrCodes array
+                        const actualSourceQRs = qrCodes.filter(qr => 
+                          qr.type === 'source' || (qr.metadata?.isSource === true)
+                        ).length;
                         
-                        return labelSummary.master + actualSourceCount + labelSummary.drums + 
-                               labelSummary.totes + labelSummary.pallets || qrCodes.length;
+                        // Calculate total based on what will actually print
+                        return labelSummary.master + actualSourceQRs + labelSummary.drums + 
+                               labelSummary.totes + labelSummary.pallets;
                       })()}
                     </span>
                   </div>
