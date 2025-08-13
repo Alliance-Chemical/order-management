@@ -171,4 +171,4 @@ Proprietary - Alliance Chemical
 
 ## Support
 
-For issues or questions, contact the development team or create an issue in the repository.
+For issues or questions, contact the development team or create an issue in the repository.# Force Vercel Deployment
