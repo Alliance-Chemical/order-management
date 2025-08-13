@@ -31,6 +31,9 @@ const protectedPages = [
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // AUTHENTICATION BYPASSED - Remove this return statement to re-enable auth
+  return NextResponse.next();
+
   // Allow auth endpoints
   if (pathname.startsWith('/api/auth')) {
     return NextResponse.next();
