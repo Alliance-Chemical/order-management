@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { auth } from '@/lib/auth';
 
 // Protected API routes that require authentication
 const protectedApiRoutes = [
@@ -16,62 +17,58 @@ const publicApiRoutes = [
   '/api/qr/scan', // QR scanning should be public
   '/api/webhook', // Webhooks have their own auth
   '/api/health',
+  '/api/auth', // Better Auth endpoints
 ];
 
-export function middleware(request: NextRequest) {
+// Protected pages that require authentication
+const protectedPages = [
+  '/workspace',
+  '/', // Dashboard
+  '/anomaly-dashboard',
+  '/dilution-calculator',
+];
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Check if this is a protected API route
-  const isProtectedApi = protectedApiRoutes.some(route => pathname.startsWith(route));
-  const isPublicApi = publicApiRoutes.some(route => pathname.startsWith(route));
-
-  if (isProtectedApi && !isPublicApi) {
-    // For development, skip API authentication
-    // In production, uncomment the authentication checks below
-    /*
-    const apiKey = request.headers.get('x-api-key');
-    const expectedApiKey = process.env.API_SECRET_KEY;
-
-    if (!apiKey || (expectedApiKey && apiKey !== expectedApiKey)) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Invalid or missing API key' },
-        { status: 401 }
-      );
-    }
-
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Missing bearer token' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.substring(7);
-    if (!token || token.length < 10) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Invalid token' },
-        { status: 401 }
-      );
-    }
-    */
+  // Allow auth endpoints
+  if (pathname.startsWith('/api/auth')) {
+    return NextResponse.next();
   }
 
-  // Check if this is a protected workspace page
-  if (pathname.startsWith('/workspace/')) {
-    // For development, auto-set session cookie if missing
-    const sessionCookie = request.cookies.get('session');
-    if (!sessionCookie) {
-      // Set a dev session cookie
-      const response = NextResponse.next();
-      response.cookies.set('session', 'dev-session', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/'
-      });
-      return response;
+  // Check if this is a protected route
+  const isProtectedApi = protectedApiRoutes.some(route => pathname.startsWith(route));
+  const isPublicApi = publicApiRoutes.some(route => pathname.startsWith(route));
+  const isProtectedPage = protectedPages.some(route => 
+    pathname === route || pathname.startsWith(route + '/')
+  );
+
+  // Skip login page
+  if (pathname === '/login') {
+    return NextResponse.next();
+  }
+
+  if ((isProtectedApi && !isPublicApi) || isProtectedPage) {
+    // Check for Better Auth session
+    const sessionToken = request.cookies.get('better-auth.session_token');
+    
+    if (!sessionToken) {
+      // Redirect to login for pages, return 401 for API
+      if (isProtectedPage) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/login';
+        url.searchParams.set('from', pathname);
+        return NextResponse.redirect(url);
+      } else {
+        return NextResponse.json(
+          { error: 'Unauthorized - Please sign in' },
+          { status: 401 }
+        );
+      }
     }
+
+    // TODO: Validate session token with Better Auth
+    // For now, we trust the cookie presence
   }
 
   return NextResponse.next();
@@ -81,5 +78,6 @@ export const config = {
   matcher: [
     '/api/:path*',
     '/workspace/:path*',
+    '/((?!_next/static|_next/image|favicon.ico|login).*)',
   ],
 };
