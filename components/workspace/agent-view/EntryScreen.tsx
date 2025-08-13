@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { EntryScreenProps } from '@/lib/types/worker-view';
+import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {

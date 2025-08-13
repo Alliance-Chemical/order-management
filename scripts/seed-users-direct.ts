@@ -10,10 +10,10 @@ const users = [
     role: 'supervisor',
   },
   {
-    email: 'worker@demo.com',
-    name: 'Demo Worker',
+    email: 'agent@demo.com',
+    name: 'Demo Agent',
     password: 'demo123',
-    role: 'worker',
+    role: 'agent',
   },
 ];
 
@@ -52,7 +52,7 @@ async function seedUsers() {
   console.log('\n✨ User seeding complete!');
   console.log('\nDemo accounts:');
   console.log('Supervisor: supervisor@demo.com / demo123');
-  console.log('Worker: worker@demo.com / demo123');
+  console.log('Warehouse Agent: agent@demo.com / demo123');
   
   process.exit(0);
 }

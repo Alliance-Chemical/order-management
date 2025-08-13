@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { IssueModalProps, InspectionItem } from '@/lib/types/worker-view';
+import { IssueModalProps, InspectionItem } from '@/lib/types/agent-view';
 
 export default function IssueModal({ 
   isOpen, 

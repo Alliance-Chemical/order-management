@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { WorkspaceData, ViewMode, WorkerStep, InspectionResults } from '@/lib/types/worker-view';
+import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
 
 // Import worker view components
-import EntryScreen from '@/components/workspace/worker-view/EntryScreen';
-import InspectionScreen from '@/components/workspace/worker-view/InspectionScreen';
+import EntryScreen from '@/components/workspace/agent-view/EntryScreen';
+import InspectionScreen from '@/components/workspace/agent-view/InspectionScreen';
 
 // Import existing supervisor view components
 import OrderOverview from '@/components/workspace/OrderOverview';

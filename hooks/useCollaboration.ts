@@ -6,7 +6,7 @@ import { useSession } from '@/lib/auth-client';
 interface ActiveUser {
   id: string;
   name: string;
-  role: 'worker' | 'supervisor';
+  role: 'agent' | 'supervisor';
   activity: string;
   timestamp: number;
 }
@@ -28,7 +28,7 @@ export function useCollaboration(workspaceId: string) {
         body: JSON.stringify({
           userId: session.user.id,
           userName: session.user.name || session.user.email,
-          userRole: session.user.role || 'worker',
+          userRole: session.user.role || 'agent',
           activity,
           action: 'join',
         }),

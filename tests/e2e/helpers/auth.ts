@@ -1,6 +1,6 @@
 import { Page } from '@playwright/test'
 
-export async function loginAsUser(page: Page, role: 'worker' | 'supervisor' = 'supervisor') {
+export async function loginAsUser(page: Page, role: 'agent' | 'supervisor' = 'supervisor') {
   // Navigate to login page
   await page.goto('/login')
   
@@ -10,7 +10,7 @@ export async function loginAsUser(page: Page, role: 'worker' | 'supervisor' = 's
   // Use demo accounts for testing
   const credentials = role === 'supervisor' 
     ? { email: 'supervisor@demo.com', password: 'demo123' }
-    : { email: 'worker@demo.com', password: 'demo123' }
+    : { email: 'agent@demo.com', password: 'demo123' }
   
   // Fill in the login form
   await page.fill('input[type="email"]', credentials.email)

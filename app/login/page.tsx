@@ -148,16 +148,16 @@ function LoginForm() {
                   id="role"
                   name="role"
                   value={role}
-                  onChange={(e) => setRole(e.target.value as 'worker' | 'supervisor')}
+                  onChange={(e) => setRole(e.target.value as 'agent' | 'supervisor')}
                   className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 >
-                  <option value="worker">Warehouse Worker</option>
+                  <option value="agent">Warehouse Agent</option>
                   <option value="supervisor">Supervisor</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
                   {role === 'supervisor' 
                     ? 'Full access to all features and reports' 
-                    : 'Access to mobile inspection interface'}
+                    : 'Warehouse agent access to inspection interface'}
                 </p>
               </div>
             )}
@@ -210,7 +210,7 @@ function LoginForm() {
                   <span className="font-medium">Supervisor:</span> supervisor@demo.com / demo123
                 </div>
                 <div>
-                  <span className="font-medium">Worker:</span> worker@demo.com / demo123
+                  <span className="font-medium">Warehouse Agent:</span> agent@demo.com / demo123
                 </div>
               </div>
             </div>

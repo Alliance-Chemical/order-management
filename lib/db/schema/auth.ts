@@ -8,7 +8,7 @@ export const user = authSchema.table("user", {
   emailVerified: boolean("emailVerified").notNull().default(false),
   name: text("name"),
   image: text("image"),
-  role: text("role").notNull().default('worker'), // 'worker' | 'supervisor' | 'admin'
+  role: text("role").notNull().default('agent'), // 'agent' | 'supervisor' | 'admin'
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 });

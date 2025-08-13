@@ -81,15 +81,15 @@ export function CollaborationBadge({
     return null;
   }
   
-  const hasWorker = activeUsers.some(u => u.role === 'worker');
+  const hasAgent = activeUsers.some(u => u.role === 'agent');
   const hasSupervisor = activeUsers.some(u => u.role === 'supervisor');
   
   return (
     <div className={`flex items-center gap-1 ${className}`}>
-      {hasWorker && (
+      {hasAgent && (
         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
           <span className="w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse" />
-          Worker Active
+          Agent Active
         </span>
       )}
       {hasSupervisor && (

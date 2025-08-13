@@ -9,10 +9,10 @@ const users = [
     role: 'supervisor',
   },
   {
-    email: 'worker@demo.com',
-    name: 'Demo Worker',
+    email: 'agent@demo.com',
+    name: 'Demo Agent',
     password: 'demo123',
-    role: 'worker',
+    role: 'agent',
   },
   // ADD YOUR USERS HERE! Just give me emails and I'll add them
   // Example:
@@ -20,7 +20,7 @@ const users = [
   //   email: 'john.smith@company.com',
   //   name: 'John Smith',
   //   password: 'temp123', // They can change this after first login
-  //   role: 'supervisor', // or 'worker'
+  //   role: 'supervisor', // or 'agent'
   // },
 ];
 

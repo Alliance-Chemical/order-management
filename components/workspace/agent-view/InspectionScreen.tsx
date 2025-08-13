@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import IssueModal from './IssueModal';
 import { QRScanner } from '@/components/qr/QRScanner';
-import { InspectionScreenProps, InspectionItem, InspectionResults } from '@/lib/types/worker-view';
+import { InspectionScreenProps, InspectionItem, InspectionResults } from '@/lib/types/agent-view';
 
 export default function InspectionScreen({ 
   orderId, 

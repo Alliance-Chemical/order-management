@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 export interface ActiveUser {
   id: string;
   name: string;
-  role: 'worker' | 'supervisor';
+  role: 'agent' | 'supervisor';
   activity: string;
   timestamp: number;
 }
@@ -25,7 +25,7 @@ export class CollaborationService {
     workspaceId: string,
     userId: string,
     userName: string,
-    userRole: 'worker' | 'supervisor',
+    userRole: 'agent' | 'supervisor',
     activity: string
   ): Promise<void> {
     // Get or create workspace map
