@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import IssueModal from './IssueModal';
 import { QRScanner } from '@/components/qr/QRScanner';
-import { InspectionScreenProps, InspectionItem, InspectionResults } from '@/lib/types/agent-view';
+import MultiContainerInspection from './MultiContainerInspection';
+import { InspectionScreenProps, InspectionItem } from '@/lib/types/agent-view';
 
 export default function InspectionScreen({ 
   orderId, 
@@ -24,12 +25,12 @@ export default function InspectionScreen({
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [showScanner, setShowScanner] = useState(false);
   const [scannedQRs, setScannedQRs] = useState<Record<string, string>>({});
-  const [currentItemWorkflowType, setCurrentItemWorkflowType] = useState<'pump_and_fill' | 'direct_resell' | null>(null);
+  const [, setCurrentItemWorkflowType] = useState<'pump_and_fill' | 'direct_resell' | null>(null);
   const [autoSkipping, setAutoSkipping] = useState(false);
+  const [useMultiContainerFlow, setUseMultiContainerFlow] = useState(false);
 
   const currentItem = items[currentIndex];
   const progress = ((currentIndex + 1) / items.length) * 100;
-  const isDirectResell = workflowType === 'direct_resell'; // Fallback for order-level workflow
   
   // Check if current item requires QR scanning
   const requiresQRScan = currentItem && (
@@ -37,6 +38,38 @@ export default function InspectionScreen({
     currentItem.id === 'scan_destination_qr'
   );
   
+  // Detect if this is a bulk container order (totes/drums)
+  const detectContainerType = (itemName: string): 'tote' | 'drum' | 'pail' | 'bottle' | null => {
+    const nameLower = itemName.toLowerCase();
+    
+    // Check for totes (including "275 Gallon Tote" pattern)
+    if (nameLower.includes('tote') || nameLower.includes('275 gallon')) return 'tote';
+    if (nameLower.includes('drum') || nameLower.includes('55 gal')) return 'drum';
+    if (nameLower.includes('pail')) return 'pail';
+    // Only treat smaller gallons as pails (not 275 gallon which is a tote)
+    if ((nameLower.includes('gallon') || nameLower.includes('gal')) && !nameLower.includes('275')) return 'pail';
+    if (nameLower.includes('bottle')) return 'bottle';
+    return null;
+  };
+
+  // Check if we should use multi-container flow
+  useEffect(() => {
+    if (orderItems && orderItems.length === 1) {
+      const item = orderItems[0];
+      const containerType = detectContainerType(item.name);
+      
+      // Use multi-container flow for bulk orders:
+      // - Totes/drums with 3+ containers
+      // - Any container type with 10+ units
+      if (containerType && (
+        ((containerType === 'tote' || containerType === 'drum') && item.quantity >= 3) ||
+        item.quantity >= 10
+      )) {
+        setUseMultiContainerFlow(true);
+      }
+    }
+  }, [orderItems]);
+
   // Fetch source assignments on mount (includes workflow types per item)
   useEffect(() => {
     const fetchSourceAssignments = async () => {
@@ -225,6 +258,26 @@ export default function InspectionScreen({
     return workflowPhase === 'pre_mix' ? 'Pre-Mix' : 'Pre-Ship';
   };
 
+  // Use multi-container flow for bulk tote/drum orders
+  if (useMultiContainerFlow && orderItems && orderItems.length === 1) {
+    const item = orderItems[0];
+    const containerType = detectContainerType(item.name) || 'tote';
+    const itemWorkflowType = getItemWorkflowType() || 'direct_resell';
+    
+    return (
+      <MultiContainerInspection
+        orderId={orderId}
+        orderNumber={orderNumber || orderId}
+        customerName={customerName}
+        item={item}
+        workflowType={itemWorkflowType}
+        containerType={containerType}
+        onComplete={onComplete}
+        onSwitchToSupervisor={onSwitchToSupervisor}
+      />
+    );
+  }
+
   return (
     <div className="worker-screen">
       <div className="max-w-4xl mx-auto">
@@ -263,8 +316,7 @@ export default function InspectionScreen({
             {orderItems && orderItems.length > 0 && (() => {
               const filteredItems = orderItems.filter(item =>
                 !item.name?.toLowerCase().includes('discount') &&
-                (!item.unitPrice || item.unitPrice >= 0) &&
-                !item.lineItemKey?.includes('discount')
+                (!item.unitPrice || item.unitPrice >= 0)
               );
               
               if (filteredItems.length === 0) return null;
@@ -459,7 +511,7 @@ export default function InspectionScreen({
                           <p className="text-lg font-bold text-blue-800">
                             Fill From Source{allSources.length > 1 ? 's' : ''}:
                           </p>
-                          {allSources.map((source, idx) => (
+                          {allSources.map((source: any, idx: number) => (
                             <p key={idx} className="text-xl font-bold text-blue-900">
                               {idx + 1}. {source.name || source.sourceContainerName}
                             </p>
