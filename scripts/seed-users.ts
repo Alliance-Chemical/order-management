@@ -1,5 +1,4 @@
-import { auth } from '../lib/auth';
-import { hash } from 'better-auth/crypto';
+// Seed script for creating demo users
 
 // Define your users here - you can add as many as needed
 const users = [
@@ -32,12 +31,8 @@ async function seedUsers() {
     try {
       console.log(`Creating user: ${user.email}`);
       
-      // Hash the password
-      const hashedPassword = await hash(user.password);
-      
-      // Create user directly in database using Better Auth's internal method
-      // Note: In production, you'd use the API endpoint, but for seeding we can use internal methods
-      const result = await fetch('http://localhost:3000/api/auth/sign-up/email', {
+      // Create user using Better Auth's signup endpoint
+      const result = await fetch('http://localhost:3003/api/auth/sign-up/email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,14 +64,14 @@ async function seedUsers() {
   }
   
   console.log('\n✨ User seeding complete!');
-  console.log('\nUsers can now log in at: http://localhost:3000/login');
+  console.log('\nUsers can now log in at: http://localhost:3003/login');
   console.log('\nDefault passwords can be changed after first login.');
   
   process.exit(0);
 }
 
 // Check if dev server is running
-fetch('http://localhost:3000/api/auth')
+fetch('http://localhost:3003/api/auth')
   .then(() => {
     seedUsers();
   })

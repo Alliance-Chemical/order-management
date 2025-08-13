@@ -1,29 +1,33 @@
 import { test, expect } from '@playwright/test'
+import { loginAsUser } from './helpers/auth'
 
 test.describe('Simple Order Workflow Test', () => {
-  const testOrderId = '67890'
+  const testWorkspaceId = '12345678-1234-1234-1234-123456789abc'
   const testOrderNumber = 'TEST-ORDER-67890'
 
   test('Navigate to workspace and verify order details', async ({ page }) => {
+    // For now, skip auth to focus on fixing the test itself
+    // TODO: Re-enable auth once Better Auth is fully working
+    
     // Step 1: Navigate to the test workspace
-    await page.goto(`/workspace/${testOrderId}`)
+    await page.goto(`/workspace/${testWorkspaceId}`)
     
     // Wait for the page to load
     await page.waitForLoadState('networkidle')
     
     // Step 2: Verify the workspace loaded
-    // The page should display the order number
-    const orderHeader = page.locator(`text=Order #${testOrderId}`).first()
+    // The page displays the workspace ID in the header
+    const orderHeader = page.locator('h1').filter({ hasText: testWorkspaceId })
     await expect(orderHeader).toBeVisible({ timeout: 10000 })
     
     // Step 3: Verify tabs are present (supervisor view)
-    const overviewTab = page.locator('text=Overview')
+    const overviewTab = page.locator('button:has-text("Overview")')
     await expect(overviewTab).toBeVisible()
     
-    const preMixTab = page.locator('text=Pre-Mix')
+    const preMixTab = page.locator('button:has-text("Pre-Mix")')
     await expect(preMixTab).toBeVisible()
     
-    const documentsTab = page.locator('text=Documents')
+    const documentsTab = page.locator('button:has-text("Documents")')
     await expect(documentsTab).toBeVisible()
     
     // Step 4: Click on Pre-Mix tab to see inspection items
@@ -37,8 +41,11 @@ test.describe('Simple Order Workflow Test', () => {
   })
 
   test('Test view switching', async ({ page }) => {
+    // For now, skip auth to focus on fixing the test itself
+    // TODO: Re-enable auth once Better Auth is fully working
+    
     // Step 1: Navigate to the workspace
-    await page.goto(`/workspace/${testOrderId}`)
+    await page.goto(`/workspace/${testWorkspaceId}`)
     await page.waitForLoadState('networkidle')
     
     // Step 2: Verify we're in supervisor view by default
@@ -61,7 +68,7 @@ test.describe('Simple Order Workflow Test', () => {
       console.log('✅ Successfully switched to worker view')
     } else {
       // If worker view didn't load, at least verify the page is still functional
-      const pageTitle = page.locator(`text=Order #${testOrderId}`)
+      const pageTitle = page.locator('h1').filter({ hasText: testWorkspaceId })
       await expect(pageTitle).toBeVisible()
       console.log('✅ Page remains functional after view switch attempt')
     }
