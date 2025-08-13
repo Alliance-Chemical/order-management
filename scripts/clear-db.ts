@@ -1,3 +1,9 @@
+import { config } from 'dotenv';
+import path from 'path';
+
+// Load .env.local file
+config({ path: path.resolve(process.cwd(), '.env.local') });
+
 import { db } from '../lib/db';
 import { 
   workspaces, 
