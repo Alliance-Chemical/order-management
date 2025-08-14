@@ -3,10 +3,25 @@
 import React, { useState, useEffect } from 'react';
 import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
+import { HelpButton } from '@/components/instructions/HelpButton';
+import { InstructionModal } from '@/components/instructions/InstructionModal';
+import { QuickTutorial } from '@/components/instructions/QuickTutorial';
+import { taskListInstructions } from '@/components/instructions/instructions-data';
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {
   const [sourceAssignments, setSourceAssignments] = useState<any[]>([]);
   const [itemStatuses, setItemStatuses] = useState<Record<string, 'pending' | 'in_progress' | 'completed'>>({});
+  const [showHelp, setShowHelp] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  
+  // Check if user has seen tutorial
+  useEffect(() => {
+    const hasSeenTutorial = localStorage.getItem('hasSeenWorkerTutorial');
+    if (!hasSeenTutorial) {
+      setShowTutorial(true);
+      localStorage.setItem('hasSeenWorkerTutorial', 'true');
+    }
+  }, []);
   
   // Fetch source assignments to determine workflow types
   useEffect(() => {
@@ -295,6 +310,21 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
           </div>
         )}
       </div>
+      
+      {/* Help Button and Modal */}
+      <HelpButton onClick={() => setShowHelp(true)} />
+      <InstructionModal
+        isOpen={showHelp}
+        onClose={() => setShowHelp(false)}
+        title="How to Use Task List"
+        steps={taskListInstructions}
+      />
+      
+      {/* Quick Tutorial for first-time users */}
+      <QuickTutorial 
+        show={showTutorial} 
+        onClose={() => setShowTutorial(false)} 
+      />
     </div>
   );
 }

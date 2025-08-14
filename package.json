@@ -22,7 +22,6 @@
     "test:watch": "vitest watch",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "clear-db": "tsx scripts/clear-db.ts",
     "reset-db": "tsx scripts/reset-database.ts",
     "test:e2e:debug": "playwright test --debug",
     "test:all": "npm run test:run && npm run test:e2e"
@@ -53,6 +52,7 @@
     "drizzle-orm": "^0.44.4",
     "html5-qrcode": "^2.3.8",
     "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.539.0",
     "multer": "^2.0.2",
     "next": "15.4.6",
     "next-pwa": "^5.6.0",

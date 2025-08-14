@@ -19,6 +19,8 @@ interface QRCode {
   metadata?: any;
   shortCode?: string;
   qrType?: string;
+  encodedData?: any;
+  sourceContainerId?: string;
 }
 
 interface PrintPreparationModalProps {
@@ -461,12 +463,55 @@ export default function PrintPreparationModal({
 
     setPrinting(true);
     try {
+      // Refresh QR codes to get any newly created source QRs
+      const qrResponse = await fetch(`/api/workspace/${order.orderId}/qrcodes`);
+      const qrData = await qrResponse.json();
+      
+      if (!qrData.success) {
+        throw new Error('Failed to fetch updated QR codes');
+      }
+      
+      // Normalize the updated QR codes
+      const updatedQRCodes = (qrData.qrCodes || []).map((qr: any) => {
+        const qrType = qr.qrType || qr.type || qr.qrtype || '';
+        const meta = qr.metadata || qr.encodedData || {};
+        const containerType = meta.containerType || meta.container_type || meta.type || undefined;
+        return {
+          ...qr,
+          type: qrType,
+          qrType: qrType,
+          metadata: { ...meta, containerType },
+          encodedData: qr.encodedData || meta
+        } as QRCode & { metadata: any };
+      });
+      
       // Filter QR codes based on individual item workflow types
-      // Only include source QR if at least one item is pump_and_fill
+      // Include source QRs for pump_and_fill items
       const hasPumpAndFill = sourceAssignments.some(a => a.workflowType === 'pump_and_fill');
-      const qrCodesToPrint = hasPumpAndFill 
-        ? qrCodes // Include all QR codes including source
-        : qrCodes.filter(qr => !qr.metadata?.isSource); // Exclude source for all-direct-resell orders
+      
+      let qrCodesToPrint = updatedQRCodes;
+      
+      if (hasPumpAndFill) {
+        // For pump & fill, include master + source QRs for assigned containers + container QRs
+        const assignedSourceIds = sourceAssignments
+          .filter(a => a.workflowType === 'pump_and_fill')
+          .flatMap(a => a.sourceContainers.map((sc: any) => sc.id));
+        
+        qrCodesToPrint = updatedQRCodes.filter((qr: any) => {
+          // Include master QR
+          if (qr.qrType === 'order_master' && !qr.encodedData?.isSource) return true;
+          // Include source QRs for assigned source containers
+          if (qr.qrType === 'source' && qr.sourceContainerId && assignedSourceIds.includes(qr.sourceContainerId)) return true;
+          // Include container QRs
+          if (qr.qrType === 'container') return true;
+          return false;
+        });
+      } else {
+        // For all-direct-resell orders, exclude all source QRs
+        qrCodesToPrint = updatedQRCodes.filter((qr: any) => 
+          qr.qrType !== 'source' && !qr.metadata?.isSource && !qr.encodedData?.isSource
+        );
+      }
       
       const response = await fetch('/api/qr/print', {
         method: 'POST',
@@ -962,13 +1007,18 @@ export default function PrintPreparationModal({
                       return null; // No source labels needed if all items are direct resell
                     }
                     
-                    // Count actual source QRs that exist in the qrCodes array
-                    const actualSourceQRs = qrCodes.filter(qr => 
-                      qr.type === 'source' || (qr.metadata?.isSource === true)
-                    ).length;
+                    // Count source labels for pump & fill items
+                    const pumpAndFillItems = sourceAssignments.filter(a => a.workflowType === 'pump_and_fill');
+                    const uniqueSourceContainers = new Set<string>();
                     
-                    // Use the actual source QR count (what will actually print)
-                    const sourceCount = actualSourceQRs;
+                    pumpAndFillItems.forEach(item => {
+                      item.sourceContainers.forEach((sc: any) => {
+                        if (sc.id) uniqueSourceContainers.add(sc.id);
+                      });
+                    });
+                    
+                    // Use the count of unique source containers that will have labels
+                    const sourceCount = uniqueSourceContainers.size;
                     
                     if (sourceCount > 0) {
                       return (
@@ -1018,13 +1068,20 @@ export default function PrintPreparationModal({
                     </span>
                     <span className="text-lg font-bold text-blue-600">
                       {(() => {
-                        // Count actual source QRs that exist in the qrCodes array
-                        const actualSourceQRs = qrCodes.filter(qr => 
-                          qr.type === 'source' || (qr.metadata?.isSource === true)
-                        ).length;
+                        // Count source labels for pump & fill items
+                        const pumpAndFillItems = sourceAssignments.filter(a => a.workflowType === 'pump_and_fill');
+                        const uniqueSourceContainers = new Set<string>();
+                        
+                        pumpAndFillItems.forEach(item => {
+                          item.sourceContainers.forEach((sc: any) => {
+                            if (sc.id) uniqueSourceContainers.add(sc.id);
+                          });
+                        });
+                        
+                        const sourceCount = uniqueSourceContainers.size;
                         
                         // Calculate total based on what will actually print
-                        return labelSummary.master + actualSourceQRs + labelSummary.drums + 
+                        return labelSummary.master + sourceCount + labelSummary.drums + 
                                labelSummary.totes + labelSummary.pallets;
                       })()}
                     </span>

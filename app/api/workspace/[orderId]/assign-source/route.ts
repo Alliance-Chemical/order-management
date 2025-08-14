@@ -108,13 +108,13 @@ export async function POST(
             shortCode: makeShort(),
             sourceContainerId: sourceContainerId,  // Use the new dedicated column
             orderId,
-            orderNumber: String(orderId),
+            orderNumber: workspaceRecord.orderNumber,  // Use actual order number from workspace
             containerNumber: null,
             chemicalName: chemicalName,
             encodedData: { 
               type: 'source', 
               orderId, 
-              orderNumber: String(orderId), 
+              orderNumber: workspaceRecord.orderNumber,  // Use actual order number from workspace
               sourceId: sourceQRId,
               sourceContainerId,
               sourceContainerName,

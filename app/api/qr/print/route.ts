@@ -185,8 +185,8 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   const getProductName = (record: any): string => {
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      const chemicalName = record.chemicalName || record.encodedData?.chemicalName || 'SOURCE CONTAINER';
-      return chemicalName.toUpperCase();
+      // Clear label for warehouse workers
+      return 'SOURCE CONTAINER';
     }
     
     switch (record.qrType) {
@@ -209,13 +209,9 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   const getItemInfo = (record: any): string => {
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      // Source labels show the container type if available
-      const containerName = record.encodedData?.sourceContainerName || '';
-      if (containerName.includes(' - ')) {
-        // Extract container type from name (e.g., "Chemical - 275 Gal Tote" -> "275 Gal Tote")
-        return containerName.split(' - ')[1] || '';
-      }
-      return '';
+      // Show the actual source container name that was selected
+      const sourceContainerName = record.encodedData?.sourceContainerName || record.chemicalName || '';
+      return sourceContainerName.toUpperCase();
     }
     
     switch (record.qrType) {
