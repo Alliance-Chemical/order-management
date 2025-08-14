@@ -205,12 +205,44 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     }
   };
   
+  // Helper function to get source information for container labels
+  const getSourceInfo = (record: any): string => {
+    if (record.qrType !== 'container') return '';
+    
+    const assignment = findSourceAssignment(record);
+    if (!assignment || assignment.workflowType !== 'pump_and_fill') return '';
+    
+    // Get the source container names
+    if (assignment.sourceContainers && assignment.sourceContainers.length > 0) {
+      const sourceNames = assignment.sourceContainers.map((sc: any) => {
+        // Extract just the product name from the source container name
+        // Format is typically "Drum #ABC123 - Product Name"
+        const parts = sc.name?.split(' - ');
+        if (parts && parts.length > 1) {
+          return parts[1].toUpperCase();
+        }
+        return sc.name?.toUpperCase() || 'SOURCE';
+      });
+      
+      // Return first source (primary source for this container)
+      return `FROM: ${sourceNames[0]}`;
+    }
+    
+    return '';
+  };
+  
   // Helper function to get item info - ONLY information about the label itself
   const getItemInfo = (record: any): string => {
     // For source QRs created on-demand
     if (record.qrType === 'source') {
       // Show the actual source container name that was selected
       const sourceContainerName = record.encodedData?.sourceContainerName || record.chemicalName || '';
+      // Extract container type and ID from the name (format: "Drum #ABC123 - Product Name")
+      const parts = sourceContainerName.split(' - ');
+      if (parts.length > 1) {
+        // Show the product name prominently
+        return `<div style="font-size: 16pt; font-weight: bold; color: #333;">${parts[1].toUpperCase()}</div><div style="font-size: 12pt; color: #666; margin-top: 4px;">${parts[0]}</div>`;
+      }
       return sourceContainerName.toUpperCase();
     }
     
@@ -247,6 +279,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     const labelType = getLabelType(record);
     const productName = getProductName(record);
     const itemInfo = getItemInfo(record);
+    const sourceInfo = getSourceInfo(record);
     const shortCode = record.shortCode || '';
     
     // Standardized HTML structure for ALL label types
@@ -258,6 +291,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             ${labelType ? `<span class="label-type-badge">${labelType}</span>` : ''}
           </div>
           <div class="product-name">${productName}</div>
+          ${sourceInfo ? `<div class="source-info">${sourceInfo}</div>` : ''}
           <img src="${qrDataUrl}" alt="QR Code">
           <div class="item-info">${itemInfo}</div>
           <div class="footer">
@@ -356,6 +390,17 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             max-width: 3.5in;
             word-wrap: break-word;
             margin: 0.1in 0;
+          }
+          
+          .source-info {
+            font-size: 14pt;
+            color: #0066cc;
+            font-weight: bold;
+            margin: -0.05in 0 0.1in 0;
+            background-color: #e6f2ff;
+            padding: 4px 12px;
+            border-radius: 4px;
+            display: inline-block;
           }
           
           img {
