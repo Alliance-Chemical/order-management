@@ -168,7 +168,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      return 'SCAN AT SOURCE';
+      return 'SOURCE';
     }
     
     switch (record.qrType) {
@@ -185,8 +185,13 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   const getProductName = (record: any): string => {
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      // Clear label for warehouse workers
-      return 'SOURCE CONTAINER';
+      // Show the actual chemical name from the source container
+      const chemicalName = record.chemicalName || record.encodedData?.chemicalName || 'SOURCE';
+      // Truncate if too long for label
+      if (chemicalName.length > 25) {
+        return chemicalName.substring(0, 22).toUpperCase() + '...';
+      }
+      return chemicalName.toUpperCase();
     }
     
     switch (record.qrType) {
@@ -198,6 +203,10 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         const chemicalName = record.chemicalName || record.encodedData?.itemName || 'Product';
         if (chemicalName === 'Product') {
           return '<span style="color: red;">PRODUCT NAME MISSING</span>';
+        }
+        // Truncate if too long for label
+        if (chemicalName.length > 25) {
+          return chemicalName.substring(0, 22).toUpperCase() + '...';
         }
         return chemicalName.toUpperCase();
       default:
@@ -235,15 +244,26 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   const getItemInfo = (record: any): string => {
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      // Show the actual source container name that was selected
-      const sourceContainerName = record.encodedData?.sourceContainerName || record.chemicalName || '';
-      // Extract container type and ID from the name (format: "Drum #ABC123 - Product Name")
-      const parts = sourceContainerName.split(' - ');
-      if (parts.length > 1) {
-        // Show the product name prominently
-        return `<div style="font-size: 16pt; font-weight: bold; color: #333;">${parts[1].toUpperCase()}</div><div style="font-size: 12pt; color: #666; margin-top: 4px;">${parts[0]}</div>`;
+      // Show the container type and ID
+      const sourceContainerName = record.encodedData?.sourceContainerName || '';
+      const sourceContainerId = record.encodedData?.sourceContainerId || record.sourceContainerId || '';
+      
+      // Extract container type from the name (format: "Drum #ABC123 - Product Name" or "275 Gal Tote #XYZ789")
+      if (sourceContainerName) {
+        const dashIndex = sourceContainerName.indexOf(' - ');
+        if (dashIndex > -1) {
+          // Get just the container part (before the dash)
+          const containerPart = sourceContainerName.substring(0, dashIndex);
+          return `<div style="font-size: 14pt; color: #666;">${containerPart}</div>`;
+        }
       }
-      return sourceContainerName.toUpperCase();
+      
+      // Fallback to just the ID if we can't parse the name
+      if (sourceContainerId) {
+        return `<div style="font-size: 14pt; color: #666;">Container #${sourceContainerId}</div>`;
+      }
+      
+      return 'SOURCE';
     }
     
     switch (record.qrType) {
@@ -284,11 +304,12 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     
     // Standardized HTML structure for ALL label types
     if (is4x6) {
+      const badgeClass = record.qrType === 'source' ? 'source' : '';
       return `
         <div class="label-container">
           <div class="header">
             <span class="order-number">Order #${orderNumber}</span>
-            ${labelType ? `<span class="label-type-badge">${labelType}</span>` : ''}
+            ${labelType ? `<span class="label-type-badge ${badgeClass}">${labelType}</span>` : ''}
           </div>
           <div class="product-name">${productName}</div>
           ${sourceInfo ? `<div class="source-info">${sourceInfo}</div>` : ''}
@@ -382,37 +403,49 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             font-weight: bold;
           }
           
+          .label-type-badge.source {
+            background-color: #0066cc;
+          }
+          
           /* Middle section with Product, QR, Info */
           .product-name {
-            font-size: 20pt;
+            font-size: 18pt;
             font-weight: bold;
             line-height: 1.1;
             max-width: 3.5in;
             word-wrap: break-word;
-            margin: 0.1in 0;
+            margin: 0.08in 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-height: 0.5in;
           }
           
           .source-info {
-            font-size: 14pt;
+            font-size: 12pt;
             color: #0066cc;
             font-weight: bold;
-            margin: -0.05in 0 0.1in 0;
+            margin: -0.03in 0 0.08in 0;
             background-color: #e6f2ff;
-            padding: 4px 12px;
+            padding: 3px 10px;
             border-radius: 4px;
             display: inline-block;
+            max-width: 3.5in;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
           }
           
           img {
-            width: 2.2in;
-            height: 2.2in;
-            margin: 0.1in 0;
+            width: 2in;
+            height: 2in;
+            margin: 0.08in 0;
           }
           
           .item-info {
-            font-size: 14pt;
+            font-size: 13pt;
             color: #333;
-            margin: 0.05in 0;
+            margin: 0.04in 0;
+            line-height: 1.2;
           }
           
           /* Bottom section with Short Code */
@@ -434,12 +467,12 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           }
           
           .short-code {
-            font-size: 24pt;
+            font-size: 20pt;
             font-weight: bold;
             font-family: 'Courier New', monospace;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.06em;
             background-color: #f0f0f0;
-            padding: 4px 12px;
+            padding: 3px 10px;
             border-radius: 6px;
             display: block;
           }
