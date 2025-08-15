@@ -3,9 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { FastQRScanner } from '@/components/qr/FastQRScanner';
 import IssueModal from './IssueModal';
-import { HelpButton } from '@/components/instructions/HelpButton';
-import { InstructionModal } from '@/components/instructions/InstructionModal';
-import { scanningInstructions } from '@/components/instructions/instructions-data';
 
 interface Container {
   id: string;
@@ -74,7 +71,6 @@ export default function MultiContainerInspection({
   const [currentIssue, setCurrentIssue] = useState<{ container: number; question: string } | null>(null);
   const [scanSpeed, setScanSpeed] = useState<number>(0);
   const [lastScanTime, setLastScanTime] = useState<number>(0);
-  const [showHelp, setShowHelp] = useState(false);
 
   const questions = INSPECTION_QUESTIONS[containerType] || INSPECTION_QUESTIONS.tote;
 
@@ -426,15 +422,6 @@ export default function MultiContainerInspection({
           onIssueReported={handleIssueReported}
         />
       )}
-      
-      {/* Help Button and Modal */}
-      <HelpButton onClick={() => setShowHelp(true)} />
-      <InstructionModal
-        isOpen={showHelp}
-        onClose={() => setShowHelp(false)}
-        title="How to Scan Containers"
-        steps={scanningInstructions}
-      />
     </div>
   );
 }

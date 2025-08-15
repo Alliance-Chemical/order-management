@@ -1,10 +1,23 @@
 import { config } from 'dotenv';
 import path from 'path';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 
 // Load .env.local file
 config({ path: path.resolve(process.cwd(), '.env.local') });
 
-import { db } from '../lib/db';
+// Use DATABASE_URL from environment, or override with qr-workspace-test if needed
+const DATABASE_URL = process.env.DATABASE_URL || "postgres://default:Lm6cG2iOHprI@ep-blue-bar-a4hj4ojg-pooler.us-east-1.aws.neon.tech/qr-workspace-test?sslmode=require";
+
+const client = postgres(DATABASE_URL, {
+  prepare: false,
+});
+
+import * as qrSchema from '../lib/db/schema/qr-workspace';
+import * as authSchema from '../lib/db/schema/auth';
+
+const schema = { ...qrSchema, ...authSchema };
+const db = drizzle(client, { schema });
 import { 
   workspaces, 
   qrCodes, 
@@ -92,8 +105,12 @@ async function clearDatabase() {
     console.log('\n✅ Database cleared successfully!');
     console.log('All tables have been emptied and sequences reset.\n');
     
+    // Close the database connection
+    await client.end();
+    
   } catch (error) {
     console.error('❌ Error clearing database:', error);
+    await client.end();
     process.exit(1);
   }
   

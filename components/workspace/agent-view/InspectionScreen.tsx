@@ -176,7 +176,7 @@ export default function InspectionScreen({
       
       return () => clearTimeout(timer);
     }
-  }, [currentItem, sourceAssignments, orderItems, currentIndex, autoSkipping]);
+  }, [currentItem, sourceAssignments, orderItems, currentIndex, autoSkipping, results, notes, items.length, onComplete]);
 
   const handleQRScan = (qrData: string) => {
     // Store the scanned QR data
@@ -278,6 +278,12 @@ export default function InspectionScreen({
     );
   }
 
+  // Jump to specific inspection step
+  const handleJumpToStep = (stepIndex: number) => {
+    setCurrentIndex(stepIndex);
+    setAutoSkipping(false);
+  };
+
   return (
     <div className="worker-screen">
       <div className="max-w-4xl mx-auto">
@@ -349,6 +355,72 @@ export default function InspectionScreen({
                 className="worker-progress-bar"
                 style={{ width: `${progress}%` }}
               />
+            </div>
+            
+            {/* Interactive Timeline Navigation */}
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-between gap-2 overflow-x-auto">
+                {items.map((item, idx) => {
+                  const stepResult = results[item.id];
+                  const isCurrentStep = idx === currentIndex;
+                  const isCompleted = stepResult === 'pass' || stepResult === 'fail';
+                  
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleJumpToStep(idx)}
+                      className={`
+                        flex-shrink-0 flex flex-col items-center gap-1 p-2 rounded-lg transition-all
+                        ${isCurrentStep ? 'bg-blue-100 border-2 border-blue-500' : 
+                          isCompleted ? 'bg-gray-50 hover:bg-gray-100' : 
+                          'bg-white hover:bg-gray-50 border border-gray-200'}
+                      `}
+                      title={item.label}
+                    >
+                      {/* Step Number Circle */}
+                      <div className={`
+                        w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
+                        ${isCurrentStep ? 'bg-blue-500 text-white' :
+                          stepResult === 'pass' ? 'bg-green-500 text-white' :
+                          stepResult === 'fail' ? 'bg-red-500 text-white' :
+                          'bg-gray-300 text-gray-700'}
+                      `}>
+                        {stepResult === 'pass' ? '✓' : 
+                         stepResult === 'fail' ? '✗' : 
+                         idx + 1}
+                      </div>
+                      
+                      {/* Step Label (abbreviated on mobile) */}
+                      <span className={`
+                        text-xs font-medium max-w-[60px] truncate
+                        ${isCurrentStep ? 'text-blue-700' : 'text-gray-600'}
+                      `}>
+                        {item.label.split(' ').slice(0, 2).join(' ')}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {/* Legend */}
+              <div className="flex items-center justify-center gap-4 mt-3 text-xs text-gray-500">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                  <span>Current</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <span>Passed</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <span>Failed</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-gray-300"></div>
+                  <span>Pending</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

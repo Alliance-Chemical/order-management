@@ -70,9 +70,16 @@ svg {
 
 /* Worker View Styles - High Contrast & Large Touch Targets */
 @layer components {
-  /* Worker view button styles */
+  /* Worker view button styles - Mobile optimized */
   .worker-btn {
-    @apply min-h-[60px] px-8 py-4 text-worker-lg font-bold rounded-lg transition-all transform active:scale-95;
+    @apply min-h-[60px] px-4 py-4 text-worker-lg font-bold rounded-lg transition-all transform active:scale-95 w-full max-w-full;
+  }
+  
+  /* Larger padding on desktop */
+  @media (min-width: 768px) {
+    .worker-btn {
+      @apply px-8;
+    }
   }
   
   .worker-btn-green {
@@ -110,11 +117,25 @@ svg {
   
   /* Worker view container styles */
   .worker-screen {
-    @apply min-h-screen bg-white p-6;
+    @apply min-h-screen bg-white p-2;
+  }
+  
+  /* Larger padding on desktop */
+  @media (min-width: 768px) {
+    .worker-screen {
+      @apply p-6;
+    }
   }
   
   .worker-card {
-    @apply bg-white rounded-xl shadow-xl border-2 border-gray-200 p-8;
+    @apply bg-white rounded-xl shadow-xl border-2 border-gray-200 p-4 mx-4 max-w-none;
+  }
+  
+  /* Larger padding on desktop */
+  @media (min-width: 768px) {
+    .worker-card {
+      @apply p-8 mx-0;
+    }
   }
   
   /* Worker progress bar */

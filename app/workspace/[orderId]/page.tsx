@@ -204,18 +204,33 @@ export default function WorkspacePage() {
         // Get inspection items based on workflow phase
         // Dynamically adjust inspection items based on workflow assignments
         const sourceAssignments = (workspace.moduleStates as any)?.sourceAssignments || [];
-        const hasDirectResellItems = sourceAssignments.some((a: any) => a.workflowType === 'direct_resell');
-        const hasPumpAndFillItems = sourceAssignments.some((a: any) => a.workflowType === 'pump_and_fill');
+        
+        // If a specific item was selected, check its workflow type
+        let itemWorkflowType = null;
+        if (selectedItem) {
+          const itemAssignment = sourceAssignments.find((sa: any) => {
+            if (!sa.productName || !selectedItem.name) return false;
+            const productNameLower = sa.productName.toLowerCase();
+            const itemNameLower = selectedItem.name.toLowerCase();
+            return itemNameLower.includes(productNameLower) || 
+                   productNameLower.includes(itemNameLower.split('-')[0].trim());
+          });
+          itemWorkflowType = itemAssignment?.workflowType;
+        }
         
         // Build inspection items based on workflow types
         let inspectionItems = [];
         if (workspace.workflowPhase === 'pre_mix') {
-          // Only include source scanning for pump & fill items
-          if (hasPumpAndFillItems) {
-            inspectionItems.push(
-              { id: 'scan_source_qr', label: 'Scan Source QR', description: 'Scan QR code on source container' },
-              { id: 'verify_source_chemical', label: 'Verify Source Chemical', description: 'Confirm source container matches expected chemical' }
-            );
+          // Only include source scanning for pump & fill items or if no specific item selected
+          // If a specific direct resell item is selected, skip source steps entirely
+          if (itemWorkflowType !== 'direct_resell') {
+            const hasPumpAndFillItems = sourceAssignments.some((a: any) => a.workflowType === 'pump_and_fill');
+            if (hasPumpAndFillItems || !selectedItem) {
+              inspectionItems.push(
+                { id: 'scan_source_qr', label: 'Scan Source QR', description: 'Scan QR code on source container' },
+                { id: 'verify_source_chemical', label: 'Verify Source Chemical', description: 'Confirm source container matches expected chemical' }
+              );
+            }
           }
           
           // Common inspection steps for all workflows

@@ -57,9 +57,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // AUTHENTICATION TEMPORARILY DISABLED
-  // Uncomment the block below to re-enable authentication
-  /*
+  // Check if this is a protected route and require authentication
   if ((isProtectedApi && !isPublicApi) || isProtectedPage) {
     
     // Check for Better Auth session
@@ -83,7 +81,6 @@ export async function middleware(request: NextRequest) {
     // TODO: Validate session token with Better Auth
     // For now, we trust the cookie presence
   }
-  */
 
   return NextResponse.next();
 }
