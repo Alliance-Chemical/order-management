@@ -6,8 +6,14 @@ import postgres from 'postgres';
 // Load .env.local file
 config({ path: path.resolve(process.cwd(), '.env.local') });
 
-// Use DATABASE_URL from environment, or override with qr-workspace-test if needed
-const DATABASE_URL = process.env.DATABASE_URL || "postgres://default:Lm6cG2iOHprI@ep-blue-bar-a4hj4ojg-pooler.us-east-1.aws.neon.tech/qr-workspace-test?sslmode=require";
+// Use DATABASE_URL from environment
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (!DATABASE_URL) {
+  console.error('❌ DATABASE_URL not found in environment variables');
+  console.error('Please ensure DATABASE_URL is set in your .env.local file');
+  process.exit(1);
+}
 
 const client = postgres(DATABASE_URL, {
   prepare: false,
