@@ -70,7 +70,8 @@ export async function GET(
     console.log(`[QR] Found workspace: ${workspaceRecord.orderNumber}`);
     const workspaceId = workspaceRecord.id;
 
-    // Fetch all QR codes for this workspace - master first, then source, then containers
+    // Fetch all QR codes for this workspace
+    // Order: Master first, then alternating source->containers grouped by sourceContainerId
     const qrCodeRecords = await db
       .select()
       .from(qrCodes)
@@ -79,9 +80,12 @@ export async function GET(
         sql`CASE 
           WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean IS NOT TRUE THEN 1
           WHEN ${qrCodes.qrType} = 'source' THEN 2
-          WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 2
-          ELSE 3
+          WHEN ${qrCodes.qrType} = 'container' THEN 3
+          WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 4
+          ELSE 5
         END`,
+        qrCodes.sourceContainerId,
+        qrCodes.chemicalName,
         qrCodes.containerNumber
       );
     console.log(`[QR] Found ${qrCodeRecords.length} existing QR codes.`);
@@ -100,9 +104,12 @@ export async function GET(
           sql`CASE 
             WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean IS NOT TRUE THEN 1
             WHEN ${qrCodes.qrType} = 'source' THEN 2
-            WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 2
-            ELSE 3
+            WHEN ${qrCodes.qrType} = 'container' THEN 3
+            WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 4
+            ELSE 5
           END`,
+          qrCodes.sourceContainerId,
+          qrCodes.chemicalName,
           qrCodes.containerNumber
         );
       

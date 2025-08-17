@@ -234,6 +234,35 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     return '';
   };
   
+  // Helper function to get order items list for master label
+  const getOrderItemsList = (record: any, sourceAssignments: any[]): string => {
+    if (record.qrType !== 'master' && record.qrType !== 'order_master') return '';
+    
+    const isSource = record.encodedData?.isSource;
+    if (isSource) return ''; // Don't show items list for source master labels
+    
+    // Get unique product names from source assignments
+    const items = sourceAssignments
+      .map(sa => sa.productName)
+      .filter((value, index, self) => value && self.indexOf(value) === index)
+      .slice(0, 3); // Limit to 3 items to fit on label
+    
+    if (items.length === 0) return '';
+    
+    const itemsList = items.map(item => {
+      // Shorten long product names
+      if (item.length > 30) {
+        return item.substring(0, 27) + '...';
+      }
+      return item;
+    }).join('<br/>');
+    
+    const remaining = sourceAssignments.length - items.length;
+    const moreText = remaining > 0 ? `<br/>+ ${remaining} more items` : '';
+    
+    return `<div style="font-size: 11pt; color: #666; line-height: 1.3; margin-top: 0.1in;">${itemsList}${moreText}</div>`;
+  };
+  
   // Helper function to get item info - ONLY information about the label itself
   const getItemInfo = (record: any): string => {
     // For source QRs created on-demand
@@ -327,11 +356,14 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     const productName = getProductName(record);
     const itemInfo = getItemInfo(record);
     const sourceInfo = getSourceInfo(record);
+    const orderItemsList = getOrderItemsList(record, sourceAssignments);
     const shortCode = record.shortCode || '';
     
     // Standardized HTML structure for ALL label types
     if (is4x6) {
       const badgeClass = record.qrType === 'source' ? 'source' : '';
+      const isMasterLabel = record.qrType === 'master' || record.qrType === 'order_master';
+      
       return `
         <div class="label-container">
           <div class="header">
@@ -342,6 +374,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           ${sourceInfo ? `<div class="source-info">${sourceInfo}</div>` : ''}
           <img src="${qrDataUrl}" alt="QR Code">
           <div class="item-info">${itemInfo}</div>
+          ${orderItemsList}
           <div class="footer">
             <span class="scan-code-title">SCAN CODE</span>
             <span class="short-code">${shortCode}</span>
