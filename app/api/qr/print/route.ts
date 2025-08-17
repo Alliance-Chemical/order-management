@@ -187,10 +187,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     if (record.qrType === 'source') {
       // Show the actual chemical name from the source container
       const chemicalName = record.chemicalName || record.encodedData?.chemicalName || 'SOURCE';
-      // Truncate if too long for label
-      if (chemicalName.length > 25) {
-        return chemicalName.substring(0, 22).toUpperCase() + '...';
-      }
+      // Don't truncate - let CSS handle overflow with smaller font
       return chemicalName.toUpperCase();
     }
     
@@ -204,10 +201,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         if (chemicalName === 'Product') {
           return '<span style="color: red;">PRODUCT NAME MISSING</span>';
         }
-        // Truncate if too long for label
-        if (chemicalName.length > 25) {
-          return chemicalName.substring(0, 22).toUpperCase() + '...';
-        }
+        // Don't truncate - let CSS handle overflow with smaller font
         return chemicalName.toUpperCase();
       default:
         return (record.qrType || 'LABEL').toUpperCase();
@@ -442,15 +436,14 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           
           /* Middle section with Product, QR, Info */
           .product-name {
-            font-size: 18pt;
+            font-size: 16pt;
             font-weight: bold;
-            line-height: 1.1;
+            line-height: 1.2;
             max-width: 3.5in;
             word-wrap: break-word;
             margin: 0.08in 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-height: 0.5in;
+            overflow: visible;
+            max-height: none;
           }
           
           .source-info {
