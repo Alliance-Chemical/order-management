@@ -359,7 +359,7 @@ export default function PrintPreparationModal({
               productName: assignment.productName,
               workflowType: assignment.workflowType,
               sourceContainerId: container.id,
-              sourceContainerName: `${container.containerType} #${container.shortCode}`,
+              sourceContainerName: `${container.containerType} #${container.shortCode} - ${container.productTitle}`,
               mode: editingMode // Send mode to backend
             })
           });
@@ -429,7 +429,7 @@ export default function PrintPreparationModal({
             productName: assignment.productName,
             workflowType: assignment.workflowType,
             sourceContainerId: container.id,
-            sourceContainerName: `${container.containerType} #${container.shortCode}`,
+            sourceContainerName: `${container.containerType} #${container.shortCode} - ${container.productTitle}`,
             mode: editingMode
           })
         });

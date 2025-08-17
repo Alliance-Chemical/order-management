@@ -248,18 +248,51 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
       const sourceContainerName = record.encodedData?.sourceContainerName || '';
       const sourceContainerId = record.encodedData?.sourceContainerId || record.sourceContainerId || '';
       
-      // Extract container type from the name (format: "Drum #ABC123 - Product Name" or "275 Gal Tote #XYZ789")
+      // Parse the sourceContainerName which comes in format like "tote275 #ABC123"
       if (sourceContainerName) {
+        // If it's in the format "tote275 #ABC123" or "drum55 #XYZ789"
+        const hashIndex = sourceContainerName.indexOf('#');
+        if (hashIndex > -1) {
+          const containerType = sourceContainerName.substring(0, hashIndex).trim();
+          const shortCode = sourceContainerName.substring(hashIndex + 1).trim();
+          
+          // Convert containerType to readable format
+          let readableType = containerType;
+          if (containerType.toLowerCase() === 'tote275') {
+            readableType = '275 Gal Tote';
+          } else if (containerType.toLowerCase() === 'drum55') {
+            readableType = '55 Gal Drum';
+          } else if (containerType.toLowerCase() === 'tote330') {
+            readableType = '330 Gal Tote';
+          }
+          
+          if (shortCode) {
+            return `<div style="font-size: 14pt; color: #666;">${readableType} #${shortCode}</div>`;
+          } else {
+            return `<div style="font-size: 14pt; color: #666;">${readableType}</div>`;
+          }
+        }
+        
+        // If there's a dash format (old style: "275 Gal Tote #ABC123 - Product")
         const dashIndex = sourceContainerName.indexOf(' - ');
         if (dashIndex > -1) {
           // Get just the container part (before the dash)
           const containerPart = sourceContainerName.substring(0, dashIndex);
           return `<div style="font-size: 14pt; color: #666;">${containerPart}</div>`;
         }
+        
+        // Just return the name as-is if we can't parse it
+        return `<div style="font-size: 14pt; color: #666;">${sourceContainerName}</div>`;
       }
       
-      // Fallback to just the ID if we can't parse the name
+      // Fallback - try to extract a shorter ID from the long format
       if (sourceContainerId) {
+        // If it's a long ID like "7082083123242-275gal1755392262020-0", try to shorten it
+        const idParts = sourceContainerId.split('-');
+        if (idParts.length > 1) {
+          // Use just the first part as a shorter ID
+          return `<div style="font-size: 14pt; color: #666;">Container #${idParts[0]}</div>`;
+        }
         return `<div style="font-size: 14pt; color: #666;">Container #${sourceContainerId}</div>`;
       }
       

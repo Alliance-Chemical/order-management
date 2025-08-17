@@ -97,8 +97,14 @@ export async function POST(
         const makeCode = (suffix: string) => `QR-${orderId}-${suffix}-${now}-${Math.floor(Math.random() * 1000)}`;
         const makeShort = () => Math.random().toString(36).slice(2, 8).toUpperCase();
         
-        // Extract the chemical name from the source container name (e.g., "Isopropyl Alcohol - 275 Gal Tote" -> "Isopropyl Alcohol")
-        const chemicalName = sourceContainerName ? sourceContainerName.split(' - ')[0] : productName || 'Chemical';
+        // Extract the chemical name - prefer productName, then try parsing from sourceContainerName
+        let chemicalName = productName;
+        if (!chemicalName && sourceContainerName) {
+          // Try to extract from sourceContainerName if it has the format "Container - Product"
+          const parts = sourceContainerName.split(' - ');
+          chemicalName = parts.length > 1 ? parts[1] : parts[0];
+        }
+        chemicalName = chemicalName || 'Chemical';
         
         try {
           await db.insert(qrCodes).values({
