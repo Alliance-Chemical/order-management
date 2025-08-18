@@ -163,12 +163,12 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
       if (assignment?.workflowType === 'direct_resell') {
         return 'SCAN TO INSPECT';
       }
-      return ''; // No badge for pump_and_fill containers
+      return 'DESTINATION'; // Make it clear this is the destination container!
     }
     
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      return 'SOURCE';
+      return '🛢️ SOURCE CONTAINER';
     }
     
     switch (record.qrType) {
@@ -455,7 +455,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           
           .label-type-badge {
             display: inline-block;
-            background-color: #ff0000;
+            background-color: #00cc00;
             color: white;
             padding: 3px 10px;
             border-radius: 6px;
@@ -464,7 +464,8 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           }
           
           .label-type-badge.source {
-            background-color: #0066cc;
+            background-color: #ff6600;
+            font-size: 11pt;
           }
           
           /* Middle section with Product, QR, Info */
