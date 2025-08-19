@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run db:migrate` - Generate database migrations
 - `npm run db:studio` - Open Drizzle Studio for database management
 - `npm run reset-db` - Reset database with fresh schema
-- `npm run clear-db` - Clear all database data
+- `npm run clear-db -- --force` - Clear all database data (requires --force flag for safety)
 
 ### Testing
 - `npm test` - Run unit tests with Vitest
@@ -101,8 +101,19 @@ The app provides two distinct interfaces for different user roles:
 
 #### QR Code System
 - **Source QR**: Links to bulk chemical containers
+  - Shows chemical name prominently with container type (275 GAL TOTE, etc)
+  - Orange "SOURCE BULK" badge for clear identification
+  - "FILLS INTO → Customer Order Containers" instruction
 - **Destination QR**: Applied to individual order containers
+  - "TO BE FILLED" badge for pump_and_fill items
+  - Shows "← FILL FROM SOURCE" with specific source container info
+  - Container numbering (1 of 3, etc)
 - **Master Label QR**: Contains full order information
+  - "ORDER MASTER" badge
+  - Shows all order items in bordered "ORDER CONTAINS" section
+- **Direct Resell Items**: Pre-packaged items ready to ship
+  - "READY TO SHIP" badge
+  - "✓ Pre-packaged" indicator
 - URLs encode workspace ID, order details, and container info
 - All QR codes tracked with scan counts and history
 - **Short codes**: 6-8 character alphanumeric codes for manual entry fallback
@@ -148,6 +159,15 @@ Required environment variables in `.env.local`:
 - Log all significant actions to the activity timeline
 - Validate QR codes before processing
 - Handle ShipStation webhook events idempotently
+
+### QR Label Generation
+- Labels generated via `/api/qr/print/route.ts` and `/api/source-containers/print-labels/route.ts`
+- Source container names can be in formats:
+  - `"tote275 #ABC123"` - Container type with code
+  - `"tote275 #- ChemicalName"` - Container with chemical name
+  - Parse carefully to extract chemical name and container info correctly
+- Always ensure source labels show the actual chemical name, not generic text
+- Destination labels must clearly show what source to fill from
 
 ## Edge Cases to Test
 
