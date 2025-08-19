@@ -6,7 +6,7 @@ import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/typ
 
 // Import worker view components
 import EntryScreen from '@/components/workspace/agent-view/EntryScreen';
-import InspectionScreen from '@/components/workspace/agent-view/InspectionScreen';
+import ResilientInspectionScreen from '@/components/workspace/agent-view/ResilientInspectionScreen';
 
 // Import existing supervisor view components
 import OrderOverview from '@/components/workspace/OrderOverview';
@@ -256,7 +256,7 @@ export default function WorkspacePage() {
         const itemsToInspect = selectedItem ? [selectedItem] : (workspace.shipstationData?.items || []);
         
         return (
-          <InspectionScreen
+          <ResilientInspectionScreen
             orderId={orderId}
             orderNumber={workspace.orderNumber}
             customerName={workspace.shipstationData?.shipTo?.name}
