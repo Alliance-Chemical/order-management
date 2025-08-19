@@ -1,7 +1,34 @@
-import { db } from '../lib/db';
-import { workspaces, qrCodes, sourceContainers, activityLog } from '../lib/db/schema/qr-workspace';
+#!/usr/bin/env node
+
+// Load environment variables first, before any other imports
+import { config } from 'dotenv';
+config({ path: '.env.local' });
+
+// Now verify the env is loaded
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL not found in environment variables');
+  console.error('Please ensure .env.local contains DATABASE_URL');
+  process.exit(1);
+}
+
+// Now we can safely import modules that depend on env vars
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import * as qrSchema from '../lib/db/schema/qr-workspace';
+import * as authSchema from '../lib/db/schema/auth';
 import { v4 as uuidv4 } from 'uuid';
-import { sql } from 'drizzle-orm';
+import { sql, inArray } from 'drizzle-orm';
+
+// Create our own database connection for the seed script
+const client = postgres(process.env.DATABASE_URL, {
+  prepare: false,
+});
+
+const schema = { ...qrSchema, ...authSchema };
+const db = drizzle(client, { schema });
+
+// Destructure what we need from the schema
+const { workspaces, qrCodes, activityLog } = qrSchema;
 
 const DEMO_ORDERS = [
   {
@@ -66,7 +93,16 @@ async function seedDemoData() {
   try {
     // Clear existing demo data
     console.log('🧹 Cleaning existing demo data...');
-    await db.delete(activityLog).where(sql`order_id >= 99000`);
+    
+    // First get workspace IDs for demo orders
+    const demoWorkspaces = await db.select().from(workspaces).where(sql`order_id >= 99000`);
+    const workspaceIds = demoWorkspaces.map(w => w.id);
+    
+    // Delete related data if exists
+    if (workspaceIds.length > 0) {
+      await db.delete(activityLog).where(inArray(activityLog.workspaceId, workspaceIds));
+    }
+    
     await db.delete(qrCodes).where(sql`order_id >= 99000`);
     await db.delete(workspaces).where(sql`order_id >= 99000`);
     
@@ -81,6 +117,7 @@ async function seedDemoData() {
         id: workspaceId,
         orderId: order.orderId,
         orderNumber: order.orderNumber,
+        workspaceUrl: `/workspace/${order.orderId}`,
         status: order.phase === 'pending' ? 'pending' : 'active',
         workflowPhase: order.phase,
         workflowType: order.workflowType,
@@ -116,19 +153,24 @@ async function seedDemoData() {
       const qrTypes = ['source', 'destination', 'order_master'];
       for (const type of qrTypes) {
         const shortCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const qrCode = `QR-${order.orderId}-${type}-${shortCode}`;
         
         await db.insert(qrCodes).values({
           id: uuidv4(),
+          workspaceId,
+          qrType: type,
+          qrCode,
+          shortCode,
           orderId: order.orderId,
           orderNumber: order.orderNumber,
-          type: type as any,
-          shortCode,
-          url: `${process.env.NEXT_PUBLIC_APP_URL}/workspace/${order.orderId}?qr=${shortCode}`,
-          metadata: {
+          encodedData: {
             workspaceId,
+            orderId: order.orderId,
             customerName: order.customerName,
-            items: order.items
-          }
+            items: order.items,
+            type
+          },
+          qrUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3003'}/workspace/${order.orderId}?qr=${shortCode}`
         });
       }
       
@@ -136,42 +178,33 @@ async function seedDemoData() {
       await db.insert(activityLog).values({
         id: uuidv4(),
         workspaceId,
-        orderId: order.orderId,
-        action: 'workspace_created',
-        description: `Demo workspace created for order ${order.orderNumber}`,
-        metadata: { demo: true },
-        userId: 'demo-user'
+        activityType: 'workspace_created',
+        activityDescription: `Demo workspace created for order ${order.orderNumber}`,
+        performedBy: 'demo-user',
+        metadata: { demo: true, orderId: order.orderId }
       });
     }
     
-    // Create demo source containers
-    const demoContainers = [
-      { id: 'DEMO-100', chemical: 'D-Limonene 99%', capacity: 275, currentVolume: 250 },
-      { id: 'DEMO-101', chemical: 'Isopropyl Alcohol 70%', capacity: 275, currentVolume: 180 },
-      { id: 'DEMO-102', chemical: 'Acetone Technical Grade', capacity: 55, currentVolume: 55 },
-      { id: 'DEMO-103', chemical: 'Citrus Degreaser Concentrate', capacity: 275, currentVolume: 200 },
-      { id: 'DEMO-104', chemical: 'Mineral Spirits', capacity: 275, currentVolume: 150 }
-    ];
-    
-    for (const container of demoContainers) {
-      await db.insert(sourceContainers).values({
-        id: uuidv4(),
-        containerNumber: container.id,
-        chemicalName: container.chemical,
-        capacity: container.capacity,
-        currentVolume: container.currentVolume,
-        location: 'Demo Warehouse - Rack A',
-        status: 'active',
-        lastInspected: new Date()
-      });
-    }
+    // Note: Source containers require Shopify product data which we don't have for demo
+    // In a real scenario, these would be created via Shopify sync
     
     console.log('✅ Demo seed completed successfully!');
     console.log(`📊 Created ${DEMO_ORDERS.length} demo orders`);
-    console.log(`🏭 Created ${demoContainers.length} source containers`);
+    console.log('');
+    console.log('📝 Demo Orders:');
+    DEMO_ORDERS.forEach(order => {
+      console.log(`  - ${order.orderNumber}: ${order.customerName} (${order.workflowType})`);
+      console.log(`    URL: http://localhost:3003/workspace/${order.orderId}`);
+    });
+    console.log('');
+    console.log('🚀 Access the demo at: http://localhost:3003');
+    
+    // Close the database connection
+    await client.end();
     
   } catch (error) {
     console.error('❌ Demo seed failed:', error);
+    await client.end();
     process.exit(1);
   }
 }
