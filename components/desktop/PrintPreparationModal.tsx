@@ -321,11 +321,38 @@ export default function PrintPreparationModal({
       }
       
       // Handle multiple containers (for duplicates)
-      const newContainers = containers.map(container => ({
-        id: container.id,
-        name: `${container.containerType} #${container.shortCode} - ${container.productTitle}`,
-        ...container
-      }));
+      const newContainers = containers.map(container => {
+        // Create a clear, informative name for the source container
+        let name = '';
+        const containerTypeDisplay = container.containerType === 'tote275' ? '275 Gal Tote' : 
+                                     container.containerType === 'drum55' ? '55 Gal Drum' : 
+                                     container.containerType === 'tote330' ? '330 Gal Tote' : 
+                                     container.containerType;
+        
+        if (container.productTitle) {
+          // If we have a chemical/product name, show it prominently
+          name = container.productTitle;
+          if (container.shortCode) {
+            // Add container info if we have a code
+            name += ` (${containerTypeDisplay} #${container.shortCode})`;
+          } else {
+            // Just add container type
+            name += ` (${containerTypeDisplay})`;
+          }
+        } else if (container.shortCode) {
+          // No product title but have a code
+          name = `${containerTypeDisplay} #${container.shortCode}`;
+        } else {
+          // Fallback
+          name = containerTypeDisplay;
+        }
+        
+        return {
+          id: container.id,
+          name,
+          ...container
+        };
+      });
       
       // Update local state
       setSourceAssignments(prev => prev.map(assignment => {
@@ -383,11 +410,38 @@ export default function PrintPreparationModal({
     if (!assignment) return;
     
     // Proceed with the assignment despite the mismatch
-    const newContainers = containers.map(container => ({
-      id: container.id,
-      name: `${container.containerType} #${container.shortCode} - ${container.productTitle}`,
-      ...container
-    }));
+    const newContainers = containers.map(container => {
+      // Create a clear, informative name for the source container
+      let name = '';
+      const containerTypeDisplay = container.containerType === 'tote275' ? '275 Gal Tote' : 
+                                   container.containerType === 'drum55' ? '55 Gal Drum' : 
+                                   container.containerType === 'tote330' ? '330 Gal Tote' : 
+                                   container.containerType;
+      
+      if (container.productTitle) {
+        // If we have a chemical/product name, show it prominently
+        name = container.productTitle;
+        if (container.shortCode) {
+          // Add container info if we have a code
+          name += ` (${containerTypeDisplay} #${container.shortCode})`;
+        } else {
+          // Just add container type
+          name += ` (${containerTypeDisplay})`;
+        }
+      } else if (container.shortCode) {
+        // No product title but have a code
+        name = `${containerTypeDisplay} #${container.shortCode}`;
+      } else {
+        // Fallback
+        name = containerTypeDisplay;
+      }
+      
+      return {
+        id: container.id,
+        name,
+        ...container
+      };
+    });
     
     // Update local state
     setSourceAssignments(prev => prev.map(assignment => {
@@ -653,9 +707,14 @@ export default function PrintPreparationModal({
                                   return (
                                     <div key={idx}>
                                       <div className="flex items-center justify-between">
-                                        <p className="text-sm text-green-600">
-                                          ✓ Source {idx + 1}: {container.name}
-                                        </p>
+                                        <div>
+                                          <p className="text-sm font-medium text-gray-700">
+                                            Source {idx + 1}:
+                                          </p>
+                                          <p className="text-sm text-green-600 font-semibold">
+                                            ✓ {container.name}
+                                          </p>
+                                        </div>
                                         <div className="flex gap-1">
                                           <button
                                             onClick={() => {
