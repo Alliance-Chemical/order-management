@@ -146,19 +146,28 @@ function generateSourceLabelsHTML(labelsData: any[], labelSize: string): string 
       return `
         <div class="label-single">
           <div class="header">
-            <span class="icon">${icon}</span>
-            <span class="title">SOURCE CONTAINER</span>
+            <div class="source-badge">SOURCE</div>
+            <span class="title">Bulk Chemical Container</span>
           </div>
-          <div class="product-name">${container.productTitle}</div>
+          <div class="chemical-name">${container.productTitle}</div>
           ${container.variantTitle ? `<div class="variant">${container.variantTitle}</div>` : ''}
-          <img src="${qrDataUrl}" alt="QR Code">
-          <div class="container-info">
-            <div class="container-type">${container.containerType.toUpperCase()} - ${container.capacity}</div>
-            ${container.sku ? `<div class="sku">SKU: ${container.sku}</div>` : ''}
+          <div class="container-details">
+            <span class="icon">${icon}</span>
+            <span class="container-type">${container.containerType.toUpperCase()} - ${container.capacity}</span>
           </div>
-          <div class="short-code">${container.shortCode}</div>
+          <img src="${qrDataUrl}" alt="QR Code">
+          <div class="usage-info">
+            <div class="usage-label">USE FOR FILLING:</div>
+            <div class="usage-items">Customer Order Containers</div>
+          </div>
+          <div class="scan-section">
+            <div class="scan-label">SCAN CODE</div>
+            <div class="short-code">${container.shortCode}</div>
+            <div class="scan-instruction">Scan QR or enter code manually</div>
+          </div>
           <div class="footer">
             <div class="location">${container.warehouseLocation || 'Location: TBD'}</div>
+            ${container.sku ? `<div class="sku">SKU: ${container.sku}</div>` : ''}
             <div class="hazmat-info">
               ${container.hazmatClass ? `<span class="hazmat">HAZ: ${container.hazmatClass}</span>` : ''}
               ${container.unNumber ? `<span class="un">UN: ${container.unNumber}</span>` : ''}
@@ -215,34 +224,53 @@ function generateSourceLabelsHTML(labelsData: any[], labelSize: string): string 
           
           .header {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 0.2in;
-            margin-bottom: ${is4x6 ? '0.2in' : '0.1in'};
-            padding-bottom: ${is4x6 ? '0.15in' : '0.1in'};
-            border-bottom: 2px solid #007bff;
+            gap: 0.05in;
+            margin-bottom: ${is4x6 ? '0.15in' : '0.1in'};
+            padding-bottom: ${is4x6 ? '0.1in' : '0.05in'};
+            border-bottom: 3px solid #ff6600;
             width: 100%;
           }
           
-          .icon {
-            font-size: ${is4x6 ? '32pt' : '20pt'};
+          .source-badge {
+            background: #ff6600;
+            color: white;
+            font-size: ${is4x6 ? '20pt' : '14pt'};
+            font-weight: bold;
+            padding: 0.05in 0.3in;
+            border-radius: 0.1in;
+            letter-spacing: 0.1em;
           }
           
           .title {
-            font-size: ${is4x6 ? '18pt' : '12pt'};
-            font-weight: bold;
-            color: #007bff;
+            font-size: ${is4x6 ? '11pt' : '9pt'};
+            color: #666;
+            text-transform: uppercase;
             letter-spacing: 0.05em;
           }
           
-          .product-name {
-            font-size: ${is4x6 ? '16pt' : '11pt'};
+          .icon {
+            font-size: ${is4x6 ? '24pt' : '16pt'};
+          }
+          
+          .chemical-name {
+            font-size: ${is4x6 ? '20pt' : '14pt'};
             font-weight: bold;
+            margin: ${is4x6 ? '0.15in 0 0.05in 0' : '0.08in 0 0.03in 0'};
+            color: #000;
+            text-align: center;
+            line-height: 1.2;
+          }
+          
+          .container-details {
+            display: flex;
+            align-items: center;
+            gap: 0.1in;
             margin: ${is4x6 ? '0.1in 0' : '0.05in 0'};
-            color: #212529;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            padding: 0.05in 0.1in;
+            background: #f0f0f0;
+            border-radius: 0.05in;
           }
           
           .variant {
@@ -257,16 +285,34 @@ function generateSourceLabelsHTML(labelsData: any[], labelSize: string): string 
             margin: ${is4x6 ? '0.2in 0' : '0.1in 0'};
           }
           
-          .container-info {
+          .container-type {
+            font-weight: bold;
+            color: #333;
             font-size: ${is4x6 ? '12pt' : '9pt'};
+          }
+          
+          .usage-info {
             margin: ${is4x6 ? '0.15in 0' : '0.1in 0'};
+            padding: 0.1in;
+            background: #e8f4fd;
+            border: 2px solid #0066cc;
+            border-radius: 0.05in;
             text-align: center;
           }
           
-          .container-type {
+          .usage-label {
+            font-size: ${is4x6 ? '10pt' : '8pt'};
             font-weight: bold;
-            color: #495057;
-            font-size: ${is4x6 ? '14pt' : '10pt'};
+            color: #0066cc;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.03in;
+          }
+          
+          .usage-items {
+            font-size: ${is4x6 ? '12pt' : '9pt'};
+            color: #333;
+            font-weight: bold;
           }
           
           .sku {
@@ -275,16 +321,36 @@ function generateSourceLabelsHTML(labelsData: any[], labelSize: string): string 
             margin-top: 0.05in;
           }
           
+          .scan-section {
+            margin: ${is4x6 ? '0.15in 0' : '0.1in 0'};
+            text-align: center;
+          }
+          
+          .scan-label {
+            font-size: ${is4x6 ? '10pt' : '8pt'};
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.03in;
+          }
+          
           .short-code {
-            font-size: ${is4x6 ? '20pt' : '14pt'};
+            font-size: ${is4x6 ? '24pt' : '16pt'};
             font-weight: bold;
             font-family: 'Courier New', monospace;
-            letter-spacing: 0.1em;
-            margin: ${is4x6 ? '0.2in 0' : '0.1in 0'};
-            padding: ${is4x6 ? '0.1in 0.2in' : '0.05in 0.1in'};
+            letter-spacing: 0.15em;
+            margin: 0.05in 0;
+            padding: ${is4x6 ? '0.1in 0.3in' : '0.05in 0.15in'};
             background: #ffc107;
             color: #000;
             border-radius: 0.1in;
+            display: inline-block;
+          }
+          
+          .scan-instruction {
+            font-size: ${is4x6 ? '9pt' : '7pt'};
+            color: #666;
+            font-style: italic;
           }
           
           .footer {

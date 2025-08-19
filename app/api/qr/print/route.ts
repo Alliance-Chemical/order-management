@@ -161,21 +161,21 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
       console.log(`[PRINT] Container label - Record: ${record.chemicalName}, Assignment found: ${!!assignment}, WorkflowType: ${assignment?.workflowType}`);
       
       if (assignment?.workflowType === 'direct_resell') {
-        return 'SCAN TO INSPECT';
+        return 'READY TO SHIP';
       }
-      return 'DESTINATION'; // Make it clear this is the destination container!
+      return 'TO BE FILLED'; // Make it clear this needs to be filled!
     }
     
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      return '🛢️ SOURCE CONTAINER';
+      return 'SOURCE BULK';
     }
     
     switch (record.qrType) {
       case 'master':
       case 'order_master':
         const isSource = record.encodedData?.isSource;
-        return isSource ? 'SCAN AT SOURCE' : 'SCAN AT START';
+        return isSource ? 'SOURCE' : 'ORDER MASTER';
       default:
         return '';
     }
@@ -187,21 +187,39 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     if (record.qrType === 'source') {
       // Show the actual chemical name from the source container
       const chemicalName = record.chemicalName || record.encodedData?.chemicalName || 'SOURCE';
-      // Don't truncate - let CSS handle overflow with smaller font
-      return chemicalName.toUpperCase();
+      const containerInfo = record.encodedData?.sourceContainerName || '';
+      
+      // Parse container info to get type
+      let containerType = '';
+      if (containerInfo.includes('tote275')) {
+        containerType = '275 GAL TOTE';
+      } else if (containerInfo.includes('drum55')) {
+        containerType = '55 GAL DRUM';
+      } else if (containerInfo.includes('tote330')) {
+        containerType = '330 GAL TOTE';
+      }
+      
+      // Show clearly this is source material
+      return `<div style="font-size: 20pt; font-weight: bold; line-height: 1.1;">${chemicalName.toUpperCase()}</div>
+              ${containerType ? `<div style="font-size: 14pt; color: #ff6600; margin-top: 0.05in; font-weight: bold;">${containerType}</div>` : ''}`;
     }
     
     switch (record.qrType) {
       case 'master':
       case 'order_master':
         const isSource = record.encodedData?.isSource;
-        return isSource ? 'SOURCE CONTAINER' : 'MASTER LABEL';
+        if (isSource) {
+          return 'SOURCE BULK INVENTORY';
+        }
+        // Show what items are in this order
+        return 'ALL ORDER ITEMS';
       case 'container':
         const chemicalName = record.chemicalName || record.encodedData?.itemName || 'Product';
         if (chemicalName === 'Product') {
           return '<span style="color: red;">PRODUCT NAME MISSING</span>';
         }
-        // Don't truncate - let CSS handle overflow with smaller font
+        
+        // Show product name clearly
         return chemicalName.toUpperCase();
       default:
         return (record.qrType || 'LABEL').toUpperCase();
@@ -210,6 +228,14 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   
   // Helper function to get source information for container labels
   const getSourceInfo = (record: any): string => {
+    if (record.qrType === 'source') {
+      // For source containers, show what they're used for
+      return `<div style="background: #e8f4fd; border: 2px solid #0066cc; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0;">
+              <div style="font-size: 10pt; font-weight: bold; color: #0066cc;">FILLS INTO →</div>
+              <div style="font-size: 12pt; color: #333; margin-top: 0.02in; font-weight: bold;">Customer Order Containers</div>
+            </div>`;
+    }
+    
     if (record.qrType !== 'container') return '';
     
     const assignment = findSourceAssignment(record);
@@ -219,16 +245,39 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     if (assignment.sourceContainers && assignment.sourceContainers.length > 0) {
       const sourceNames = assignment.sourceContainers.map((sc: any) => {
         // Extract just the product name from the source container name
-        // Format is typically "Drum #ABC123 - Product Name"
+        // Format is typically "Drum #ABC123 - Product Name" or "tote275 #ABC123"
         const parts = sc.name?.split(' - ');
         if (parts && parts.length > 1) {
           return parts[1].toUpperCase();
         }
+        
+        // Try to extract container type and code
+        const hashIndex = sc.name?.indexOf('#');
+        if (hashIndex > -1) {
+          const containerPart = sc.name?.substring(0, hashIndex).trim();
+          const code = sc.name?.substring(hashIndex + 1).trim();
+          
+          // Convert containerPart to readable format
+          let readableType = containerPart;
+          if (containerPart.toLowerCase() === 'tote275') {
+            readableType = '275 GAL TOTE';
+          } else if (containerPart.toLowerCase() === 'drum55') {
+            readableType = '55 GAL DRUM';
+          } else if (containerPart.toLowerCase() === 'tote330') {
+            readableType = '330 GAL TOTE';
+          }
+          
+          return `${readableType} #${code}`;
+        }
+        
         return sc.name?.toUpperCase() || 'SOURCE';
       });
       
-      // Return first source (primary source for this container)
-      return `FROM: ${sourceNames[0]}`;
+      // Return first source (primary source for this container) with clear labeling
+      return `<div style="background: #fff3cd; border: 2px solid #ff6600; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0;">
+              <div style="font-size: 10pt; font-weight: bold; color: #ff6600;">← FILL FROM SOURCE</div>
+              <div style="font-size: 14pt; font-weight: bold; color: #333; margin-top: 0.02in;">${sourceNames[0]}</div>
+            </div>`;
     }
     
     return '';
@@ -260,14 +309,17 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     const remaining = sourceAssignments.length - items.length;
     const moreText = remaining > 0 ? `<br/>+ ${remaining} more items` : '';
     
-    return `<div style="font-size: 11pt; color: #666; line-height: 1.3; margin-top: 0.1in;">${itemsList}${moreText}</div>`;
+    return `<div style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 0.08in; border-radius: 0.05in; margin-top: 0.1in;">
+              <div style="font-size: 10pt; font-weight: bold; color: #495057; margin-bottom: 0.05in;">ORDER CONTAINS:</div>
+              <div style="font-size: 11pt; color: #212529; line-height: 1.3;">${itemsList}${moreText}</div>
+            </div>`;
   };
   
   // Helper function to get item info - ONLY information about the label itself
   const getItemInfo = (record: any): string => {
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      // Show the container type and ID
+      // Show the container type and ID clearly
       const sourceContainerName = record.encodedData?.sourceContainerName || '';
       const sourceContainerId = record.encodedData?.sourceContainerId || record.sourceContainerId || '';
       
@@ -279,20 +331,9 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           const containerType = sourceContainerName.substring(0, hashIndex).trim();
           const shortCode = sourceContainerName.substring(hashIndex + 1).trim();
           
-          // Convert containerType to readable format
-          let readableType = containerType;
-          if (containerType.toLowerCase() === 'tote275') {
-            readableType = '275 Gal Tote';
-          } else if (containerType.toLowerCase() === 'drum55') {
-            readableType = '55 Gal Drum';
-          } else if (containerType.toLowerCase() === 'tote330') {
-            readableType = '330 Gal Tote';
-          }
-          
+          // Don't show redundant info - already shown in product name area
           if (shortCode) {
-            return `<div style="font-size: 14pt; color: #666;">${readableType} #${shortCode}</div>`;
-          } else {
-            return `<div style="font-size: 14pt; color: #666;">${readableType}</div>`;
+            return `<div style="font-size: 14pt; color: #666; font-weight: bold;">Container ID: #${shortCode}</div>`;
           }
         }
         
@@ -301,25 +342,11 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         if (dashIndex > -1) {
           // Get just the container part (before the dash)
           const containerPart = sourceContainerName.substring(0, dashIndex);
-          return `<div style="font-size: 14pt; color: #666;">${containerPart}</div>`;
+          return `<div style="font-size: 14pt; color: #666; font-weight: bold;">${containerPart}</div>`;
         }
-        
-        // Just return the name as-is if we can't parse it
-        return `<div style="font-size: 14pt; color: #666;">${sourceContainerName}</div>`;
       }
       
-      // Fallback - try to extract a shorter ID from the long format
-      if (sourceContainerId) {
-        // If it's a long ID like "7082083123242-275gal1755392262020-0", try to shorten it
-        const idParts = sourceContainerId.split('-');
-        if (idParts.length > 1) {
-          // Use just the first part as a shorter ID
-          return `<div style="font-size: 14pt; color: #666;">Container #${idParts[0]}</div>`;
-        }
-        return `<div style="font-size: 14pt; color: #666;">Container #${sourceContainerId}</div>`;
-      }
-      
-      return 'SOURCE';
+      return '';
     }
     
     switch (record.qrType) {
@@ -331,19 +358,21 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           const chemicalName = record.chemicalName || record.encodedData?.itemName || '';
           return chemicalName;
         }
-        // For master labels, show order number is already handled by label header
+        // For master labels, order items list is handled separately
         return '';
       case 'container':
         // Check if this specific item is direct resell
         const assignment = findSourceAssignment(record);
         if (assignment?.workflowType === 'direct_resell') {
-          return ''; // No numbering for direct resell containers
+          // For direct resell, show it's ready
+          const containerType = record.encodedData?.containerType || 'Container';
+          return `<div style="font-size: 14pt; color: #28a745; font-weight: bold;">✓ Pre-packaged ${containerType}</div>`;
         }
         // Container labels show proper numbering using encodedData values
         const containerNum = record.encodedData?.containerNumber || 1;
         const totalContainers = record.encodedData?.totalContainers || 1;
         const containerType = record.encodedData?.containerType || 'Container';
-        return `${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}`;
+        return `<div style="font-size: 14pt; color: #495057; font-weight: bold;">${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}</div>`;
       default:
         return '';
     }
@@ -455,17 +484,19 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           
           .label-type-badge {
             display: inline-block;
-            background-color: #00cc00;
+            background-color: #007bff;
             color: white;
-            padding: 3px 10px;
+            padding: 5px 12px;
             border-radius: 6px;
-            font-size: 10pt;
+            font-size: 11pt;
             font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
           }
           
           .label-type-badge.source {
             background-color: #ff6600;
-            font-size: 11pt;
+            font-size: 12pt;
           }
           
           /* Middle section with Product, QR, Info */
