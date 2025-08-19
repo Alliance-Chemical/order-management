@@ -27,7 +27,7 @@ export default function WorkspacePage() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('worker'); // Default to worker view
-  const [workerStep, setWorkerStep] = useState<WorkerStep>('entry');
+  const [workerStep, setWorkerStep] = useState<AgentStep>('entry');
   const [activeTab, setActiveTab] = useState('overview'); // For supervisor view
   const [selectedItem, setSelectedItem] = useState<any>(null); // Track which item is being inspected
 
