@@ -185,23 +185,50 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   const getProductName = (record: any): string => {
     // For source QRs created on-demand
     if (record.qrType === 'source') {
-      // Show the actual chemical name from the source container
-      const chemicalName = record.chemicalName || record.encodedData?.chemicalName || 'SOURCE';
-      const containerInfo = record.encodedData?.sourceContainerName || '';
+      // Parse the source container name to extract chemical and container info
+      const sourceContainerName = record.encodedData?.sourceContainerName || '';
+      const chemicalName = record.chemicalName || record.encodedData?.chemicalName || '';
       
-      // Parse container info to get type
+      // sourceContainerName format: "tote275 #ABC123" or "tote275 #- ChemicalName"
       let containerType = '';
-      if (containerInfo.includes('tote275')) {
-        containerType = '275 GAL TOTE';
-      } else if (containerInfo.includes('drum55')) {
-        containerType = '55 GAL DRUM';
-      } else if (containerInfo.includes('tote330')) {
-        containerType = '330 GAL TOTE';
+      let containerCode = '';
+      let extractedChemical = chemicalName; // Default to provided chemical name
+      
+      if (sourceContainerName) {
+        // Check for hash separator
+        const hashIndex = sourceContainerName.indexOf('#');
+        if (hashIndex > -1) {
+          const beforeHash = sourceContainerName.substring(0, hashIndex).trim();
+          const afterHash = sourceContainerName.substring(hashIndex + 1).trim();
+          
+          // Parse container type from before hash
+          if (beforeHash.toLowerCase().includes('tote275')) {
+            containerType = '275 GAL TOTE';
+          } else if (beforeHash.toLowerCase().includes('drum55')) {
+            containerType = '55 GAL DRUM';  
+          } else if (beforeHash.toLowerCase().includes('tote330')) {
+            containerType = '330 GAL TOTE';
+          } else {
+            containerType = beforeHash.toUpperCase();
+          }
+          
+          // Check if after hash contains chemical name (format: "#- ChemicalName")
+          if (afterHash.startsWith('- ')) {
+            extractedChemical = afterHash.substring(2).trim();
+            containerCode = ''; // No specific code, just chemical name
+          } else {
+            containerCode = afterHash; // It's a container code
+          }
+        }
       }
       
-      // Show clearly this is source material
-      return `<div style="font-size: 20pt; font-weight: bold; line-height: 1.1;">${chemicalName.toUpperCase()}</div>
-              ${containerType ? `<div style="font-size: 14pt; color: #ff6600; margin-top: 0.05in; font-weight: bold;">${containerType}</div>` : ''}`;
+      // Use extracted chemical or fallback to provided chemical name
+      const displayChemical = extractedChemical || 'SOURCE MATERIAL';
+      
+      // Show clearly this is source material with proper chemical name
+      return `<div style="font-size: 20pt; font-weight: bold; line-height: 1.1;">${displayChemical.toUpperCase()}</div>
+              ${containerType ? `<div style="font-size: 14pt; color: #ff6600; margin-top: 0.05in; font-weight: bold;">${containerType}</div>` : ''}
+              ${containerCode ? `<div style="font-size: 12pt; color: #666; margin-top: 0.03in;">Container #${containerCode}</div>` : ''}`;
     }
     
     switch (record.qrType) {
@@ -243,40 +270,61 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     
     // Get the source container names
     if (assignment.sourceContainers && assignment.sourceContainers.length > 0) {
-      const sourceNames = assignment.sourceContainers.map((sc: any) => {
-        // Extract just the product name from the source container name
-        // Format is typically "Drum #ABC123 - Product Name" or "tote275 #ABC123"
-        const parts = sc.name?.split(' - ');
-        if (parts && parts.length > 1) {
-          return parts[1].toUpperCase();
-        }
+      const sourceInfo = assignment.sourceContainers.map((sc: any) => {
+        // The source container name could be in different formats:
+        // 1. "tote275 #ABC123" - just container and code
+        // 2. "tote275 #- ChemicalName" - container with chemical name
+        // 3. "Drum #ABC123 - ChemicalName" - old format
         
-        // Try to extract container type and code
-        const hashIndex = sc.name?.indexOf('#');
-        if (hashIndex > -1) {
-          const containerPart = sc.name?.substring(0, hashIndex).trim();
-          const code = sc.name?.substring(hashIndex + 1).trim();
-          
-          // Convert containerPart to readable format
-          let readableType = containerPart;
-          if (containerPart.toLowerCase() === 'tote275') {
-            readableType = '275 GAL TOTE';
-          } else if (containerPart.toLowerCase() === 'drum55') {
-            readableType = '55 GAL DRUM';
-          } else if (containerPart.toLowerCase() === 'tote330') {
-            readableType = '330 GAL TOTE';
+        const name = sc.name || '';
+        let displayName = '';
+        let chemicalName = '';
+        
+        // Check for " - " separator (old format)
+        const dashIndex = name.indexOf(' - ');
+        if (dashIndex > -1) {
+          const beforeDash = name.substring(0, dashIndex).trim();
+          chemicalName = name.substring(dashIndex + 3).trim();
+          displayName = `${chemicalName.toUpperCase()} (${beforeDash})`;
+        } else {
+          // Check for # separator
+          const hashIndex = name.indexOf('#');
+          if (hashIndex > -1) {
+            const containerPart = name.substring(0, hashIndex).trim();
+            const afterHash = name.substring(hashIndex + 1).trim();
+            
+            // Convert container type
+            let readableType = containerPart;
+            if (containerPart.toLowerCase() === 'tote275') {
+              readableType = '275 GAL TOTE';
+            } else if (containerPart.toLowerCase() === 'drum55') {
+              readableType = '55 GAL DRUM';
+            } else if (containerPart.toLowerCase() === 'tote330') {
+              readableType = '330 GAL TOTE';
+            }
+            
+            // Check if afterHash has chemical name (starts with "- ")
+            if (afterHash.startsWith('- ')) {
+              chemicalName = afterHash.substring(2).trim();
+              displayName = `${chemicalName.toUpperCase()} (${readableType})`;
+            } else if (afterHash) {
+              // It's just a code
+              displayName = `${readableType} #${afterHash}`;
+            } else {
+              displayName = readableType;
+            }
+          } else {
+            displayName = name.toUpperCase();
           }
-          
-          return `${readableType} #${code}`;
         }
         
-        return sc.name?.toUpperCase() || 'SOURCE';
+        return displayName;
       });
       
       // Return first source (primary source for this container) with clear labeling
       return `<div style="background: #fff3cd; border: 2px solid #ff6600; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0;">
               <div style="font-size: 10pt; font-weight: bold; color: #ff6600;">← FILL FROM SOURCE</div>
-              <div style="font-size: 14pt; font-weight: bold; color: #333; margin-top: 0.02in;">${sourceNames[0]}</div>
+              <div style="font-size: 14pt; font-weight: bold; color: #333; margin-top: 0.02in;">${sourceInfo[0]}</div>
             </div>`;
     }
     
