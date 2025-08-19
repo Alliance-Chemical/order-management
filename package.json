@@ -15,6 +15,8 @@
     "db:studio": "drizzle-kit studio",
     "archive:orders": "tsx scripts/archive-orders.ts",
     "clear-db": "tsx scripts/clear-db.ts",
+    "demo:seed": "tsx scripts/demo-seed.ts",
+    "demo:reset": "curl -X POST http://localhost:3000/api/demo/reset",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",

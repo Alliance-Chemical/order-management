@@ -31,6 +31,7 @@ export function ValidatedQRScanner({
   const [suggestion, setSuggestion] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const validationService = useRef(new QRValidationService());
 
@@ -126,12 +127,18 @@ export function ValidatedQRScanner({
           navigator.vibrate(100);
         }
         
+        // Show success animation
+        setShowSuccess(true);
+        
         // Stop scanner
         if (scannerRef.current && scannerRef.current.isScanning) {
           await scannerRef.current.stop();
         }
         
-        onValidScan(result.data, result.shortCode);
+        // Delay before calling onValidScan to show animation
+        setTimeout(() => {
+          onValidScan(result.data, result.shortCode);
+        }, 800);
       } else {
         setError(result.error);
         setSuggestion(result.suggestion || '');
@@ -171,6 +178,22 @@ export function ValidatedQRScanner({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4">
+      {/* Success Animation Overlay */}
+      {showSuccess && (
+        <div className="absolute inset-0 flex items-center justify-center z-60 pointer-events-none">
+          <div className="bg-green-500 rounded-full p-8 animate-ping">
+            <svg className="w-24 h-24 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div className="absolute bg-green-500 rounded-full p-8">
+            <svg className="w-24 h-24 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        </div>
+      )}
+      
       <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex justify-between items-center mb-4">
@@ -184,6 +207,55 @@ export function ValidatedQRScanner({
               ✕
             </button>
           </div>
+          
+          {/* Visual Indicator for Expected QR Type */}
+          {expectedType && (
+            <div className={`mb-4 p-4 rounded-lg border-2 ${
+              expectedType === 'source' ? 'bg-blue-50 border-blue-400' :
+              expectedType === 'destination' ? 'bg-green-50 border-green-400' :
+              'bg-purple-50 border-purple-400'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${
+                  expectedType === 'source' ? 'bg-blue-100' :
+                  expectedType === 'destination' ? 'bg-green-100' :
+                  'bg-purple-100'
+                }`}>
+                  {expectedType === 'source' ? (
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                  ) : expectedType === 'destination' ? (
+                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <div className={`font-semibold ${
+                    expectedType === 'source' ? 'text-blue-900' :
+                    expectedType === 'destination' ? 'text-green-900' :
+                    'text-purple-900'
+                  }`}>
+                    Looking for: {typeLabels[expectedType]}
+                  </div>
+                  <div className={`text-sm ${
+                    expectedType === 'source' ? 'text-blue-600' :
+                    expectedType === 'destination' ? 'text-green-600' :
+                    'text-purple-600'
+                  }`}>
+                    {expectedType === 'source' ? 'Scan the QR code on the bulk source container' :
+                     expectedType === 'destination' ? 'Scan the QR code on the destination container' :
+                     'Scan the master label QR code'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Scanner View */}
           {!showManualEntry && (

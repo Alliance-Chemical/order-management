@@ -19,6 +19,11 @@ A comprehensive order management and quality inspection system for Alliance Chem
 - ✅ Source and destination QR verification steps
 - ✅ Removed inappropriate documentation checks from pre-mix inspection
 - ✅ Fixed QR URL generation issues with newline characters
+- ✅ **Resilient Inspection System**: Implemented fallback mechanisms for QR scanning failures
+  - Manual code entry with 6-8 character short codes
+  - Supervisor override requests for problematic steps
+  - Offline queue with automatic retry on reconnection
+  - Enhanced error messages with helpful suggestions
 
 ## Tech Stack
 

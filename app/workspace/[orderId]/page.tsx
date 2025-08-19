@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
+import ErrorBoundary from '@/components/error-boundary';
 
 // Import worker view components
 import EntryScreen from '@/components/workspace/agent-view/EntryScreen';
 import ResilientInspectionScreen from '@/components/workspace/agent-view/ResilientInspectionScreen';
+import { ConnectionStatus } from '@/components/ui/connection-status';
 
 // Import existing supervisor view components
 import OrderOverview from '@/components/workspace/OrderOverview';
@@ -190,6 +192,7 @@ export default function WorkspacePage() {
     if (workspace.workflowPhase === 'pre_mix' || workspace.workflowPhase === 'pre_ship') {
       if (workerStep === 'entry') {
         return (
+          <>
           <EntryScreen 
             workspace={workspace}
             onStart={() => setWorkerStep('inspection')}
@@ -199,6 +202,8 @@ export default function WorkspacePage() {
               setWorkerStep('inspection');
             }}
           />
+          <ConnectionStatus />
+          </>
         );
       } else if (workerStep === 'inspection') {
         // Get inspection items based on workflow phase
@@ -256,6 +261,7 @@ export default function WorkspacePage() {
         const itemsToInspect = selectedItem ? [selectedItem] : (workspace.shipstationData?.items || []);
         
         return (
+          <>
           <ResilientInspectionScreen
             orderId={orderId}
             orderNumber={workspace.orderNumber}
@@ -272,6 +278,8 @@ export default function WorkspacePage() {
             }}
             onSwitchToSupervisor={() => setViewMode('supervisor')}
           />
+          <ConnectionStatus />
+          </>
         );
       } else {
         // Complete state

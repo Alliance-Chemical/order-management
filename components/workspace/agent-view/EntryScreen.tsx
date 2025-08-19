@@ -3,14 +3,17 @@
 import React, { useState, useEffect } from 'react';
 import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {
   const [sourceAssignments, setSourceAssignments] = useState<any[]>([]);
   const [itemStatuses, setItemStatuses] = useState<Record<string, 'pending' | 'in_progress' | 'completed'>>({});
+  const [isLoading, setIsLoading] = useState(true);
   
   // Fetch source assignments to determine workflow types
   useEffect(() => {
     const fetchSourceAssignments = async () => {
+      setIsLoading(true);
       try {
         const response = await fetch(`/api/workspace/${workspace.orderId}/assign-source`);
         const data = await response.json();
@@ -19,6 +22,8 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
         }
       } catch (error) {
         console.error('Failed to fetch source assignments:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
     
@@ -191,8 +196,18 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
             </div>
           </div>
         </div>
+        
+        {/* Loading Skeletons */}
+        {isLoading && (
+          <div className="space-y-4">
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+          </div>
+        )}
 
         {/* Task list - SORTED WITH PUMP & FILL ITEMS FIRST */}
+        {!isLoading && (
         <div className="space-y-6">
           {(() => {
             // Sort items by workflow type
@@ -276,6 +291,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
             );
           })()}
         </div>
+        )}
 
         {/* Complete all button when all items are done */}
         {Object.values(itemStatuses).filter(s => s === 'completed').length === filteredItems.length && 
