@@ -1,6 +1,6 @@
 import { QRGenerator } from './generator';
 
-export type QRType = 'source' | 'destination' | 'order_master' | 'unknown';
+export type QRType = 'source' | 'destination' | 'order_master' | 'batch' | 'unknown';
 export type QRValidationResult = 
   | { valid: true; type: QRType; data: any; shortCode?: string }
   | { valid: false; error: string; suggestion?: string };
@@ -222,10 +222,11 @@ export class QRValidationService {
    */
   private determineQRType(data: any): QRType {
     if (data.type) {
-      // Explicit type in data
-      if (data.type === 'source' || data.isSource) return 'source';
-      if (data.type === 'destination') return 'destination';
-      if (data.type === 'order_master' || data.type === 'master') return 'order_master';
+      const t = String(data.type).toLowerCase();
+      if (t === 'source' || data.isSource) return 'source';
+      if (t === 'destination' || t === 'container') return 'destination';
+      if (t === 'order_master' || t === 'master') return 'order_master';
+      if (t === 'batch') return 'batch';
     }
     
     // Infer from data structure
@@ -247,6 +248,7 @@ export class QRValidationService {
       source: 'Source Container',
       destination: 'Destination Container',
       order_master: 'Master Label',
+      batch: 'Batch',
       unknown: 'Unknown'
     };
 
@@ -281,8 +283,8 @@ export class QRValidationService {
    * Check if input is encoded QR data
    */
   private isEncodedData(input: string): boolean {
-    // Base64 encoded data pattern
-    return /^[A-Za-z0-9+/]+=*$/.test(input) && input.length > 20;
+    // Accept base64 & base64url (no '+' '/', includes '-' '_')
+    return /^[A-Za-z0-9+/_-]+=*$/.test(input) && input.length > 20;
   }
 
   /**

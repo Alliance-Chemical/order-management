@@ -15,7 +15,6 @@ if (!process.env.DATABASE_URL) {
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as qrSchema from '../lib/db/schema/qr-workspace';
-import * as authSchema from '../lib/db/schema/auth';
 import { v4 as uuidv4 } from 'uuid';
 import { sql, inArray } from 'drizzle-orm';
 
@@ -24,7 +23,7 @@ const client = postgres(process.env.DATABASE_URL, {
   prepare: false,
 });
 
-const schema = { ...qrSchema, ...authSchema };
+const schema = { ...qrSchema };
 const db = drizzle(client, { schema });
 
 // Destructure what we need from the schema

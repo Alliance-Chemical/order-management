@@ -32,8 +32,17 @@
     },
     "app/api/ai/issue-report/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/queue/process/route.ts": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/queue/process",
+      "schedule": "* * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",

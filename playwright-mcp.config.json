@@ -1,0 +1,12 @@
+{
+  "browser": "chromium",
+  "headless": false,
+  "userDataDir": "./test-browser-profile",
+  "saveSession": true,
+  "outputDir": "./test-results/mcp",
+  "contextOptions": {
+    "viewport": { "width": 1280, "height": 720 },
+    "ignoreHTTPSErrors": true,
+    "baseURL": "http://localhost:3000"
+  }
+}

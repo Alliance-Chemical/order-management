@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
-import { sendSNSAlert, formatAlertMessage } from '@/lib/aws/sns-client';
+// AWS SNS removed - log alerts instead
 import { alertHistory } from '@/lib/db/schema/qr-workspace';
 
 const repository = new WorkspaceRepository();
@@ -42,25 +42,15 @@ export async function POST(
     }
 
     // Format message
-    const formattedMessage = message || formatAlertMessage(
-      alertType,
-      workspace.orderNumber,
-      {
-        workspaceUrl: `${process.env.NEXT_PUBLIC_APP_URL}${workspace.workspaceUrl}`,
-        orderId: workspace.orderId,
-      }
-    );
+    const formattedMessage = message || `Alert: ${alertType} for Order ${workspace.orderNumber}\n\nWorkspace: ${process.env.NEXT_PUBLIC_APP_URL}${workspace.workspaceUrl}\nOrder ID: ${workspace.orderId}`;
 
-    // Send alert
-    let snsMessageId;
-    if (config.snsTopicArn) {
-      const result = await sendSNSAlert(
-        config.snsTopicArn,
-        formattedMessage,
-        `Order ${workspace.orderNumber} - ${alertType}`
-      );
-      snsMessageId = result.MessageId;
-    }
+    // Log alert (SNS removed)
+    let snsMessageId = null;
+    console.log('Alert triggered:', {
+      alertType,
+      orderNumber: workspace.orderNumber,
+      message: formattedMessage
+    });
 
     // Log alert
     await repository.logActivity({

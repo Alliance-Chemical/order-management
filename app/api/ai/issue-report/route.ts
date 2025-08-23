@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geminiService } from '@/lib/services/ai/gemini-service';
 import { workspaceService } from '@/lib/services/workspace/service';
-import { snsClient } from '@/lib/aws/sns-client';
+// AWS SNS removed - log notifications instead
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,16 +45,12 @@ export async function POST(request: NextRequest) {
 
       // Auto-escalate if supervisor required
       if (imageAnalysis.requires_supervisor) {
-        await snsClient.sendAlert({
-          topic: process.env.SNS_SUPERVISOR_ALERTS_TOPIC!,
-          subject: `URGENT: Inspection Issue - Order ${orderId}`,
-          message: JSON.stringify({
-            orderId,
-            issues: imageAnalysis.detected_issues,
-            recommendations: imageAnalysis.recommendations,
-            workerId,
-            timestamp: new Date().toISOString()
-          })
+        console.log('URGENT: Supervisor required for inspection issue', {
+          orderId,
+          issues: imageAnalysis.detected_issues,
+          recommendations: imageAnalysis.recommendations,
+          workerId,
+          timestamp: new Date().toISOString()
         });
       }
     }

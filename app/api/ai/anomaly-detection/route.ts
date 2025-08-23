@@ -3,7 +3,7 @@ import { geminiService } from '@/lib/services/ai/gemini-service';
 import { db } from '@/lib/db';
 import { workspaces, activityLog } from '@/lib/db/schema/qr-workspace';
 import { eq, and, gte, sql } from 'drizzle-orm';
-import { snsClient } from '@/lib/aws/sns-client';
+// AWS SNS removed - log notifications instead
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,18 +89,14 @@ export async function POST(request: NextRequest) {
           action: 'Implement additional QC measures'
         });
 
-        // Send SNS alert for high-risk combinations
-        await snsClient.sendAlert({
-          topic: process.env.SNS_SUPERVISOR_ALERTS_TOPIC!,
-          subject: 'AI Anomaly Detection: High Risk Pattern Detected',
-          message: JSON.stringify({
-            type: 'anomaly_detection',
-            product: combo.product,
-            customer: combo.customer,
-            predicted_failure_rate: combo.predicted_failure_rate,
-            common_issues: combo.common_issues,
-            recommendation: 'Review and implement enhanced QC procedures'
-          })
+        // Log alert for high-risk combinations
+        console.log('AI Anomaly Detection: High Risk Pattern Detected', {
+          type: 'anomaly_detection',
+          product: combo.product,
+          customer: combo.customer,
+          predicted_failure_rate: combo.predicted_failure_rate,
+          common_issues: combo.common_issues,
+          recommendation: 'Review and implement enhanced QC procedures'
         });
       }
     }

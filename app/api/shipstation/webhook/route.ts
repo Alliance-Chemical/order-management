@@ -15,6 +15,23 @@ async function ensureWorkspaceDir() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify webhook authenticity
+    const webhookSecret = process.env.SHIPSTATION_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      // ShipStation sends the secret in X-SS-Webhook-Secret header
+      const ssWebhookSecret = request.headers.get('X-SS-Webhook-Secret');
+      // Also check authorization header for backward compatibility
+      const authHeader = request.headers.get('authorization');
+      
+      const isValidSecret = ssWebhookSecret === webhookSecret || 
+                           authHeader === `Bearer ${webhookSecret}`;
+      
+      if (!isValidSecret) {
+        console.warn('Invalid webhook authorization');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+    
     const data = await request.json();
     console.log('ShipStation webhook received:', {
       orderId: data.order_id,

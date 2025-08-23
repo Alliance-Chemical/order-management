@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
+import { touchPresence, clearPresence, listPresence } from './presence';
 
 export interface ActiveUser {
   id: string;
@@ -12,7 +13,7 @@ export interface ActiveUser {
 
 export class CollaborationService {
   private static instance: CollaborationService;
-  private activeUsers: Map<string, Map<string, ActiveUser>> = new Map();
+  private lastDbUpdate: Map<string, string> = new Map(); // workspaceId -> lastUsersString
   
   static getInstance(): CollaborationService {
     if (!CollaborationService.instance) {
@@ -28,40 +29,27 @@ export class CollaborationService {
     userRole: 'agent' | 'supervisor',
     activity: string
   ): Promise<void> {
-    // Get or create workspace map
-    if (!this.activeUsers.has(workspaceId)) {
-      this.activeUsers.set(workspaceId, new Map());
-    }
-    
-    const workspaceUsers = this.activeUsers.get(workspaceId)!;
-    
-    // Add or update user
-    workspaceUsers.set(userId, {
+    // Update presence in KV store
+    await touchPresence(workspaceId, {
       id: userId,
       name: userName,
       role: userRole,
-      activity,
-      timestamp: Date.now(),
+      activity
     });
     
-    // Update database
-    await this.updateDatabaseUsers(workspaceId);
+    // Update database only if users changed
+    await this.updateDatabaseUsersIfChanged(workspaceId);
   }
   
   async removeUserFromWorkspace(
     workspaceId: string,
     userId: string
   ): Promise<void> {
-    const workspaceUsers = this.activeUsers.get(workspaceId);
-    if (workspaceUsers) {
-      workspaceUsers.delete(userId);
-      
-      if (workspaceUsers.size === 0) {
-        this.activeUsers.delete(workspaceId);
-      }
-      
-      await this.updateDatabaseUsers(workspaceId);
-    }
+    // Clear presence from KV store
+    await clearPresence(workspaceId, userId);
+    
+    // Update database only if users changed
+    await this.updateDatabaseUsersIfChanged(workspaceId);
   }
   
   async updateUserActivity(
@@ -69,39 +57,52 @@ export class CollaborationService {
     userId: string,
     activity: string
   ): Promise<void> {
-    const workspaceUsers = this.activeUsers.get(workspaceId);
-    if (workspaceUsers) {
-      const user = workspaceUsers.get(userId);
-      if (user) {
-        user.activity = activity;
-        user.timestamp = Date.now();
-        await this.updateDatabaseUsers(workspaceId);
-      }
+    // Get current presence to preserve other fields
+    const users = await listPresence(workspaceId);
+    const user = users.find(u => u.id === userId);
+    
+    if (user) {
+      await touchPresence(workspaceId, {
+        id: userId,
+        name: user.name,
+        role: user.role,
+        activity
+      });
+      
+      // Update database only if users changed
+      await this.updateDatabaseUsersIfChanged(workspaceId);
     }
   }
   
-  getWorkspaceUsers(workspaceId: string): ActiveUser[] {
-    const workspaceUsers = this.activeUsers.get(workspaceId);
-    if (!workspaceUsers) return [];
+  async getWorkspaceUsers(workspaceId: string): Promise<ActiveUser[]> {
+    const users = await listPresence(workspaceId);
     
-    // Remove inactive users (>5 minutes)
-    const now = Date.now();
-    const activeUsers: ActiveUser[] = [];
-    
-    for (const [userId, user] of workspaceUsers) {
-      if (now - user.timestamp < 5 * 60 * 1000) {
-        activeUsers.push(user);
-      } else {
-        workspaceUsers.delete(userId);
-      }
-    }
-    
-    return activeUsers;
+    // Convert KV format to ActiveUser format
+    return users.map(u => ({
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      activity: u.activity,
+      timestamp: u.ts || Date.now()
+    }));
   }
   
-  private async updateDatabaseUsers(workspaceId: string): Promise<void> {
-    const users = this.getWorkspaceUsers(workspaceId);
+  private async updateDatabaseUsersIfChanged(workspaceId: string): Promise<void> {
+    const users = await this.getWorkspaceUsers(workspaceId);
     
+    // Create a string representation of current users
+    const usersString = users
+      .map(u => `${u.name} (${u.role}): ${u.activity}`)
+      .sort()
+      .join(', ');
+    
+    // Check if users actually changed
+    const lastUsersString = this.lastDbUpdate.get(workspaceId);
+    if (lastUsersString === usersString) {
+      return; // No change, skip DB update
+    }
+    
+    // Update database
     await db
       .update(workspaces)
       .set({
@@ -109,30 +110,19 @@ export class CollaborationService {
         updatedAt: new Date(),
       })
       .where(eq(workspaces.id, workspaceId));
+    
+    // Remember last update
+    this.lastDbUpdate.set(workspaceId, usersString);
   }
   
-  // Clean up inactive users periodically
+  // Clean up inactive users periodically (KV handles TTL automatically)
   startCleanupInterval(): void {
-    setInterval(() => {
-      const now = Date.now();
-      
-      for (const [workspaceId, users] of this.activeUsers) {
-        let hasChanges = false;
-        
-        for (const [userId, user] of users) {
-          if (now - user.timestamp > 5 * 60 * 1000) {
-            users.delete(userId);
-            hasChanges = true;
-          }
-        }
-        
-        if (hasChanges) {
-          this.updateDatabaseUsers(workspaceId);
-        }
-        
-        if (users.size === 0) {
-          this.activeUsers.delete(workspaceId);
-        }
+    // KV handles expiration automatically with TTL
+    // We just need to periodically sync DB if needed
+    setInterval(async () => {
+      // Iterate through known workspaces and update DB if needed
+      for (const workspaceId of this.lastDbUpdate.keys()) {
+        await this.updateDatabaseUsersIfChanged(workspaceId);
       }
     }, 60 * 1000); // Run every minute
   }

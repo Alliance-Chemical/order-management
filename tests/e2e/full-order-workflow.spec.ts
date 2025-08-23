@@ -5,7 +5,8 @@ import * as schema from '@/lib/db/schema/qr-workspace'
 test.describe('Full Order Workflow - Golden Path', () => {
   let testDb: ReturnType<typeof createTestDb>
   let workspaceId: string
-  const orderId = 'E2E-TEST-001'
+  const orderNumber = 'E2E-TEST-001'
+  const orderId = 99999
 
   test.beforeEach(async () => {
     // Initialize test database
@@ -14,11 +15,11 @@ test.describe('Full Order Workflow - Golden Path', () => {
     
     // Seed test workspace with specific order
     const workspace = await testDb.insert(schema.workspaces).values({
-      orderId: 12345, // Add numeric orderId
-      orderNumber: orderId,
-      workspaceUrl: `http://localhost:3003/workspace/12345`,
-      shipStationOrderId: orderId,
-      shipStationOrderKey: `key-${orderId}`,
+      orderId: orderId,
+      orderNumber: orderNumber,
+      workspaceUrl: `http://localhost:3003/workspace/${orderId}`,
+      shipStationOrderId: orderNumber,
+      shipStationOrderKey: `key-${orderNumber}`,
       status: 'pending',
       workflowPhase: 'pre_mix',
       currentUsers: [],
@@ -76,33 +77,35 @@ test.describe('Full Order Workflow - Golden Path', () => {
     await testDb.insert(schema.qrCodes).values([
       {
         workspaceId: workspaceId,
-        type: 'master',
-        label: `MASTER-${orderId}`,
-        data: JSON.stringify({ orderId, type: 'master', workspaceId }),
-        imageUrl: 'data:image/png;base64,testMasterQR',
-        scanned: false,
-        scannedAt: null,
-        scannedBy: null
+        qrType: 'order_master',
+        qrCode: `QR-MASTER-${orderId}`,
+        shortCode: `M${orderId}`,
+        orderId: orderId,
+        orderNumber: orderNumber,
+        encodedData: { orderId, type: 'order_master', workspaceId },
+        qrUrl: `http://localhost:3003/qr/${workspaceId}/master`
       },
       {
         workspaceId: workspaceId,
-        type: 'container',
-        label: `DRUM-1-${orderId}`,
-        data: JSON.stringify({ orderId, type: 'container', drumNumber: 1, workspaceId }),
-        imageUrl: 'data:image/png;base64,testDrum1QR',
-        scanned: false,
-        scannedAt: null,
-        scannedBy: null
+        qrType: 'destination',
+        qrCode: `QR-DRUM-1-${orderId}`,
+        shortCode: `D1${orderId}`,
+        orderId: orderId,
+        orderNumber: orderNumber,
+        containerNumber: 1,
+        encodedData: { orderId, type: 'destination', drumNumber: 1, workspaceId },
+        qrUrl: `http://localhost:3003/qr/${workspaceId}/drum1`
       },
       {
         workspaceId: workspaceId,
-        type: 'container',
-        label: `DRUM-2-${orderId}`,
-        data: JSON.stringify({ orderId, type: 'container', drumNumber: 2, workspaceId }),
-        imageUrl: 'data:image/png;base64,testDrum2QR',
-        scanned: false,
-        scannedAt: null,
-        scannedBy: null
+        qrType: 'destination',
+        qrCode: `QR-DRUM-2-${orderId}`,
+        shortCode: `D2${orderId}`,
+        orderId: orderId,
+        orderNumber: orderNumber,
+        containerNumber: 2,
+        encodedData: { orderId, type: 'destination', drumNumber: 2, workspaceId },
+        qrUrl: `http://localhost:3003/qr/${workspaceId}/drum2`
       }
     ])
   })

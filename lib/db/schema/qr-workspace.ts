@@ -32,13 +32,7 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
   syncStatus: varchar('sync_status', { length: 50 }).default('pending'),
   
   // Document Management (detailed docs in documents table)
-  documents: jsonb('documents').$type<{
-    coa: string[];
-    sds: string[];
-    bol: string | null;
-    other: string[];
-  }>().default({ coa: [], sds: [], bol: null, other: [] }),
-  totalDocumentSize: bigint('total_document_size', { mode: 'number' }).default(0),
+  // Documents live in the dedicated `documents` table (single source of truth)
   
   // Status & Workflow
   status: varchar('status', { length: 50 }).default('active'),
@@ -79,7 +73,7 @@ export const qrCodes = qrWorkspaceSchema.table('qr_codes', {
   // QR Identification
   qrType: varchar('qr_type', { length: 50 }).notNull(),
   qrCode: varchar('qr_code', { length: 500 }).notNull().unique(),
-  shortCode: varchar('short_code', { length: 50 }).unique(),
+  shortCode: varchar('short_code', { length: 50 }),
   
   // Source Container Tracking (for source QRs)
   sourceContainerId: varchar('source_container_id', { length: 255 }),
@@ -116,7 +110,8 @@ export const qrCodes = qrWorkspaceSchema.table('qr_codes', {
   orderIdIdx: index('idx_qr_order_id').on(table.orderId),
   qrTypeIdx: index('idx_qr_type').on(table.qrType),
   qrCodeIdx: index('idx_qr_code').on(table.qrCode),
-  // Unique index to prevent duplicate source QRs for the same container
+  // Per-order short code uniqueness (allows reuse across orders)
+  shortCodePerOrderIdx: index('idx_qr_short_code_per_order').on(table.orderId, table.shortCode),
   uniqueSourceQrIdx: index('idx_unique_source_qr').on(table.workspaceId, table.sourceContainerId),
 }));
 

@@ -2,10 +2,6 @@ import { test, expect } from './fixtures/test-setup'
 import { testOrders, testSourceContainers } from './fixtures/test-data'
 
 test.describe('Supervisor Workflow', () => {
-  test.beforeEach(async ({ loginPage }) => {
-    await loginPage.goto()
-    await loginPage.loginAsSupervisor()
-  })
   
   test('should view and search orders on dashboard', async ({ dashboardPage }) => {
     await dashboardPage.goto()
@@ -88,4 +84,4 @@ test.describe('Supervisor Workflow', () => {
     await workspacePage.switchToSupervisorView()
     expect(await workspacePage.isInSupervisorView()).toBeTruthy()
   })
-})
+})  // End of test.describe

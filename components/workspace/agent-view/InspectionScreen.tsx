@@ -28,6 +28,7 @@ export default function InspectionScreen({
   const [, setCurrentItemWorkflowType] = useState<'pump_and_fill' | 'direct_resell' | null>(null);
   const [autoSkipping, setAutoSkipping] = useState(false);
   const [useMultiContainerFlow, setUseMultiContainerFlow] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   const currentItem = items[currentIndex];
   const progress = ((currentIndex + 1) / items.length) * 100;
@@ -510,7 +511,57 @@ export default function InspectionScreen({
                 </svg>
               )}
             </div>
-            <h2 className="worker-title mb-4">{currentItem.label}</h2>
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <h2 className="worker-title">{currentItem.label}</h2>
+              <button
+                onClick={() => setShowHelpModal(true)}
+                className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+                title="What am I inspecting?"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Container Type Indicator */}
+            {(() => {
+              const isSourceStep = currentItem.id.includes('source');
+              const isDestinationStep = currentItem.id.includes('destination') || 
+                                       currentItem.id.includes('container_condition') ||
+                                       currentItem.id.includes('label_verification') ||
+                                       currentItem.id.includes('quantity_check') ||
+                                       currentItem.id.includes('hazmat') ||
+                                       currentItem.id.includes('seal');
+              
+              if (isSourceStep) {
+                return (
+                  <div className="mb-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-100 border-2 border-blue-400 rounded-full">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                    <span className="text-sm font-bold text-blue-700">INSPECTING SOURCE CONTAINER</span>
+                  </div>
+                );
+              }
+              
+              if (isDestinationStep) {
+                return (
+                  <div className="mb-4 inline-flex items-center gap-2 px-4 py-2 bg-green-100 border-2 border-green-400 rounded-full">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm font-bold text-green-700">INSPECTING DESTINATION CONTAINER</span>
+                  </div>
+                );
+              }
+              
+              return null;
+            })()}
+            
             <p className="worker-subtitle text-gray-600">{currentItem.description}</p>
             
             {/* Extra prominent message for QR scan steps */}
@@ -811,6 +862,114 @@ export default function InspectionScreen({
           onScan={handleQRScan}
           onClose={() => setShowScanner(false)}
         />
+      )}
+
+      {/* Help Modal */}
+      {showHelpModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Understanding Container Types</h2>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Source Container Explanation */}
+                <div className="border-l-4 border-blue-500 pl-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                          d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-blue-700">SOURCE CONTAINERS</h3>
+                  </div>
+                  <p className="text-gray-700 mb-2">
+                    <strong>What:</strong> Large bulk containers (drums, totes) that we pump chemicals FROM
+                  </p>
+                  <p className="text-gray-700 mb-2">
+                    <strong>When inspected:</strong> Only for "Pump & Fill" orders - at the beginning of the process
+                  </p>
+                  <p className="text-gray-700">
+                    <strong>Why:</strong> To verify we're using the correct chemical source before filling customer containers
+                  </p>
+                </div>
+
+                {/* Destination Container Explanation */}
+                <div className="border-l-4 border-green-500 pl-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-bold text-green-700">DESTINATION CONTAINERS</h3>
+                  </div>
+                  <p className="text-gray-700 mb-2">
+                    <strong>What:</strong> The containers that will be shipped to the customer
+                  </p>
+                  <p className="text-gray-700 mb-2">
+                    <strong>When inspected:</strong> For ALL orders - these need the most careful inspection
+                  </p>
+                  <p className="text-gray-700">
+                    <strong>Why:</strong> These go directly to customers, so we check for:
+                  </p>
+                  <ul className="list-disc list-inside ml-4 mt-2 space-y-1 text-gray-700">
+                    <li>Damage, leaks, or contamination</li>
+                    <li>Correct labels and hazmat placards</li>
+                    <li>Proper seals and packaging</li>
+                    <li>Correct quantity</li>
+                  </ul>
+                </div>
+
+                {/* Workflow Types */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h3 className="font-bold text-gray-900 mb-3">Order Types:</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <span className="px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded">PUMP & FILL</span>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-700">We pump from source containers into destination containers</p>
+                        <p className="text-xs text-gray-500 mt-1">Inspects: Both source AND destination</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="px-2 py-1 bg-green-500 text-white text-xs font-bold rounded">DIRECT RESELL</span>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-700">Pre-packaged containers ready to ship as-is</p>
+                        <p className="text-xs text-gray-500 mt-1">Inspects: Destination only (no source needed)</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current Step Info */}
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h3 className="font-bold text-gray-900 mb-2">Current Step:</h3>
+                  <p className="text-lg font-semibold text-blue-700">{currentItem.label}</p>
+                  <p className="text-gray-700 mt-1">{currentItem.description}</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="mt-6 w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Got it, continue inspection
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

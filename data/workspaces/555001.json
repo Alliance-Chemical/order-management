@@ -1,0 +1,34 @@
+{
+  "id": "555001",
+  "orderId": 555001,
+  "orderNumber": "F-1001",
+  "status": "pending",
+  "workflowPhase": "pre_mix",
+  "shipstationData": {
+    "orderTotal": 0
+  },
+  "documents": [],
+  "activities": [
+    {
+      "id": "activity_1755975544741",
+      "timestamp": "2025-08-23T18:59:04.741Z",
+      "type": "webhook",
+      "description": "Order synced from ShipStation",
+      "metadata": {
+        "itemCount": 0
+      }
+    }
+  ],
+  "moduleStates": {
+    "pre_mix": {
+      "status": "pending",
+      "items": []
+    },
+    "pre_ship": {
+      "status": "pending",
+      "items": []
+    }
+  },
+  "createdAt": "2025-08-23T18:59:04.741Z",
+  "updatedAt": "2025-08-23T18:59:04.741Z"
+}

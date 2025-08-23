@@ -86,7 +86,7 @@ export default function ActivityTimeline({ orderId }: ActivityTimelineProps) {
             </div>
           ) : (
             <div className="flow-root">
-              <ul className="-mb-8">
+              <ul className="-mb-8" data-testid="activity-list">
                 {activities.map((activity, index) => {
                   const Icon = getActivityIcon(activity.activityType);
                   const isLast = index === activities.length - 1;
@@ -110,7 +110,11 @@ export default function ActivityTimeline({ orderId }: ActivityTimelineProps) {
                           </div>
                           <div className="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
                             <div>
-                              <p className="text-sm text-gray-900">{activity.activityDescription}</p>
+                              <p className="text-sm text-gray-900">
+                                <span data-activity-type={activity.activityType}>
+                                  {activity.activityDescription}
+                                </span>
+                              </p>
                               {activity.metadata && Object.keys(activity.metadata).length > 0 && (
                                 <div className="mt-1 text-xs text-gray-500">
                                   {Object.entries(activity.metadata).map(([key, value]) => (

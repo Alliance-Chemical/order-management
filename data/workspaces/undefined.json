@@ -1,0 +1,32 @@
+{
+  "id": "undefined",
+  "status": "pending",
+  "workflowPhase": "pre_mix",
+  "shipstationData": {
+    "orderTotal": 0
+  },
+  "documents": [],
+  "activities": [
+    {
+      "id": "activity_1755975505807",
+      "timestamp": "2025-08-23T18:58:25.807Z",
+      "type": "webhook",
+      "description": "Order synced from ShipStation",
+      "metadata": {
+        "itemCount": 0
+      }
+    }
+  ],
+  "moduleStates": {
+    "pre_mix": {
+      "status": "pending",
+      "items": []
+    },
+    "pre_ship": {
+      "status": "pending",
+      "items": []
+    }
+  },
+  "createdAt": "2025-08-23T18:58:25.807Z",
+  "updatedAt": "2025-08-23T18:58:25.807Z"
+}

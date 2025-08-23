@@ -18,7 +18,7 @@ class InspectionQueue {
   private processing = false;
   private readonly storageKey = 'inspection_queue';
   private readonly maxRetries = 3;
-  private retryTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private retryTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   constructor() {
     this.loadQueue();
@@ -171,7 +171,7 @@ class InspectionQueue {
    */
   private moveToFailed(operation: QueuedOperation): void {
     const failedKey = 'inspection_queue_failed';
-    const failed = this.loadFromStorage(failedKey) || [];
+    const failed = (this.loadFromStorage(failedKey) || []) as any[];
     failed.push({
       ...operation,
       failedAt: new Date().toISOString()
@@ -218,6 +218,7 @@ class InspectionQueue {
    * Load from localStorage
    */
   private loadFromStorage(key: string): any {
+    if (typeof window === 'undefined') return null;
     try {
       const data = localStorage.getItem(key);
       return data ? JSON.parse(data) : null;
@@ -231,6 +232,7 @@ class InspectionQueue {
    * Save to localStorage
    */
   private saveToStorage(key: string, data: any): void {
+    if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(key, JSON.stringify(data));
     } catch (error) {
@@ -280,7 +282,7 @@ class InspectionQueue {
    */
   retryFailed(): void {
     const failedKey = 'inspection_queue_failed';
-    const failed = this.loadFromStorage(failedKey) || [];
+    const failed = (this.loadFromStorage(failedKey) || []) as any[];
     
     // Re-queue failed operations
     failed.forEach((op: any) => {

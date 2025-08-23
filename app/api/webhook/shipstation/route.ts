@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
-import { sendMessage } from '@/lib/aws/sqs-client';
+import { tagSyncService } from '@/lib/services/shipstation/tag-sync';
+import { qrGenerationQueue, webhookQueue } from '@/lib/services/kv-queue';
 
 const workspaceService = new WorkspaceService();
 
@@ -10,8 +11,15 @@ export async function POST(request: NextRequest) {
     // Verify webhook authenticity
     const webhookSecret = process.env.SHIPSTATION_WEBHOOK_SECRET;
     if (webhookSecret) {
+      // ShipStation sends the secret in X-SS-Webhook-Secret header
+      const ssWebhookSecret = request.headers.get('X-SS-Webhook-Secret');
+      // Also check authorization header for backward compatibility
       const authHeader = request.headers.get('authorization');
-      if (!authHeader || authHeader !== `Bearer ${webhookSecret}`) {
+      
+      const isValidSecret = ssWebhookSecret === webhookSecret || 
+                           authHeader === `Bearer ${webhookSecret}`;
+      
+      if (!isValidSecret) {
         console.warn('Invalid webhook authorization');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
@@ -37,25 +45,36 @@ export async function POST(request: NextRequest) {
       if (hasFreightTag) {
         console.log(`Freight order detected: ${orderData.orderNumber}`);
         
-        // Create workspace for this freight order
-        const workspace = await workspaceService.createWorkspace(
-          orderData.orderId,
-          orderData.orderNumber,
-          'shipstation-webhook'
-        );
+        // Check if workspace exists
+        let workspace = await workspaceService.repository.findByOrderId(orderData.orderId);
         
-        // Queue QR generation based on order items
-        await queueQRGeneration(workspace.id, orderData);
+        if (!workspace) {
+          // Create workspace for this freight order
+          workspace = await workspaceService.createWorkspace(
+            orderData.orderId,
+            orderData.orderNumber,
+            'shipstation-webhook',
+            'pump_and_fill' // Freight orders are pump_and_fill
+          );
+          
+          // Queue QR generation based on order items
+          await queueQRGeneration(workspace.id, orderData);
+        }
         
-        // Send notification with all items including discounts
-        await sendMessage(
-          process.env.ALERT_QUEUE_URL!,
-          {
-            type: 'freight_order_received',
+        // Sync tags to update workflow phase
+        await tagSyncService.handleTagUpdate({
+          order_id: orderData.orderId,
+          tag_ids: orderData.tagIds || []
+        });
+        
+        // Log notification (removed AWS SNS dependency)
+        await workspaceService.repository.logActivity({
+          workspaceId: workspace.id,
+          activityType: 'freight_order_received',
+          performedBy: 'shipstation-webhook',
+          metadata: {
             orderId: orderData.orderId,
             orderNumber: orderData.orderNumber,
-            workspaceId: workspace.id,
-            workspaceUrl: `${process.env.NEXT_PUBLIC_APP_URL}/workspace/${orderData.orderId}`,
             items: orderData.items?.map((item: any) => ({
               name: item.name,
               quantity: item.quantity,
@@ -66,16 +85,32 @@ export async function POST(request: NextRequest) {
                          item.lineItemKey?.includes('discount'),
               customAttributes: item.options || [],
             })) || [],
-          },
-          `order-${orderData.orderId}`
-        );
+          }
+        });
         
         return NextResponse.json({ 
           success: true, 
-          message: 'Workspace created',
+          message: 'Workspace created/updated',
           workspaceId: workspace.id 
         });
       }
+    }
+    
+    // Handle tag update events
+    if (resource_type === 'TAG_UPDATE' || action === 'TAG_ADDED' || action === 'TAG_REMOVED') {
+      const orderId = extractOrderIdFromUrl(resource_url);
+      const orderData = await fetchShipStationOrder(orderId);
+      
+      // Sync tags to workflow
+      await tagSyncService.handleTagUpdate({
+        order_id: orderData.orderId,
+        tag_ids: orderData.tagIds || []
+      });
+      
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Tags synced'
+      });
     }
     
     return NextResponse.json({ success: true, message: 'Webhook processed' });
@@ -149,9 +184,11 @@ async function queueQRGeneration(workspaceId: string, orderData: any) {
     qrStrategy = 'per_container';
   }
   
-  // Queue the QR generation job
-  await sendMessage(
-    process.env.QR_GENERATION_QUEUE_URL!,
+  // Queue QR generation using improved KV queue with deduplication
+  const { kvQueue } = await import('@/lib/queue/kv-queue');
+  await kvQueue.enqueue(
+    'jobs',
+    'qr_generation',
     {
       action: 'generate_qr_codes',
       workspaceId,
@@ -165,8 +202,10 @@ async function queueQRGeneration(workspaceId: string, orderData: any) {
         itemId: item.orderItemId,
       })),
       containerCount,
-      timestamp: new Date().toISOString(),
     },
-    `workspace-${workspaceId}`
+    {
+      fingerprint: `qr_webhook_${orderData.orderId}`, // Prevent duplicate QR generation from webhook bursts
+      maxRetries: 3,
+    }
   );
 }

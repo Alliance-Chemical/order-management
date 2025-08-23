@@ -4,7 +4,6 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
 import * as qrSchema from '../lib/db/schema/qr-workspace';
-import * as authSchema from '../lib/db/schema/auth';
 
 // Load .env.local file
 config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -25,26 +24,14 @@ async function resetDatabase() {
     max: 1
   });
   
-  const schema = { ...qrSchema, ...authSchema };
+  const schema = { ...qrSchema };
   const db = drizzle(client, { schema });
   
   try {
     // Clear tables in order of dependencies
     console.log('\n🧹 Clearing tables...\n');
     
-    // Clear auth tables first
-    console.log('  - Clearing sessions...');
-    await db.delete(authSchema.session).catch(e => console.log('    ⚠️  No sessions table or already empty'));
-    
-    console.log('  - Clearing accounts...');
-    await db.delete(authSchema.account).catch(e => console.log('    ⚠️  No accounts table or already empty'));
-    
-    console.log('  - Clearing verifications...');
-    await db.delete(authSchema.verification).catch(e => console.log('    ⚠️  No verifications table or already empty'));
-    
-    console.log('  - Clearing users...');
-    await db.delete(authSchema.user).catch(e => console.log('    ⚠️  No users table or already empty'));
-    
+    // Note: Auth tables are managed by better-auth and not cleared here
     // Clear QR workspace tables
     console.log('  - Clearing activity_log...');
     await db.delete(qrSchema.activityLog);

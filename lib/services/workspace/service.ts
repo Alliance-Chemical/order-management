@@ -2,8 +2,9 @@ import { WorkspaceRepository } from './repository';
 import { ShipStationClient } from '../shipstation/client';
 import { QRGenerator } from '../qr/generator';
 import { getS3BucketName, createOrderFolderPath } from '@/lib/aws/s3-client';
-import { sendMessage } from '@/lib/aws/sqs-client';
 import { v4 as uuidv4 } from 'uuid';
+import { markFreightStaged, markFreightReady, clearFreightStaged } from '../shipstation/tags';
+import { qrGenerationQueue, alertQueue } from '../kv-queue';
 
 export class WorkspaceService {
   public repository: WorkspaceRepository;
@@ -72,18 +73,23 @@ export class WorkspaceService {
   }
 
   private async queueQRGeneration(workspaceId: string, orderId: number, orderNumber: string, shipstationData: any) {
-    const queueUrl = process.env.QR_GENERATION_QUEUE_URL!;
-    
-    const message = {
-      action: 'generate_qr',
-      workspaceId,
-      orderId,
-      orderNumber,
-      items: shipstationData?.items || [],
-      timestamp: new Date().toISOString(),
-    };
-
-    await sendMessage(queueUrl, message, `order-${orderId}`);
+    // Queue QR generation using improved KV queue with deduplication
+    const { kvQueue } = await import('@/lib/queue/kv-queue');
+    await kvQueue.enqueue(
+      'jobs',
+      'qr_generation',
+      {
+        action: 'generate_qr',
+        workspaceId,
+        orderId,
+        orderNumber,
+        items: shipstationData?.items || [],
+      },
+      {
+        fingerprint: `qr_gen_${orderId}`, // Prevent duplicate QR generation for same order
+        maxRetries: 3,
+      }
+    );
   }
 
   async syncWithShipStation(workspaceId: string, orderId: number) {
@@ -118,25 +124,67 @@ export class WorkspaceService {
   }
 
   private async checkStatusTriggers(workspaceId: string, module: string, state: any) {
+    // Get workspace to access orderId
+    const workspace = await this.repository.findByOrderId(parseInt(workspaceId));
+    if (!workspace) return;
+    
+    const orderId = workspace.orderId;
+    
     // Check if we need to send alerts based on module state changes
     if (module === 'pre_mix' && state.completed) {
       await this.queueAlert(workspaceId, 'ready_to_pump');
     } else if (module === 'pre_ship' && state.completed) {
       await this.queueAlert(workspaceId, 'ready_to_ship');
+      // Mark freight as ready when pre-ship inspection passes
+      try {
+        await markFreightReady(orderId);
+        await this.logActivity(workspaceId, 'shipstation_tag_added', 'system', {
+          tag: 'FreightOrderReady',
+          orderId,
+          trigger: 'pre_ship_inspection_passed'
+        });
+      } catch (error) {
+        console.error('Failed to mark freight ready:', error);
+      }
+    }
+    
+    // Check for planning locked state
+    if (module === 'planning' && state.locked === true) {
+      try {
+        await markFreightStaged(orderId);
+        await this.logActivity(workspaceId, 'shipstation_tag_added', 'system', {
+          tag: 'FreightStaged',
+          orderId,
+          trigger: 'planning_locked'
+        });
+      } catch (error) {
+        console.error('Failed to mark freight staged:', error);
+      }
     }
   }
 
   private async queueAlert(workspaceId: string, alertType: string) {
-    const queueUrl = process.env.ALERT_QUEUE_URL!;
+    // Queue alert using improved KV queue
+    const { kvQueue } = await import('@/lib/queue/kv-queue');
+    await kvQueue.enqueue(
+      'alerts',
+      'alert',
+      {
+        workspaceId,
+        alertType,
+      },
+      {
+        fingerprint: `alert_${workspaceId}_${alertType}_${Date.now() / 60000 | 0}`, // Dedupe within same minute
+        maxRetries: 2,
+      }
+    );
     
-    const message = {
-      action: 'send_alert',
+    await this.repository.logActivity({
       workspaceId,
-      alertType,
-      timestamp: new Date().toISOString(),
-    };
-
-    await sendMessage(queueUrl, message);
+      activityType: 'alert_triggered',
+      performedBy: 'system',
+      metadata: { alertType }
+    });
   }
 
   private async logActivity(workspaceId: string, type: string, userId: string, metadata?: any) {

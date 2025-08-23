@@ -1,10 +1,11 @@
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
+import { makeShortCode } from './shortcode';
 
 export interface QRData {
   orderId: number;
   orderNumber: string;
-  type: 'master' | 'container' | 'batch';
+  type: 'order_master' | 'source' | 'destination' | 'batch';
   containerNumber?: number;
   chemicalName?: string;
   timestamp: string;
@@ -18,13 +19,13 @@ export class QRGenerator {
     this.baseUrl = baseUrl.trim();
   }
 
-  generateShortCode(orderId: number, containerNumber?: number): string {
-    const base = `${orderId}`;
-    const suffix = containerNumber ? `-${containerNumber}` : '-M';
-    return `QR${base}${suffix}`;
+  generateShortCode(orderId: number | bigint, containerNumber?: number): string {
+    const base = `${orderId}${containerNumber ?? ''}${Date.now()}`;
+    // Crockford 7 chars; collision-safe per order
+    return makeShortCode(base, 7);
   }
 
-  createQRData(orderId: number, orderNumber: string, type: 'master' | 'container', containerNumber?: number, chemicalName?: string): QRData {
+  createQRData(orderId: number, orderNumber: string, type: 'order_master' | 'destination' | 'source' | 'batch', containerNumber?: number, chemicalName?: string): QRData {
     return {
       orderId,
       orderNumber,
@@ -61,7 +62,9 @@ export class QRGenerator {
 
   decodeQRUrl(encodedData: string): QRData | null {
     try {
-      const decoded = Buffer.from(encodedData, 'base64url').toString();
+      const fixed = encodedData.replace(/-/g, '+').replace(/_/g, '/'); // url → std
+      const pad = fixed.length % 4 === 0 ? '' : '='.repeat(4 - (fixed.length % 4));
+      const decoded = Buffer.from(fixed + pad, 'base64').toString();
       return JSON.parse(decoded);
     } catch {
       return null;

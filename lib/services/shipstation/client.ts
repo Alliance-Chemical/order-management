@@ -57,4 +57,14 @@ export class ShipStationClient {
     }
     return order;
   }
+
+  async removeOrderTag(orderId: number, tagId: number): Promise<any> {
+    const order = await this.getOrder(orderId);
+    const currentTags = order.tagIds || [];
+    const newTags = currentTags.filter((t: number) => t !== tagId);
+    if (newTags.length !== currentTags.length) {
+      return this.updateOrderTags(orderId, newTags);
+    }
+    return order;
+  }
 }

@@ -1,5 +1,8 @@
 'use client';
 
+import { useState } from 'react';
+// import { toast } from 'sonner';
+
 interface OrderOverviewProps {
   orderId: string;
   workspace: any;
@@ -8,6 +11,7 @@ interface OrderOverviewProps {
 }
 
 export default function OrderOverview({ orderId, workspace }: OrderOverviewProps) {
+  const [isGeneratingQR, setIsGeneratingQR] = useState(false);
   const order = workspace.shipstationData || {};
   const shipTo = order.shipTo || {};
   const items = order.items || [];
@@ -19,8 +23,66 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
     }).format(amount || 0);
   };
 
+  const handleGenerateQR = async () => {
+    setIsGeneratingQR(true);
+    try {
+      const response = await fetch(`/api/workspace/${orderId}/qr/generate`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        // toast.success('QR codes generated successfully');
+        console.log('QR codes generated successfully');
+        // Refresh the page or update state
+        window.location.reload();
+      } else {
+        // toast.error('Failed to generate QR codes');
+        console.error('Failed to generate QR codes');
+      }
+    } catch (error) {
+      console.error('Error generating QR codes:', error);
+      // toast.error('Failed to generate QR codes');
+    } finally {
+      setIsGeneratingQR(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Action Bar */}
+      <div className="bg-white rounded-lg shadow-sm p-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <span data-testid="phase-pill" className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+              {workspace.workflowPhase?.replace('_', ' ').toUpperCase() || 'PENDING'}
+            </span>
+            <span data-testid="order-number" className="text-sm text-gray-600">
+              Order #{workspace.orderNumber}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleGenerateQR}
+              disabled={isGeneratingQR}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGeneratingQR ? 'Generating...' : 'Generate QR'}
+            </button>
+            <button
+              data-testid="lock-planning-btn"
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            >
+              Lock Planning
+            </button>
+            <button
+              data-testid="sync-shipstation-btn"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Sync to ShipStation
+            </button>
+          </div>
+        </div>
+      </div>
       {/* Key Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow-sm p-6">

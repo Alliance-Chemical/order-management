@@ -1,0 +1,15 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export async function middleware(request: NextRequest) {
+  // No authentication - all routes are public
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    '/api/:path*',
+    '/workspace/:path*',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};

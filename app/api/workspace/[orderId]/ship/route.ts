@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 import { ShipStationClient } from '@/lib/services/shipstation/client';
-import { sendNotification } from '@/lib/aws/sns-client';
+// AWS SNS removed - log notifications instead
+import { clearFreightStaged } from '@/lib/services/shipstation/tags';
 
 const repository = new WorkspaceRepository();
 const shipstationClient = new ShipStationClient();
@@ -46,6 +47,21 @@ export async function POST(
     const readyToShipTagId = parseInt(process.env.READY_TO_SHIP_TAG || '19845');
     try {
       await shipstationClient.addOrderTag(workspace.shipstationOrderId!, readyToShipTagId);
+      
+      // Clear FreightStaged tag when shipped
+      await clearFreightStaged(workspace.orderId);
+      
+      // Log tag removal
+      await repository.logActivity({
+        workspaceId: workspace.id,
+        activityType: 'shipstation_tag_removed',
+        performedBy: 'system',
+        metadata: {
+          tag: 'FreightStaged',
+          orderId: workspace.orderId,
+          trigger: 'order_shipped'
+        }
+      });
     } catch (error) {
       console.error('Failed to update ShipStation tags:', error);
       // Continue even if ShipStation update fails
@@ -67,17 +83,14 @@ export async function POST(
       try {
         const message = `Order ${workspace.orderNumber} is ready to ship.\n\nBOL: ${bolNumber}\nCarrier: ${carrierName}${trailerNumber ? `\nTrailer: ${trailerNumber}` : ''}${sealNumbers?.length ? `\nSeals: ${sealNumbers.join(', ')}` : ''}`;
         
-        await sendNotification(
-          alertConfig.snsTopicArn || process.env.SNS_TOPIC_ARN!,
-          `Ready to Ship - Order ${workspace.orderNumber}`,
+        console.log('Ship notification:', {
+          subject: `Ready to Ship - Order ${workspace.orderNumber}`,
           message,
-          {
-            orderId: orderId.toString(),
-            orderNumber: workspace.orderNumber,
-            bolNumber,
-            carrierName,
-          }
-        );
+          orderId: orderId.toString(),
+          orderNumber: workspace.orderNumber,
+          bolNumber,
+          carrierName
+        });
 
         await repository.updateAlertConfig(alertConfig.id, {
           lastTriggeredAt: new Date(),

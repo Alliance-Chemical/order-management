@@ -11,13 +11,11 @@ interface PreShipInspectionProps {
 }
 
 const shippingChecklist = [
-  { id: 'container_sealed', label: 'Containers Properly Sealed', required: true },
-  { id: 'labels_applied', label: 'Shipping Labels Applied', required: true },
-  { id: 'hazmat_docs', label: 'Hazmat Documentation Complete', required: false },
-  { id: 'pallet_secured', label: 'Pallet/Container Secured', required: true },
-  { id: 'quantity_verified', label: 'Final Quantity Verified', required: true },
-  { id: 'bol_prepared', label: 'Bill of Lading Prepared', required: true },
-  { id: 'photos_taken', label: 'Loading Photos Taken', required: false },
+  { id: 'order_match', label: 'Order Matches Shipment', required: true },
+  { id: 'container_clean', label: 'Containers Clean & Free of Debris', required: true },
+  { id: 'caps_clean', label: 'Caps Clean & Free of Debris', required: true },
+  { id: 'no_leaks', label: 'No Leaks Detected', required: true },
+  { id: 'pallet_stable', label: 'Pallet Condition Good & Stable', required: true },
 ];
 
 export default function PreShipInspection({ orderId, initialState = {}, onStateChange }: PreShipInspectionProps) {

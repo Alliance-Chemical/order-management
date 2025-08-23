@@ -20,9 +20,8 @@ const client = postgres(DATABASE_URL, {
 });
 
 import * as qrSchema from '../lib/db/schema/qr-workspace';
-import * as authSchema from '../lib/db/schema/auth';
 
-const schema = { ...qrSchema, ...authSchema };
+const schema = { ...qrSchema };
 const db = drizzle(client, { schema });
 import { 
   workspaces, 

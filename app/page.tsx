@@ -122,7 +122,7 @@ export default function WorkQueueDashboard() {
 
           {loading ? (
             <div className="p-12 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" data-testid="loading-spinner"></div>
               <p className="mt-4 text-gray-600">Loading available orders...</p>
             </div>
           ) : orders.length === 0 ? (
@@ -156,7 +156,7 @@ export default function WorkQueueDashboard() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {orders.map((order) => (
                     <Fragment key={order.orderId}>
-                      <tr className="hover:bg-gray-50 transition-colors">
+                      <tr className="hover:bg-gray-50 transition-colors" data-testid="order-card">
                         <td className="px-4 py-4 whitespace-nowrap">
                           <button
                             onClick={(e) => {
@@ -180,7 +180,7 @@ export default function WorkQueueDashboard() {
                           </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-medium text-gray-900" data-testid="order-number">
                             {order.orderNumber}
                           </div>
                           <div className="text-xs text-gray-500">
@@ -188,7 +188,7 @@ export default function WorkQueueDashboard() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
+                          <div className="text-sm text-gray-900" data-testid="customer-name">
                             {order.customerName || 'Unknown Customer'}
                           </div>
                         </td>

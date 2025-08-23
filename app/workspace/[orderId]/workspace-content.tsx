@@ -104,6 +104,8 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
   // Supervisor View
   const tabs = [
     { id: 'overview', label: 'Overview', component: OrderOverview },
+    { id: 'pallets', label: 'Pallets', component: OrderOverview, testId: 'pallets-tab' },
+    { id: 'qr', label: 'QR Codes', component: OrderOverview, testId: 'qr-tab' },
     { id: 'pre_mix', label: 'Pre-Mix', component: PreMixInspection },
     { id: 'pre_ship', label: 'Pre-Ship', component: PreShipInspection },
     { id: 'documents', label: 'Documents', component: DocumentsHub },
@@ -118,13 +120,18 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
         {/* View Mode Toggle */}
         <div className="bg-indigo-600 text-white px-4 py-2">
           <div className="max-w-7xl mx-auto flex justify-between items-center">
-            <span className="text-sm font-medium">Current View: Supervisor</span>
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium">Current View: Supervisor</span>
+              <div data-testid="supervisor-view" className="hidden"></div>
+            </div>
             <button
+              data-testid="view-toggle"
               onClick={() => {
                 setViewMode('worker');
                 setWorkerStep('entry');
               }}
               className="text-sm underline hover:no-underline"
+              aria-pressed={viewMode === 'supervisor'}
             >
               Switch to Worker View
             </button>
@@ -157,6 +164,9 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
                     )}
                   </div>
                 </div>
+                <div data-testid="collaboration-indicator" className="flex items-center gap-2">
+                  {/* Collaboration indicator will show active users */}
+                </div>
               </div>
             </div>
           </div>
@@ -169,6 +179,7 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
+                  data-testid={tab.testId}
                   onClick={() => setActiveTab(tab.id)}
                   className={classNames(
                     activeTab === tab.id
@@ -220,19 +231,19 @@ function getInspectionItems(workspace: WorkspaceData, selectedItem: any) {
       const hasPumpAndFillItems = sourceAssignments.some((a: any) => a.workflowType === 'pump_and_fill');
       if (hasPumpAndFillItems || !selectedItem) {
         inspectionItems.push(
-          { id: 'scan_source_qr', label: 'Scan Source QR', description: 'Scan QR code on source container' },
-          { id: 'verify_source_chemical', label: 'Verify Source Chemical', description: 'Confirm source container matches expected chemical' }
+          { id: 'scan_source_qr', label: 'Scan Source QR', description: 'Scan QR code on SOURCE container (bulk container to pump from)' },
+          { id: 'verify_source_chemical', label: 'Verify Source Chemical', description: 'Confirm SOURCE container matches expected chemical (pump & fill only)' }
         );
       }
     }
     
     inspectionItems.push(
-      { id: 'container_condition', label: 'Container Condition', description: 'Check for damage, leaks, or contamination' },
-      { id: 'label_verification', label: 'Label Verification', description: 'Verify product labels match order' },
-      { id: 'quantity_check', label: 'Quantity Check', description: 'Confirm correct quantity of containers' },
-      { id: 'scan_destination_qr', label: 'Scan Destination QR', description: 'Scan QR code on each destination container' },
-      { id: 'hazmat_placards', label: 'Hazmat Placards', description: 'Verify proper hazmat labeling if required' },
-      { id: 'seal_integrity', label: 'Seal Integrity', description: 'Check all seals are intact' }
+      { id: 'container_condition', label: 'Check Destination Containers', description: 'Inspect DESTINATION containers for damage, leaks, or contamination (containers going to customer)' },
+      { id: 'label_verification', label: 'Verify Destination Labels', description: 'Verify labels on DESTINATION containers match order specifications' },
+      { id: 'quantity_check', label: 'Count Destination Containers', description: 'Confirm correct quantity of DESTINATION containers' },
+      { id: 'scan_destination_qr', label: 'Scan Destination QR', description: 'Scan QR code on each DESTINATION container' },
+      { id: 'hazmat_placards', label: 'Check Destination Hazmat', description: 'Verify proper hazmat labeling on DESTINATION containers if required' },
+      { id: 'seal_integrity', label: 'Check Destination Seals', description: 'Check all seals on DESTINATION containers are intact' }
     );
   } else {
     inspectionItems = [

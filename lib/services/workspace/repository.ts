@@ -66,10 +66,14 @@ export class WorkspaceRepository {
     return updated;
   }
 
-  async findQRByShortCode(shortCode: string) {
-    return await db.query.qrCodes.findFirst({
-      where: eq(qrCodes.shortCode, shortCode),
-    });
+  async findQRByShortCode(shortCode: string, orderId?: number | bigint) {
+    if (orderId !== undefined) {
+      const oid = BigInt(orderId);
+      return await db.query.qrCodes.findFirst({
+        where: and(eq(qrCodes.shortCode, shortCode), eq(qrCodes.orderId, oid)),
+      });
+    }
+    return await db.query.qrCodes.findFirst({ where: eq(qrCodes.shortCode, shortCode) });
   }
 
   async updateQRPrintCount(id: string, userId: string) {

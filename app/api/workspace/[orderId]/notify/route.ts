@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendNotification } from '@/lib/aws/sns-client';
+// AWS SNS removed - log notifications instead
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 
 const repository = new WorkspaceRepository();
@@ -54,18 +54,16 @@ export async function POST(
     // Build notification message
     const message = buildNotificationMessage(type, workspace, status, notes, metadata);
     
-    // Send SNS notification
-    const messageId = await sendNotification(
-      alertConfig.snsTopicArn || process.env.SNS_TOPIC_ARN!,
-      message.subject,
-      message.body,
-      {
-        orderId: orderId.toString(),
-        orderNumber: workspace.orderNumber,
-        workspaceId: workspace.id,
-        alertType: type,
-      }
-    );
+    // Log notification (SNS removed)
+    const messageId = `notify-${Date.now()}`;
+    console.log('Notification sent:', {
+      subject: message.subject,
+      body: message.body,
+      orderId: orderId.toString(),
+      orderNumber: workspace.orderNumber,
+      workspaceId: workspace.id,
+      alertType: type
+    });
 
     // Update alert config
     await repository.updateAlertConfig(alertConfig.id, {

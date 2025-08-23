@@ -2,10 +2,6 @@ import { test, expect } from './fixtures/test-setup'
 import { testQRCodes } from './fixtures/test-data'
 
 test.describe('Worker Workflow', () => {
-  test.beforeEach(async ({ loginPage }) => {
-    await loginPage.goto()
-    await loginPage.loginAsWorker()
-  })
   
   test('should start inspection by scanning master QR', async ({ workspacePage, page }) => {
     // Navigate directly with QR code
@@ -114,4 +110,4 @@ test.describe('Worker Workflow', () => {
     // Should show user role and activity
     await expect(page.locator('[data-testid="user-activity"]')).toContainText(/viewing|editing|inspecting/i)
   })
-})
+})  // End of test.describe

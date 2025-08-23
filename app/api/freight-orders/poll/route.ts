@@ -75,32 +75,67 @@ export async function GET(request: NextRequest) {
       // Create new workspace
       console.log(`Creating workspace for order ${order.orderNumber}`);
       
-      const workspace = await workspaceService.createWorkspace(
-        order.orderId,
-        order.orderNumber,
-        'freight-poll'
-      );
-      
-      created.push({
-        orderId: order.orderId,
-        orderNumber: order.orderNumber,
-        workspaceId: workspace.id,
-        workspaceUrl: `/workspace/${order.orderId}`,
-        customerName: order.shipTo?.name || 'Unknown Customer',
-        orderDate: order.orderDate,
-        orderTotal: order.orderTotal,
-        items: order.items?.filter((item: any) => 
-          !item.name?.toLowerCase().includes('discount') && 
-          item.unitPrice >= 0 && 
-          !item.lineItemKey?.includes('discount')
-        ).map((item: any) => ({
-          name: item.name,
-          quantity: item.quantity,
-          sku: item.sku,
-          unitPrice: item.unitPrice,
-          customAttributes: item.options || [],
-        })) || [],
-      });
+      try {
+        const workspace = await workspaceService.createWorkspace(
+          order.orderId,
+          order.orderNumber,
+          'freight-poll'
+        );
+        
+        created.push({
+          orderId: order.orderId,
+          orderNumber: order.orderNumber,
+          workspaceId: workspace.id,
+          workspaceUrl: `/workspace/${order.orderId}`,
+          customerName: order.shipTo?.name || 'Unknown Customer',
+          orderDate: order.orderDate,
+          orderTotal: order.orderTotal,
+          items: order.items?.filter((item: any) => 
+            !item.name?.toLowerCase().includes('discount') && 
+            item.unitPrice >= 0 && 
+            !item.lineItemKey?.includes('discount')
+          ).map((item: any) => ({
+            name: item.name,
+            quantity: item.quantity,
+            sku: item.sku,
+            unitPrice: item.unitPrice,
+            customAttributes: item.options || [],
+          })) || [],
+        });
+      } catch (error: any) {
+        // Handle duplicate key error - workspace may have been created by another process
+        if (error?.message?.includes('duplicate key')) {
+          console.log(`Workspace already exists for order ${order.orderNumber}, checking again`);
+          const existingWorkspace = await db.query.workspaces.findFirst({
+            where: eq(workspaces.orderId, order.orderId),
+          });
+          
+          if (existingWorkspace) {
+            existing.push({
+              orderId: order.orderId,
+              orderNumber: order.orderNumber,
+              workspaceId: existingWorkspace.id,
+              customerName: order.shipTo?.name || 'Unknown Customer',
+              orderDate: order.orderDate,
+              orderTotal: order.orderTotal,
+              items: order.items?.filter((item: any) => 
+                !item.name?.toLowerCase().includes('discount') && 
+                item.unitPrice >= 0 && 
+                !item.lineItemKey?.includes('discount')
+              ).map((item: any) => ({
+                name: item.name,
+                quantity: item.quantity,
+                sku: item.sku,
+                unitPrice: item.unitPrice,
+                customAttributes: item.options || [],
+              })) || [],
+            });
+          }
+        } else {
+          // Re-throw other errors
+          throw error;
+        }
+      }
     }
     
     return NextResponse.json({
