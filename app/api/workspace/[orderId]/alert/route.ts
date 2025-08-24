@@ -7,9 +7,10 @@ const repository = new WorkspaceRepository();
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const body = await request.json();
     const { alertType, message, userId = 'system' } = body;
 

@@ -7,9 +7,10 @@ const repository = new WorkspaceRepository();
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const documentType = formData.get('type') as string;
@@ -93,9 +94,10 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const orderId = parseInt(params.orderId);
     const workspace = await repository.findByOrderId(orderId);
     

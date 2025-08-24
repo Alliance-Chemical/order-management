@@ -5,9 +5,10 @@ import { eq, sql } from 'drizzle-orm';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const orderIdParam = params.orderId;
     const orderId = Number(orderIdParam);
     if (Number.isNaN(orderId)) {
@@ -367,11 +368,12 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
 // POST endpoint to regenerate QR codes or add specific types
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const { type, quantity } = await request.json();
-    const orderId = params.orderId;
+    const orderId = Number(params.orderId);
 
     // Find the workspace
     const workspace = await db

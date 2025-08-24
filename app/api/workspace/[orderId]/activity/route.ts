@@ -5,9 +5,10 @@ const repository = new WorkspaceRepository();
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const orderId = parseInt(params.orderId);
     const workspace = await repository.findByOrderId(orderId);
     

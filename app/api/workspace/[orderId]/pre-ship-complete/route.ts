@@ -17,9 +17,10 @@ const s3Client = new S3Client({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await context.params;
     const { checkedItems, photos, completedAt, failureNotes } = await request.json();
     
     const orderId = params.orderId;
