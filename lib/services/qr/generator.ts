@@ -41,23 +41,61 @@ export class QRGenerator {
     return `${this.baseUrl}/workspace/${qrData.orderId}?qr=${encoded}`;
   }
 
-  async generateQRCode(qrData: QRData): Promise<string> {
+  async generateQRCode(qrData: QRData, options?: { quietZoneModules?: number }): Promise<string> {
     const url = this.createQRUrl(qrData);
-    return await QRCode.toDataURL(url, {
-      errorCorrectionLevel: 'H',
-      margin: 2,
+    const quietZoneModules = options?.quietZoneModules ?? 8; // Default 8 modules for quiet zone
+    
+    // Generate SVG for better control and quality
+    let svgString = await QRCode.toString(url, {
+      type: 'svg',
+      errorCorrectionLevel: 'Q', // Q level for thermal printer robustness
+      margin: quietZoneModules, // Enforce quiet zone at generation time
       width: 300,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
     });
+    
+    // Add shape-rendering for crisp edges and ensure white background
+    svgString = svgString.replace(
+      '<svg',
+      '<svg shape-rendering="crispEdges"'
+    );
+    
+    // Insert white background rect as first child of SVG
+    svgString = svgString.replace(
+      /(viewBox="[^"]+">)/,
+      '$1<rect width="100%" height="100%" fill="#fff"/>'
+    );
+    
+    // Log validation check
+    console.log(`[QR Generator] Quiet zone: ${quietZoneModules} modules | Mode: inline SVG | Error correction: Q`);
+    if (quietZoneModules < 8) {
+      console.warn(`[QR Generator] Warning: Quiet zone ${quietZoneModules} modules is below recommended 8 for thermal printing`);
+    }
+    
+    return svgString; // Return raw SVG, not data URL
   }
 
-  async generateQRBuffer(qrData: QRData): Promise<Buffer> {
+  async generateQRBuffer(qrData: QRData, options?: { quietZoneModules?: number }): Promise<Buffer> {
     const url = this.createQRUrl(qrData);
-    return await QRCode.toBuffer(url, {
-      errorCorrectionLevel: 'H',
-      margin: 2,
+    const quietZoneModules = options?.quietZoneModules ?? 8; // Default 8 modules for quiet zone
+    
+    // Generate buffer with enforced quiet zone
+    const buffer = await QRCode.toBuffer(url, {
+      errorCorrectionLevel: 'Q', // Q for thermal printer robustness
+      margin: quietZoneModules, // Enforce quiet zone at generation time
       width: 300,
       type: 'png',
     });
+    
+    // Log validation check
+    if (quietZoneModules < 8) {
+      console.warn(`[QR Generator] Warning: QR buffer generated with quiet zone of ${quietZoneModules} modules (recommended minimum: 8)`);
+    }
+    
+    return buffer;
   }
 
   decodeQRUrl(encodedData: string): QRData | null {

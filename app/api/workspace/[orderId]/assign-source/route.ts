@@ -166,7 +166,8 @@ export async function POST(
           workflowType: 'pump_and_fill',
           sourceContainers: [{
             id: sourceContainerId,
-            name: sourceContainerName
+            name: sourceContainerName,
+            shortCode: sourceContainerId // Store the shortCode (which is the sourceContainerId)
           }],
           assignedAt: new Date().toISOString(),
           assignedBy: 'supervisor' // In production, get from auth context
@@ -184,7 +185,11 @@ export async function POST(
               const isDuplicate = sourceContainers.some((s: any) => s.id === sourceContainerId);
               
               if (!isDuplicate) {
-                sourceContainers.push({ id: sourceContainerId, name: sourceContainerName });
+                sourceContainers.push({ 
+                  id: sourceContainerId, 
+                  name: sourceContainerName,
+                  shortCode: sourceContainerId // Store the shortCode
+                });
               }
               
               return {
@@ -206,7 +211,8 @@ export async function POST(
             workflowType: 'pump_and_fill',
             sourceContainers: [{
               id: sourceContainerId,
-              name: sourceContainerName
+              name: sourceContainerName,
+              shortCode: sourceContainerId // Store the shortCode
             }],
             assignedAt: new Date().toISOString(),
             assignedBy: 'supervisor'

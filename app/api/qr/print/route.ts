@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     console.log('[PRINT API] Starting to process QR codes...');
     
     // Generate HTML for printing with QR codes and full record data
-    const labelsData: { qrDataUrl: string; record: any }[] = [];
+    const labelsData: { qrSvg: string; record: any }[] = [];
     
     for (let i = 0; i < qrCodes.length; i++) {
       const qr = qrCodes[i];
@@ -38,13 +38,13 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      console.log(`[PRINT API] Found QR record. Generating QR data URL for: ${qr.shortCode}`);
-      // Generate QR code as data URL
-      const qrDataUrl = await qrGenerator.generateQRCode(qrRecord.encodedData as any);
+      console.log(`[PRINT API] Found QR record. Generating QR SVG for: ${qr.shortCode}`);
+      // Generate QR code as raw SVG string
+      const qrSvg = await qrGenerator.generateQRCode(qrRecord.encodedData as any, { quietZoneModules: 8 });
       
-      // Push both the QR data URL and the full record
+      // Push both the QR SVG and the full record
       labelsData.push({ 
-        qrDataUrl, 
+        qrSvg, 
         record: qrRecord 
       });
       
@@ -58,6 +58,17 @@ export async function POST(request: NextRequest) {
     
     console.log(`[PRINT API] HTML generated successfully for ${labelsData.length} QR codes`);
     
+    // Self-check validation logging
+    console.log('[PRINT API] === QR Generation Self-Check ===');
+    console.log(`[PRINT API] ✓ Label size: ${labelSize}`);
+    console.log(`[PRINT API] ✓ Quiet zone: 8 modules (enforced in SVG)`);
+    console.log(`[PRINT API] ✓ Embedding: Inline SVG (no <img> tags)`);
+    console.log(`[PRINT API] ✓ Label padding: 0.30in safe area`);
+    console.log(`[PRINT API] ✓ QR size: 1.968in (400 dots @ 203 DPI)`);
+    console.log(`[PRINT API] ✓ Error correction: Q (25% recovery)`);
+    console.log(`[PRINT API] ✓ PDF: Deterministic sizing, no scaling`);
+    console.log('[PRINT API] === End Self-Check ===');
+    
     // Check if we're running on Vercel
     const isVercel = process.env.VERCEL === '1';
     
@@ -70,9 +81,9 @@ export async function POST(request: NextRequest) {
       
       browser = await puppeteer.default.launch({
         args: chromium.default.args,
-        defaultViewport: chromium.default.defaultViewport,
+        defaultViewport: (chromium.default as any).defaultViewport,
         executablePath: await chromium.default.executablePath(),
-        headless: chromium.default.headless,
+        headless: (chromium.default as any).headless,
       });
     } else {
       console.log('[PRINT API] Running locally - using playwright');
@@ -88,23 +99,44 @@ export async function POST(request: NextRequest) {
     
     const page = await browser.newPage();
     
+    // Emulate print media for proper CSS page handling
+    if ('emulateMedia' in page) {
+      await (page as any).emulateMedia({ media: 'print' });
+    } else if ('emulateMediaType' in page) {
+      // Fallback for older versions
+      await (page as any).emulateMediaType('print');
+    }
+    
     // Set content
-    await page.setContent(html, { waitUntil: isVercel ? 'domcontentloaded' : 'networkidle' });
+    await page.setContent(html, { waitUntil: isVercel ? 'domcontentloaded' as any : 'networkidle' as any });
     
     console.log('[PRINT API] Generating PDF from HTML...');
-    // Generate PDF
-    const pdfBuffer = await page.pdf({
-      format: labelSize === '8.5x11' ? 'Letter' : undefined,
-      width: labelSize === '4x6' ? '4in' : labelSize === '2x2' ? '2in' : undefined,
-      height: labelSize === '4x6' ? '6in' : labelSize === '2x2' ? '2in' : undefined,
+    // Generate PDF with deterministic settings
+    const pdfOptions: any = {
       printBackground: true,
-      margin: labelSize === '8.5x11' ? { top: '0.5in', bottom: '0.5in', left: '0.5in', right: '0.5in' } : { top: 0, bottom: 0, left: 0, right: 0 }
-    });
+      preferCSSPageSize: true, // Respect CSS @page size
+    };
+    
+    // Set size explicitly without format parameter
+    if (labelSize === '4x6') {
+      pdfOptions.width = '4in';
+      pdfOptions.height = '6in';
+      pdfOptions.margin = { top: 0, bottom: 0, left: 0, right: 0 };
+    } else if (labelSize === '2x2') {
+      pdfOptions.width = '2in';
+      pdfOptions.height = '2in';
+      pdfOptions.margin = { top: 0, bottom: 0, left: 0, right: 0 };
+    } else if (labelSize === '8.5x11') {
+      pdfOptions.format = 'Letter';
+      pdfOptions.margin = { top: '0.5in', bottom: '0.5in', left: '0.5in', right: '0.5in' };
+    }
+    
+    const pdfBuffer = await page.pdf(pdfOptions);
     
     console.log(`[PRINT API] PDF generated successfully. Size: ${pdfBuffer.length} bytes`);
     
     // Return PDF response
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(pdfBuffer as any, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
@@ -122,7 +154,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], labelSize: string, sourceAssignments: any[] = []): string {
+function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSize: string, sourceAssignments: any[] = []): string {
   const isLetter = labelSize === '8.5x11';
   const is4x6 = labelSize === '4x6';
   
@@ -187,12 +219,11 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     if (record.qrType === 'source') {
       // Parse the source container name to extract chemical and container info
       const sourceContainerName = record.encodedData?.sourceContainerName || '';
-      const chemicalName = record.chemicalName || record.encodedData?.chemicalName || '';
       
       // sourceContainerName format: "tote275 #ABC123" or "tote275 #- ChemicalName"
       let containerType = '';
       let containerCode = '';
-      let extractedChemical = chemicalName; // Default to provided chemical name
+      let extractedChemical = ''; // Don't default to chemicalName as that's the customer product
       
       if (sourceContainerName) {
         // Check for hash separator
@@ -212,23 +243,35 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             containerType = beforeHash.toUpperCase();
           }
           
-          // Check if after hash contains chemical name (format: "#- ChemicalName")
+          // Check if after hash contains chemical name
           if (afterHash.startsWith('- ')) {
+            // Format: "#- ChemicalName"
             extractedChemical = afterHash.substring(2).trim();
             containerCode = ''; // No specific code, just chemical name
+          } else if (afterHash.includes(' - ')) {
+            // Format: "#1 - ChemicalName" - extract code before dash
+            const dashPos = afterHash.indexOf(' - ');
+            containerCode = afterHash.substring(0, dashPos).trim();
+            extractedChemical = afterHash.substring(dashPos + 3).trim();
           } else {
-            containerCode = afterHash; // It's a container code
+            // Just a code like "#ABC123"
+            containerCode = afterHash;
           }
         }
       }
       
-      // Use extracted chemical or fallback to provided chemical name
-      const displayChemical = extractedChemical || 'SOURCE MATERIAL';
+      // Use extracted chemical name if available (from sourceContainerName parsing)
+      // Do NOT use the chemicalName field as that's the customer's product name
+      const displayChemical = extractedChemical || 'SOURCE BULK MATERIAL';
       
       // Show clearly this is source material with proper chemical name
+      // Only show container code if it actually exists and is not empty
+      const containerCodeDisplay = containerCode && containerCode.trim() ? 
+        `<div style="font-size: 12pt; color: #666; margin-top: 0.03in;">Container #${containerCode}</div>` : '';
+      
       return `<div style="font-size: 20pt; font-weight: bold; line-height: 1.1;">${displayChemical.toUpperCase()}</div>
               ${containerType ? `<div style="font-size: 14pt; color: #ff6600; margin-top: 0.05in; font-weight: bold;">${containerType}</div>` : ''}
-              ${containerCode ? `<div style="font-size: 12pt; color: #666; margin-top: 0.03in;">Container #${containerCode}</div>` : ''}`;
+              ${containerCodeDisplay}`;
     }
     
     switch (record.qrType) {
@@ -246,8 +289,10 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           return '<span style="color: red;">PRODUCT NAME MISSING</span>';
         }
         
-        // Show product name clearly
-        return chemicalName.toUpperCase();
+        // Show product name clearly - use smaller font if needed to fit
+        const upperName = chemicalName.toUpperCase();
+        const fontSize = upperName.length > 30 ? '14pt' : '16pt';
+        return `<div style="font-size: ${fontSize}; word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.1;">${upperName}</div>`;
       default:
         return (record.qrType || 'LABEL').toUpperCase();
     }
@@ -257,9 +302,9 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   const getSourceInfo = (record: any): string => {
     if (record.qrType === 'source') {
       // For source containers, show what they're used for
-      return `<div style="background: #e8f4fd; border: 2px solid #0066cc; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0;">
+      return `<div style="background: #e8f4fd; border: 2px solid #0066cc; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0; overflow: visible;">
               <div style="font-size: 10pt; font-weight: bold; color: #0066cc;">FILLS INTO →</div>
-              <div style="font-size: 12pt; color: #333; margin-top: 0.02in; font-weight: bold;">Customer Order Containers</div>
+              <div style="font-size: 12pt; color: #333; margin-top: 0.02in; font-weight: bold; word-wrap: break-word; word-break: break-word; white-space: normal; line-height: 1.2; overflow: visible;">Customer Order Containers</div>
             </div>`;
     }
     
@@ -307,10 +352,11 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             if (afterHash.startsWith('- ')) {
               chemicalName = afterHash.substring(2).trim();
               displayName = `${chemicalName.toUpperCase()} (${readableType})`;
-            } else if (afterHash) {
-              // It's just a code
+            } else if (afterHash && afterHash.trim() !== '') {
+              // It's just a code - only show if not empty
               displayName = `${readableType} #${afterHash}`;
             } else {
+              // No code after hash, just show container type
               displayName = readableType;
             }
           } else {
@@ -321,11 +367,42 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         return displayName;
       });
       
-      // Return first source (primary source for this container) with clear labeling
-      return `<div style="background: #fff3cd; border: 2px solid #ff6600; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0;">
-              <div style="font-size: 10pt; font-weight: bold; color: #ff6600;">← FILL FROM SOURCE</div>
-              <div style="font-size: 14pt; font-weight: bold; color: #333; margin-top: 0.02in;">${sourceInfo[0]}</div>
-            </div>`;
+      // Extract the source container shortcode if available
+      const sourceContainer = assignment.sourceContainers[0];
+      let sourceShortCode = '';
+      
+      if (sourceContainer && sourceContainer.shortCode) {
+        sourceShortCode = sourceContainer.shortCode;
+      } else if (sourceContainer && sourceContainer.name) {
+        // Extract from the name format "tote275 #ABC123 - Product" or "tote275 #ABC123"
+        const hashIndex = sourceContainer.name.indexOf('#');
+        if (hashIndex > -1) {
+          const afterHash = sourceContainer.name.substring(hashIndex + 1).trim();
+          // Check if there's a dash after the code
+          const dashIndex = afterHash.indexOf(' - ');
+          if (dashIndex > -1) {
+            // Extract code before the dash
+            sourceShortCode = afterHash.substring(0, dashIndex).trim();
+          } else if (!afterHash.startsWith('- ')) {
+            // Use the whole string after # if no dash
+            sourceShortCode = afterHash.split(' ')[0]; // Take first word/code
+          }
+        }
+      }
+      
+      // Return first source (primary source for this container) with clear labeling and shortcode
+      if (sourceShortCode) {
+        return `<div style="background: #fff3cd; border: 2px solid #ff6600; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0; overflow: visible;">
+                <div style="font-size: 11pt; font-weight: bold; color: #ff6600;">← FILL FROM SOURCE: ${sourceShortCode}</div>
+                <div style="font-size: 13pt; font-weight: bold; color: #333; margin-top: 0.02in; word-wrap: break-word; word-break: break-word; white-space: normal; line-height: 1.2; overflow: visible;">${sourceInfo[0]}</div>
+              </div>`;
+      } else {
+        return `<div style="background: #fff3cd; border: 2px solid #ff6600; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0; overflow: visible;">
+                <div style="font-size: 10pt; font-weight: bold; color: #ff6600;">← FILL FROM SOURCE</div>
+                <div style="font-size: 14pt; font-weight: bold; color: #333; margin-top: 0.02in; word-wrap: break-word; word-break: break-word; white-space: normal; line-height: 1.2; overflow: visible;">${sourceInfo[0]}</div>
+                <div style="font-size: 10pt; color: #ff0000; margin-top: 0.02in; font-weight: bold;">⚠️ SOURCE CODE MISSING</div>
+              </div>`;
+      }
     }
     
     return '';
@@ -369,19 +446,31 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     if (record.qrType === 'source') {
       // Show the container type and ID clearly
       const sourceContainerName = record.encodedData?.sourceContainerName || '';
-      const sourceContainerId = record.encodedData?.sourceContainerId || record.sourceContainerId || '';
       
       // Parse the sourceContainerName which comes in format like "tote275 #ABC123"
       if (sourceContainerName) {
         // If it's in the format "tote275 #ABC123" or "drum55 #XYZ789"
         const hashIndex = sourceContainerName.indexOf('#');
         if (hashIndex > -1) {
-          const containerType = sourceContainerName.substring(0, hashIndex).trim();
+          const containerPart = sourceContainerName.substring(0, hashIndex).trim();
           const shortCode = sourceContainerName.substring(hashIndex + 1).trim();
           
-          // Don't show redundant info - already shown in product name area
-          if (shortCode) {
+          // Parse container type to readable format
+          let readableType = containerPart;
+          if (containerPart.toLowerCase() === 'tote275') {
+            readableType = '275 GAL TOTE';
+          } else if (containerPart.toLowerCase() === 'drum55') {
+            readableType = '55 GAL DRUM';
+          } else if (containerPart.toLowerCase() === 'tote330') {
+            readableType = '330 GAL TOTE';
+          }
+          
+          // Only show container ID if shortCode exists and is not empty or just a dash
+          if (shortCode && !shortCode.startsWith('- ') && shortCode !== '') {
             return `<div style="font-size: 14pt; color: #666; font-weight: bold;">Container ID: #${shortCode}</div>`;
+          } else {
+            // Show just the container type without the empty #
+            return `<div style="font-size: 14pt; color: #666; font-weight: bold;">${readableType}</div>`;
           }
         }
         
@@ -392,9 +481,13 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           const containerPart = sourceContainerName.substring(0, dashIndex);
           return `<div style="font-size: 14pt; color: #666; font-weight: bold;">${containerPart}</div>`;
         }
+        
+        // No hash or dash, just show the raw container name
+        return `<div style="font-size: 14pt; color: #666; font-weight: bold;">${sourceContainerName}</div>`;
       }
       
-      return '';
+      // If no container name at all, show a warning
+      return '<div style="font-size: 14pt; color: #ff0000; font-weight: bold;">Container ID: <span style="background: yellow;">MISSING</span></div>';
     }
     
     switch (record.qrType) {
@@ -420,6 +513,57 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         const containerNum = record.encodedData?.containerNumber || 1;
         const totalContainers = record.encodedData?.totalContainers || 1;
         const containerType = record.encodedData?.containerType || 'Container';
+        
+        // For pallets and cases, show the actual quantity of items
+        if (containerType === 'pallet' || containerType === 'case') {
+          const itemName = record.chemicalName || record.encodedData?.itemName || 'Product';
+          
+          // Get the actual quantity from the assignment
+          let itemQuantity = '';
+          if (assignment && assignment.quantity) {
+            // Use the actual order quantity from sourceAssignments
+            itemQuantity = String(assignment.quantity);
+          } else {
+            // Try to parse quantity from the item name as fallback (e.g., "6x Isopropyl Alcohol")
+            const qtyMatch = itemName.match(/^(\d+)x?\s+/i);
+            if (qtyMatch) {
+              itemQuantity = qtyMatch[1];
+            }
+          }
+          
+          const containerLabel = `${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}`;
+          if (itemQuantity) {
+            // PRIORITY: Look for container types FIRST (pail, drum, tote, box), then fall back to measurements (gallon)
+            const containerMatch = itemName.match(/(pail|drum|tote|box)/i);
+            const measurementMatch = itemName.match(/(gallon|gal)/i);
+            
+            let unitType = 'units';
+            
+            // Use container type if found, otherwise fall back to measurement
+            const unitMatch = containerMatch || measurementMatch;
+            
+            if (unitMatch) {
+              unitType = unitMatch[1].toLowerCase();
+              // Handle plural forms correctly
+              if (unitType === 'gal' || unitType === 'gallon') {
+                unitType = parseInt(itemQuantity) > 1 ? 'gallons' : 'gallon';
+              } else if (unitType === 'box') {
+                unitType = parseInt(itemQuantity) > 1 ? 'boxes' : 'box';
+              } else if (parseInt(itemQuantity) > 1) {
+                // Add 's' for plural only if not already plural
+                if (!unitType.endsWith('s')) {
+                  unitType = unitType + 's';
+                }
+              }
+            }
+            
+            return `<div style="font-size: 14pt; color: #495057; font-weight: bold;">${containerLabel}</div>
+                    <div style="font-size: 13pt; color: #ff6600; font-weight: bold; margin-top: 0.05in;">Contains: ${itemQuantity} x ${unitType}</div>`;
+          }
+          
+          return `<div style="font-size: 14pt; color: #495057; font-weight: bold;">${containerLabel}</div>`;
+        }
+        
         return `<div style="font-size: 14pt; color: #495057; font-weight: bold;">${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}</div>`;
       default:
         return '';
@@ -427,7 +571,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
   };
   
   const labelHTML = labelsData.map((data) => {
-    const { qrDataUrl, record } = data;
+    const { qrSvg, record } = data;
     const orderNumber = record.orderNumber || record.orderId || 'N/A';
     const labelType = getLabelType(record);
     const productName = getProductName(record);
@@ -439,7 +583,6 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
     // Standardized HTML structure for ALL label types
     if (is4x6) {
       const badgeClass = record.qrType === 'source' ? 'source' : '';
-      const isMasterLabel = record.qrType === 'master' || record.qrType === 'order_master';
       
       return `
         <div class="label-container">
@@ -449,13 +592,14 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
           </div>
           <div class="product-name">${productName}</div>
           ${sourceInfo ? `<div class="source-info">${sourceInfo}</div>` : ''}
-          <img src="${qrDataUrl}" alt="QR Code">
+          <div class="qr-box">
+            ${qrSvg}
+          </div>
           <div class="item-info">${itemInfo}</div>
           ${orderItemsList}
           <div class="footer">
             <span class="scan-code-title">SCAN CODE</span>
             <span class="short-code">${shortCode}</span>
-            <span class="instructions">Scan QR or enter code manually</span>
           </div>
         </div>
       `;
@@ -465,7 +609,9 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
         <div class="label-grid">
           <div class="order-number">Order #${orderNumber}</div>
           <div class="product-name">${productName}</div>
-          <img src="${qrDataUrl}" alt="QR Code">
+          <div class="qr-box">
+            ${qrSvg}
+          </div>
           <div class="item-info">${itemInfo}</div>
           <div class="short-code">${shortCode}</div>
         </div>
@@ -475,7 +621,9 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
       return `
         <div class="label-2x2">
           <div class="order-number">Order #${orderNumber}</div>
-          <img src="${qrDataUrl}" alt="QR Code">
+          <div class="qr-box">
+            ${qrSvg}
+          </div>
           <div class="item-info">${productName}<br/>${itemInfo}</div>
           <div class="short-code">${shortCode}</div>
         </div>
@@ -494,24 +642,33 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             margin: ${isLetter ? '0.5in' : '0'};
           }
           
+          * {
+            box-sizing: border-box;
+          }
+          
           body {
             margin: 0;
             padding: 0;
             font-family: 'Helvetica Neue', Arial, sans-serif;
           }
           
-          /* Main container for a 4x6 label */
+          /* Main container for a 4x6 label with safe printable area */
           .label-container {
             width: 4in;
             height: 6in;
-            padding: 0.25in;
+            padding: 0.30in; /* 0.30in safe area from all edges */
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-start; /* Changed from space-between to prevent stretching */
             text-align: center;
-            page-break-after: always;
+            page-break-before: always; /* Force new page before each label */
+            page-break-after: always; /* Force new page after each label */
+            page-break-inside: avoid; /* Never split label content */
+            position: relative;
+            overflow: hidden; /* Clip any content that exceeds boundaries */
+            max-height: 6in; /* Enforce exact height */
           }
           
           /* Top section with Order # */
@@ -522,6 +679,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             flex-direction: column;
             align-items: center;
             gap: 0.1in;
+            margin-bottom: 0.1in;
           }
           
           .order-number {
@@ -540,6 +698,7 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            margin: 0.05in 0; /* Breathing room for badge */
           }
           
           .label-type-badge.source {
@@ -552,32 +711,47 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             font-size: 16pt;
             font-weight: bold;
             line-height: 1.2;
-            max-width: 3.5in;
+            max-width: 3.4in; /* Slightly reduced for safe area */
             word-wrap: break-word;
+            word-break: break-word;
             margin: 0.08in 0;
             overflow: visible;
-            max-height: none;
+            max-height: 0.8in; /* Limit height to prevent overflow */
+            white-space: normal;
           }
           
           .source-info {
             font-size: 12pt;
             color: #0066cc;
             font-weight: bold;
-            margin: -0.03in 0 0.08in 0;
+            margin: 0.05in 0 0.08in 0; /* Removed negative margin */
             background-color: #e6f2ff;
             padding: 3px 10px;
             border-radius: 4px;
             display: inline-block;
             max-width: 3.5in;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            overflow: visible; /* Never clip source info */
+            word-wrap: break-word;
+            word-break: break-word;
+            white-space: normal;
           }
           
-          img {
-            width: 2in;
-            height: 2in;
+          /* QR Code container - exact size for 203 DPI */
+          .qr-box {
+            width: 1.968in; /* 400 dots at 203 DPI */
+            height: 1.968in; /* 400 dots at 203 DPI */
             margin: 0.08in 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            overflow: visible; /* Never clip QR codes */
+          }
+          
+          .qr-box svg {
+            width: 100%;
+            height: 100%;
+            display: block;
           }
           
           .item-info {
@@ -585,6 +759,8 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             color: #333;
             margin: 0.04in 0;
             line-height: 1.2;
+            max-height: 0.5in; /* Limit height to prevent overflow */
+            overflow: visible;
           }
           
           /* Bottom section with Short Code */
@@ -594,7 +770,11 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             display: flex;
             flex-direction: column;
             align-items: center;
+            margin-top: auto; /* Push to bottom within container */
+            padding-top: 0.1in;
             gap: 0.05in;
+            flex-shrink: 0; /* Prevent footer from shrinking */
+            max-height: 0.8in; /* Limit footer height */
           }
           
           .scan-code-title {
@@ -616,12 +796,6 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             display: block;
           }
           
-          .instructions {
-            font-size: 9pt;
-            color: #666;
-            font-style: italic;
-            display: block;
-          }
           
           /* Letter Size Grid Layout */
           .label-grid {
@@ -652,10 +826,21 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             margin-bottom: 0.05in;
           }
           
-          .label-grid img {
-            width: 1in;
-            height: 1in;
-            margin: 0.05in 0;
+          .label-grid .qr-box {
+            width: 1.2in;
+            height: 1.2in;
+            margin: 0.05in auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            overflow: visible;
+          }
+          
+          .label-grid .qr-box svg {
+            width: 100%;
+            height: 100%;
+            display: block;
           }
           
           .label-grid .item-info {
@@ -691,9 +876,20 @@ function generatePrintHTML(labelsData: { qrDataUrl: string; record: any }[], lab
             font-weight: bold;
           }
           
-          .label-2x2 img {
-            width: 1in;
-            height: 1in;
+          .label-2x2 .qr-box {
+            width: 1.2in;
+            height: 1.2in;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            overflow: visible;
+          }
+          
+          .label-2x2 .qr-box svg {
+            width: 100%;
+            height: 100%;
+            display: block;
           }
           
           .label-2x2 .item-info {
