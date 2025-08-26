@@ -68,95 +68,314 @@ svg {
   max-height: 3rem !important;
 }
 
-/* Worker View Styles - High Contrast & Large Touch Targets */
+/* Warehouse Worker Styles - Maximum Contrast & Glove-Friendly Touch Targets */
 @layer components {
-  /* Worker view button styles - Mobile optimized */
-  .worker-btn {
-    @apply min-h-[60px] px-4 py-4 text-worker-lg font-bold rounded-lg transition-all transform active:scale-95 w-full max-w-full;
+  /* Core button styles - Optimized for warehouse use */
+  .warehouse-btn {
+    @apply min-h-touch-base px-6 py-5 text-warehouse-lg font-black rounded-warehouse 
+           transition-all transform active:scale-95 active:shadow-warehouse-pressed 
+           w-full flex items-center justify-center gap-3 select-none
+           border-4 border-b-8 relative overflow-hidden;
+    /* 3D button effect */
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
   
-  /* Larger padding on desktop */
+  /* Glove mode - even bigger targets */
+  .glove-mode .warehouse-btn {
+    @apply min-h-touch-lg text-warehouse-xl;
+  }
+  
+  /* Larger padding on tablets/desktop */
   @media (min-width: 768px) {
-    .worker-btn {
-      @apply px-8;
+    .warehouse-btn {
+      @apply px-10;
     }
   }
   
+  /* Button variants with physical appearance */
+  .warehouse-btn-go {
+    @apply warehouse-btn bg-warehouse-go text-white border-green-900 
+           hover:bg-green-700 shadow-warehouse-lg hover:shadow-warehouse-xl;
+    background: linear-gradient(180deg, #00A34A 0%, #00873E 100%);
+  }
+  
+  .warehouse-btn-stop {
+    @apply warehouse-btn bg-warehouse-stop text-white border-red-900 
+           hover:bg-red-700 shadow-warehouse-lg hover:shadow-warehouse-xl;
+    background: linear-gradient(180deg, #E60000 0%, #CC0000 100%);
+  }
+  
+  .warehouse-btn-caution {
+    @apply warehouse-btn bg-warehouse-caution text-warehouse-text-primary border-yellow-700 
+           hover:bg-yellow-500 shadow-warehouse-lg hover:shadow-warehouse-xl;
+    background: linear-gradient(180deg, #FFB84D 0%, #F5A623 100%);
+  }
+  
+  .warehouse-btn-info {
+    @apply warehouse-btn bg-warehouse-info text-white border-blue-900 
+           hover:bg-blue-700 shadow-warehouse-lg hover:shadow-warehouse-xl;
+    background: linear-gradient(180deg, #0065FF 0%, #0052CC 100%);
+  }
+  
+  .warehouse-btn-neutral {
+    @apply warehouse-btn bg-gray-300 text-warehouse-text-primary border-gray-500 
+           hover:bg-gray-400 shadow-warehouse hover:shadow-warehouse-lg;
+    background: linear-gradient(180deg, #E0E0E0 0%, #BDBDBD 100%);
+  }
+  
+  /* Legacy worker button classes for compatibility */
+  .worker-btn {
+    @apply warehouse-btn;
+  }
+  
   .worker-btn-green {
-    @apply worker-btn bg-worker-green text-white hover:bg-green-700 shadow-lg hover:shadow-xl;
+    @apply warehouse-btn-go;
   }
   
   .worker-btn-red {
-    @apply worker-btn bg-worker-red text-white hover:bg-red-700 shadow-lg hover:shadow-xl;
+    @apply warehouse-btn-stop;
   }
   
   .worker-btn-blue {
-    @apply worker-btn bg-worker-blue text-white hover:bg-blue-700 shadow-lg hover:shadow-xl;
+    @apply warehouse-btn-info;
   }
   
   .worker-btn-gray {
-    @apply worker-btn bg-gray-200 text-worker-gray hover:bg-gray-300;
+    @apply warehouse-btn-neutral;
   }
   
-  /* Worker view text styles */
+  /* Warehouse text styles - Maximum readability */
+  .warehouse-title {
+    @apply text-warehouse-3xl font-black text-warehouse-text-primary leading-tight;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  
+  .warehouse-subtitle {
+    @apply text-warehouse-2xl font-bold text-warehouse-text-primary;
+  }
+  
+  .warehouse-text {
+    @apply text-warehouse-base text-warehouse-text-primary;
+  }
+  
+  .warehouse-label {
+    @apply text-warehouse-lg font-black text-warehouse-text-primary uppercase tracking-wide;
+  }
+  
+  .warehouse-instruction {
+    @apply text-warehouse-lg font-bold text-warehouse-info;
+  }
+  
+  /* Legacy worker text classes */
   .worker-title {
-    @apply text-worker-3xl font-bold text-worker-gray;
+    @apply warehouse-title;
   }
   
   .worker-subtitle {
-    @apply text-worker-2xl font-semibold text-worker-gray;
+    @apply warehouse-subtitle;
   }
   
   .worker-text {
-    @apply text-worker-lg text-worker-gray;
+    @apply warehouse-text;
   }
   
   .worker-label {
-    @apply text-worker-xl font-bold text-worker-gray;
+    @apply warehouse-label;
   }
   
-  /* Worker view container styles */
-  .worker-screen {
-    @apply min-h-screen bg-white p-2;
+  /* Warehouse container styles */
+  .warehouse-screen {
+    @apply min-h-screen bg-warehouse-bg-light p-2;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F7F8FC 100%);
   }
   
-  /* Larger padding on desktop */
+  /* Larger padding on tablets/desktop */
   @media (min-width: 768px) {
-    .worker-screen {
+    .warehouse-screen {
       @apply p-6;
     }
   }
   
-  .worker-card {
-    @apply bg-white rounded-xl shadow-xl border-2 border-gray-200 p-4 mx-4 max-w-none;
+  .warehouse-card {
+    @apply bg-warehouse-bg-card rounded-warehouse-lg shadow-warehouse-xl 
+           border-4 border-warehouse-border p-6 mx-2 max-w-none relative;
+    /* Physical card appearance */
+    background: linear-gradient(145deg, #FFFFFF 0%, #F9FAFB 100%);
   }
   
-  /* Larger padding on desktop */
+  .warehouse-card-active {
+    @apply warehouse-card border-warehouse-caution bg-warehouse-bg-highlight;
+    box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.3), 0 8px 16px rgba(0,0,0,0.3);
+  }
+  
+  /* Job ticket appearance */
+  .warehouse-ticket {
+    @apply warehouse-card border-dashed relative overflow-hidden;
+    /* Torn edge effect on top */
+    &::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent,
+        transparent 10px,
+        #fff 10px,
+        #fff 20px
+      );
+    }
+  }
+  
+  /* Larger padding on tablets/desktop */
   @media (min-width: 768px) {
-    .worker-card {
+    .warehouse-card {
       @apply p-8 mx-0;
     }
   }
   
-  /* Worker progress bar */
+  /* Legacy worker classes */
+  .worker-screen {
+    @apply warehouse-screen;
+  }
+  
+  .worker-card {
+    @apply warehouse-card;
+  }
+  
+  /* Warehouse progress indicators */
+  .warehouse-progress {
+    @apply h-8 bg-gray-300 rounded-full overflow-hidden border-2 border-warehouse-border-heavy;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+  }
+  
+  .warehouse-progress-bar {
+    @apply h-full bg-warehouse-go transition-all duration-300 relative;
+    background: linear-gradient(90deg, #00873E 0%, #00A34A 50%, #00873E 100%);
+    /* Animated stripes */
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(255,255,255,0.1) 10px,
+        rgba(255,255,255,0.1) 20px
+      );
+      animation: progress-stripes 1s linear infinite;
+    }
+  }
+  
+  @keyframes progress-stripes {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(20px); }
+  }
+  
+  /* Status indicators */
+  .warehouse-status-light {
+    @apply w-6 h-6 rounded-full border-2 border-gray-700 relative;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 10px currentColor;
+  }
+  
+  .warehouse-status-light-go {
+    @apply warehouse-status-light bg-warehouse-go text-warehouse-go;
+    animation: pulse-light 2s infinite;
+  }
+  
+  .warehouse-status-light-stop {
+    @apply warehouse-status-light bg-warehouse-stop text-warehouse-stop;
+    animation: pulse-light 2s infinite;
+  }
+  
+  .warehouse-status-light-caution {
+    @apply warehouse-status-light bg-warehouse-caution text-warehouse-caution;
+    animation: pulse-light 1s infinite;
+  }
+  
+  @keyframes pulse-light {
+    0%, 100% { box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 10px currentColor; }
+    50% { box-shadow: inset 0 2px 4px rgba(0,0,0,0.3), 0 0 20px currentColor; }
+  }
+  
+  /* Legacy progress classes */
   .worker-progress {
-    @apply h-4 bg-gray-200 rounded-full overflow-hidden;
+    @apply warehouse-progress;
   }
   
   .worker-progress-bar {
-    @apply h-full bg-worker-green transition-all duration-300;
+    @apply warehouse-progress-bar;
+  }
+  
+  /* Badge styles for status */
+  .warehouse-badge {
+    @apply px-4 py-2 text-warehouse-sm font-black rounded-full uppercase 
+           inline-flex items-center gap-2 border-2;
+  }
+  
+  .warehouse-badge-go {
+    @apply warehouse-badge bg-green-100 text-warehouse-go border-warehouse-go;
+  }
+  
+  .warehouse-badge-stop {
+    @apply warehouse-badge bg-red-100 text-warehouse-stop border-warehouse-stop;
+  }
+  
+  .warehouse-badge-caution {
+    @apply warehouse-badge bg-yellow-100 text-warehouse-caution border-warehouse-caution;
+  }
+  
+  .warehouse-badge-info {
+    @apply warehouse-badge bg-blue-100 text-warehouse-info border-warehouse-info;
   }
 }
 
-/* Worker view icon overrides */
+/* Warehouse icon sizing - bigger for gloved hands */
+.warehouse-icon svg {
+  width: 3rem !important;
+  height: 3rem !important;
+  min-width: 3rem !important;
+  min-height: 3rem !important;
+  stroke-width: 3px;
+}
+
+.warehouse-icon-lg svg {
+  width: 4rem !important;
+  height: 4rem !important;
+  min-width: 4rem !important;
+  min-height: 4rem !important;
+  stroke-width: 3px;
+}
+
+.warehouse-icon-xl svg {
+  width: 6rem !important;
+  height: 6rem !important;
+  min-width: 6rem !important;
+  min-height: 6rem !important;
+  stroke-width: 3px;
+}
+
+.warehouse-icon-2xl svg {
+  width: 8rem !important;
+  height: 8rem !important;
+  min-width: 8rem !important;
+  min-height: 8rem !important;
+  stroke-width: 4px;
+}
+
+/* Legacy worker icon classes */
 .worker-icon svg {
-  max-width: 4rem !important;
-  max-height: 4rem !important;
+  @apply warehouse-icon;
 }
 
 .worker-icon-large svg {
-  max-width: 6rem !important;
-  max-height: 6rem !important;
+  @apply warehouse-icon-xl;
 }
 
 /* Tutorial animations */
@@ -173,4 +392,124 @@ svg {
 
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
+}
+
+/* Warehouse-specific utilities */
+@layer utilities {
+  /* High visibility mode for bright/dark warehouses */
+  .high-visibility {
+    filter: contrast(1.2) brightness(1.1);
+  }
+  
+  .dark-warehouse {
+    filter: brightness(1.3);
+  }
+  
+  /* Glove mode enhancements */
+  .glove-mode {
+    /* All interactive elements get bigger */
+    & button, & a, & input, & select, & textarea {
+      @apply min-h-touch-base text-warehouse-lg;
+    }
+    
+    /* Spacing between elements increases */
+    & > * + * {
+      @apply mt-6;
+    }
+  }
+  
+  /* Physical feedback effects */
+  .physical-press {
+    @apply active:scale-95 active:shadow-warehouse-pressed transition-all duration-150;
+  }
+  
+  .physical-hover {
+    @apply hover:scale-105 hover:shadow-warehouse-xl transition-all duration-200;
+  }
+  
+  /* Safety color overlays */
+  .safety-overlay-green {
+    @apply relative;
+    &::after {
+      content: '';
+      @apply absolute inset-0 bg-green-500 opacity-10 pointer-events-none rounded-warehouse;
+    }
+  }
+  
+  .safety-overlay-red {
+    @apply relative;
+    &::after {
+      content: '';
+      @apply absolute inset-0 bg-red-500 opacity-10 pointer-events-none rounded-warehouse;
+    }
+  }
+  
+  .safety-overlay-yellow {
+    @apply relative;
+    &::after {
+      content: '';
+      @apply absolute inset-0 bg-yellow-500 opacity-10 pointer-events-none rounded-warehouse;
+    }
+  }
+  
+  /* Visual step indicators */
+  .step-number {
+    @apply w-16 h-16 rounded-full bg-warehouse-info text-white 
+           flex items-center justify-center text-warehouse-2xl font-black
+           border-4 border-white shadow-warehouse-lg;
+  }
+  
+  .step-number-active {
+    @apply step-number bg-warehouse-caution animate-pulse-strong;
+  }
+  
+  .step-number-complete {
+    @apply step-number bg-warehouse-go;
+  }
+  
+  .step-number-error {
+    @apply step-number bg-warehouse-stop animate-error-shake;
+  }
+  
+  /* Loading states */
+  .warehouse-loading {
+    @apply relative overflow-hidden;
+    &::after {
+      content: '';
+      @apply absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30;
+      animation: shimmer 1.5s infinite;
+    }
+  }
+  
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  
+  /* Success/Error states */
+  .warehouse-success {
+    @apply bg-green-50 border-4 border-warehouse-go text-warehouse-go;
+  }
+  
+  .warehouse-error {
+    @apply bg-red-50 border-4 border-warehouse-stop text-warehouse-stop;
+  }
+  
+  .warehouse-warning {
+    @apply bg-yellow-50 border-4 border-warehouse-caution text-warehouse-text-primary;
+  }
+  
+  /* Focus states for accessibility */
+  .warehouse-focus {
+    @apply focus:outline-none focus:ring-8 focus:ring-warehouse-info focus:ring-opacity-50;
+  }
+  
+  /* Dividers */
+  .warehouse-divider {
+    @apply border-t-4 border-warehouse-border-heavy my-6;
+  }
+  
+  .warehouse-divider-dashed {
+    @apply border-t-4 border-dashed border-warehouse-border-heavy my-6;
+  }
 }

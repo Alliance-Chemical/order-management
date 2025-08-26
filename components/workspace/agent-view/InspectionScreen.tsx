@@ -5,6 +5,7 @@ import IssueModal from './IssueModal';
 import { QRScanner } from '@/components/qr/QRScanner';
 import MultiContainerInspection from './MultiContainerInspection';
 import { InspectionScreenProps, InspectionItem } from '@/lib/types/agent-view';
+import { warehouseFeedback, visualFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
 
 export default function InspectionScreen({ 
   orderId, 
@@ -203,9 +204,13 @@ export default function InspectionScreen({
   const handlePass = () => {
     // For QR scan items, clicking pass/scan button opens scanner
     if (requiresQRScan && !scannedQRs[currentItem.id]) {
+      warehouseFeedback.buttonPress();
       setShowScanner(true);
       return;
     }
+    
+    // Provide success feedback
+    warehouseFeedback.success();
     
     const newResults = { ...results, [currentItem.id]: 'pass' as const };
     setResults(newResults);
@@ -213,7 +218,8 @@ export default function InspectionScreen({
     if (currentIndex < items.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      // Complete the inspection
+      // Complete the inspection with celebration
+      warehouseFeedback.complete();
       onComplete({
         checklist: newResults,
         notes: Object.values(notes).join('\n'),
@@ -224,6 +230,7 @@ export default function InspectionScreen({
   };
 
   const handleFail = () => {
+    warehouseFeedback.error();
     setCurrentFailedItem(currentItem);
     setIssueModalOpen(true);
   };
@@ -286,38 +293,58 @@ export default function InspectionScreen({
   };
 
   return (
-    <div className="worker-screen">
-      <div className="max-w-4xl mx-auto">
+    <div className="warehouse-screen">
+      <div className="max-w-5xl mx-auto">
         {/* Header with progress */}
         <div className="mb-8">
-          {/* Small supervisor mode toggle */}
-          <div className="flex justify-between items-center mb-4">
+          {/* Navigation bar */}
+          <div className="flex justify-between items-center mb-6">
             <button
-              onClick={handleBack}
+              onClick={() => {
+                warehouseFeedback.buttonPress();
+                handleBack();
+              }}
               disabled={currentIndex === 0}
-              className={`text-worker-lg ${currentIndex === 0 ? 'text-gray-300' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`flex items-center gap-2 px-6 py-3 rounded-warehouse text-warehouse-lg font-bold transition-all
+                ${currentIndex === 0 
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                  : 'bg-warehouse-neutral text-white shadow-warehouse hover:shadow-warehouse-lg active:scale-95'}`}
             >
-              ← Back
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              BACK
             </button>
             <button
-              onClick={onSwitchToSupervisor}
-              className="text-sm text-gray-500 hover:text-gray-700 underline"
+              onClick={() => {
+                warehouseFeedback.buttonPress();
+                onSwitchToSupervisor();
+              }}
+              className="px-4 py-2 bg-gray-200 text-gray-600 rounded-warehouse text-sm font-bold hover:bg-gray-300 transition-all"
             >
-              Supervisor View
+              SUPERVISOR MODE
             </button>
           </div>
 
-          {/* Order Information Bar */}
-          <div className="bg-blue-50 rounded-lg shadow p-4 mb-4">
-            <div className="flex justify-between items-center mb-2">
+          {/* Order Information Card - Like a Job Ticket */}
+          <div className="warehouse-ticket bg-warehouse-bg-highlight mb-6">
+            <div className="flex justify-between items-center mb-4">
               <div>
-                <span className="text-lg font-semibold text-gray-800">Order #{orderNumber || orderId}</span>
+                <div className="warehouse-label text-warehouse-text-secondary mb-1">ORDER NUMBER</div>
+                <div className="text-warehouse-3xl font-black text-warehouse-text-primary">
+                  #{orderNumber || orderId}
+                </div>
                 {customerName && (
-                  <span className="ml-3 text-gray-600">• {customerName}</span>
+                  <div className="mt-2">
+                    <span className="warehouse-label text-warehouse-text-secondary">CUSTOMER: </span>
+                    <span className="text-warehouse-lg font-bold">{customerName}</span>
+                  </div>
                 )}
               </div>
-              <div className="text-sm text-gray-500">
-                {getPhaseLabel()}
+              <div className="text-right">
+                <div className="warehouse-badge-info text-warehouse-xl">
+                  {formatWarehouseText(getPhaseLabel(), 'action')}
+                </div>
               </div>
             </div>
             {orderItems && orderItems.length > 0 && (() => {
@@ -343,17 +370,30 @@ export default function InspectionScreen({
             })()}
           </div>
 
-          {/* Progress bar */}
-          <div className="bg-white rounded-lg shadow-lg p-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="worker-text font-bold">
-                Step {currentIndex + 1} of {items.length}
-              </span>
-              <span className="worker-text text-gray-600">{Math.round(progress)}%</span>
+          {/* Enhanced Progress Indicator */}
+          <div className="warehouse-card mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-3">
+                <div className="step-number-active">
+                  {currentIndex + 1}
+                </div>
+                <div>
+                  <div className="warehouse-label">CHECKPOINT</div>
+                  <div className="text-warehouse-2xl font-black">
+                    {currentIndex + 1} OF {items.length}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-warehouse-3xl font-black text-warehouse-go">
+                  {Math.round(progress)}%
+                </div>
+                <div className="warehouse-label text-warehouse-text-secondary">COMPLETE</div>
+              </div>
             </div>
-            <div className="worker-progress">
+            <div className="warehouse-progress">
               <div 
-                className="worker-progress-bar"
+                className="warehouse-progress-bar"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -486,40 +526,46 @@ export default function InspectionScreen({
           return null;
         })()}
 
-        {/* Current inspection item */}
-        <div className="worker-card">
+        {/* Current Inspection Task Card */}
+        <div className="warehouse-card-active">
           <div className="text-center mb-8">
-            {/* Show QR icon for scan steps, checklist icon for others */}
-            <div className={`worker-icon-large mx-auto mb-4 ${requiresQRScan ? 'text-purple-600' : 'text-worker-blue'}`}>
+            {/* Large Icon with Physical Appearance */}
+            <div className={`warehouse-icon-2xl mx-auto mb-6 p-6 rounded-full shadow-warehouse-xl
+              ${requiresQRScan 
+                ? 'bg-purple-100 text-purple-700 border-4 border-purple-500' 
+                : 'bg-warehouse-info bg-opacity-20 text-warehouse-info border-4 border-warehouse-info'}`}>
               {requiresQRScan ? (
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                   <path 
                     strokeLinecap="round" 
                     strokeLinejoin="round" 
-                    strokeWidth={2} 
                     d="M12 4v1m6 11l.01-.01M12 12h.01M3 12h.01M12 19v1m8-16.364l-.707.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3z" 
                   />
                 </svg>
               ) : (
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
                   <path 
                     strokeLinecap="round" 
                     strokeLinejoin="round" 
-                    strokeWidth={2} 
                     d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" 
                   />
                 </svg>
               )}
             </div>
-            <div className="flex items-center justify-center gap-4 mb-4">
-              <h2 className="worker-title">{currentItem.label}</h2>
+            <div className="flex items-center justify-center gap-4 mb-6">
+              <h2 className="warehouse-title text-warehouse-4xl">
+                {formatWarehouseText(currentItem.label, 'critical')}
+              </h2>
               <button
-                onClick={() => setShowHelpModal(true)}
-                className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+                onClick={() => {
+                  warehouseFeedback.buttonPress();
+                  setShowHelpModal(true);
+                }}
+                className="p-4 bg-warehouse-info text-white rounded-full shadow-warehouse-lg hover:shadow-warehouse-xl transition-all active:scale-95"
                 title="What am I inspecting?"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round"
                     d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </button>
@@ -562,14 +608,26 @@ export default function InspectionScreen({
               return null;
             })()}
             
-            <p className="worker-subtitle text-gray-600">{currentItem.description}</p>
+            <p className="warehouse-subtitle text-warehouse-text-secondary mb-6">
+              {currentItem.description}
+            </p>
             
             {/* Extra prominent message for QR scan steps */}
             {requiresQRScan && !scannedQRs[currentItem.id] && (
-              <div className="mt-6 p-4 bg-purple-50 border-2 border-purple-300 rounded-xl animate-pulse">
-                <p className="text-xl font-bold text-purple-800">
-                  📷 Tap the big green button below to scan
-                </p>
+              <div className="mt-6 p-6 bg-purple-100 border-4 border-purple-500 rounded-warehouse-lg shadow-warehouse-lg animate-pulse-strong">
+                <div className="flex items-center justify-center gap-3">
+                  <div className="warehouse-icon text-purple-700">
+                    <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" 
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" 
+                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-warehouse-2xl font-black text-purple-800">
+                    {formatWarehouseText('TAP GREEN BUTTON TO SCAN', 'action')}
+                  </p>
+                </div>
               </div>
             )}
             
@@ -740,79 +798,90 @@ export default function InspectionScreen({
               }
             }
             
-            // Regular QR scan button for pump & fill items
+            // Enhanced QR scan button with physical appearance
             if (requiresQRScan && !scannedQRs[currentItem.id]) {
               return (
                 <div className="mt-8">
                   <button
                     onClick={handlePass}
-                    className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-2xl p-8 flex flex-col items-center justify-center gap-4 transform transition-all hover:scale-105 shadow-xl"
+                    className="warehouse-btn-info min-h-touch-xl w-full flex flex-col items-center justify-center gap-4
+                      bg-gradient-to-b from-purple-500 to-purple-700 border-purple-900 hover:from-purple-600 hover:to-purple-800"
                   >
-                    <div className="bg-white bg-opacity-20 rounded-full p-6">
-                      <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="bg-white bg-opacity-30 rounded-full p-8 shadow-warehouse-lg">
+                      <svg className="w-24 h-24" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
                         <path 
                           strokeLinecap="round" 
                           strokeLinejoin="round" 
-                          strokeWidth={2.5} 
                           d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
                         />
                         <path 
                           strokeLinecap="round" 
                           strokeLinejoin="round" 
-                          strokeWidth={2.5} 
                           d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                         />
                       </svg>
                     </div>
-                    <span className="text-3xl font-bold">TAP TO SCAN QR CODE</span>
-                    <span className="text-lg opacity-90">Camera will open automatically</span>
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="text-warehouse-3xl">{formatWarehouseText('TAP TO SCAN', 'action')}</span>
+                      <span className="text-warehouse-xl opacity-90">QR CODE</span>
+                      <div className="flex items-center gap-2 mt-2 text-warehouse-base opacity-80">
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                        <span>Camera opens automatically</span>
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse animation-delay-200"></div>
+                      </div>
+                    </div>
                   </button>
                   
-                  {/* Small skip option */}
-                  <div className="mt-4 text-center">
+                  {/* Problem reporting option */}
+                  <div className="mt-6 text-center">
                     <button
                       onClick={handleFail}
-                      className="text-gray-500 hover:text-red-600 underline text-sm"
+                      className="px-6 py-3 bg-warehouse-caution text-warehouse-text-primary rounded-warehouse 
+                        font-bold text-warehouse-base hover:bg-yellow-500 transition-all shadow-warehouse"
                     >
-                      Report a problem instead
+                      CAN'T SCAN - REPORT PROBLEM
                     </button>
                   </div>
                 </div>
               );
             }
             
-            // Regular pass/fail buttons for non-QR steps
+            // Enhanced pass/fail buttons with physical appearance
             return (
-              <div className="grid grid-cols-2 gap-6">
-              <button
-                onClick={handlePass}
-                className="worker-btn-green flex flex-col items-center justify-center gap-2"
-              >
-                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={3} 
-                    d="M5 13l4 4L19 7" 
-                  />
-                </svg>
-                <span>PASS</span>
-              </button>
-              
-              <button
-                onClick={handleFail}
-                className="worker-btn-red flex flex-col items-center justify-center gap-2"
-              >
-                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={3} 
-                    d="M6 18L18 6M6 6l12 12" 
-                  />
-                </svg>
-                <span>FAIL</span>
-              </button>
+              <div className="grid grid-cols-2 gap-8 mt-8">
+                <button
+                  onClick={handlePass}
+                  className="warehouse-btn-go min-h-touch-lg flex flex-col items-center justify-center gap-4"
+                >
+                  <div className="warehouse-icon-xl bg-white bg-opacity-30 rounded-full p-4">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={4}>
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        d="M5 13l4 4L19 7" 
+                      />
+                    </svg>
+                  </div>
+                  <span className="text-warehouse-2xl">{formatWarehouseText('PASS', 'action')}</span>
+                  <span className="text-warehouse-base opacity-90">ALL GOOD</span>
+                </button>
+                
+                <button
+                  onClick={handleFail}
+                  className="warehouse-btn-stop min-h-touch-lg flex flex-col items-center justify-center gap-4"
+                >
+                  <div className="warehouse-icon-xl bg-white bg-opacity-30 rounded-full p-4">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={4}>
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        d="M6 18L18 6M6 6l12 12" 
+                      />
+                    </svg>
+                  </div>
+                  <span className="text-warehouse-2xl">{formatWarehouseText('FAIL', 'action')}</span>
+                  <span className="text-warehouse-base opacity-90">FOUND ISSUE</span>
+                </button>
               </div>
             );
           })()}

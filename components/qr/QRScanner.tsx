@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -57,10 +58,8 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
             config,
             (decodedText) => {
               if (mounted) {
-                // Haptic feedback
-                if (navigator.vibrate) {
-                  navigator.vibrate(100);
-                }
+                // Enhanced feedback for successful scan
+                warehouseFeedback.scan();
                 onScan(decodedText);
                 html5QrCode.stop();
               }
@@ -97,6 +96,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
 
   const handleManualSubmit = () => {
     if (manualCode.trim()) {
+      warehouseFeedback.success();
       onScan(manualCode.trim());
     }
   };
@@ -151,75 +151,102 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center p-0 sm:p-4">
-      <div className="bg-white rounded-2xl sm:rounded-2xl max-w-lg w-full h-full sm:h-auto overflow-hidden shadow-2xl qr-scanner-modal">
-        <div className="qr-scanner-content">
-          {/* Header - Mobile optimized */}
-          <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 sm:p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-100 z-50 flex items-center justify-center">
+      <div className="bg-gradient-to-b from-gray-900 to-black rounded-none sm:rounded-warehouse-xl max-w-4xl w-full h-full sm:h-auto overflow-hidden shadow-warehouse-xl qr-scanner-modal">
+        <div className="qr-scanner-content h-full flex flex-col">
+          {/* Enhanced Warehouse Header */}
+          <div className="bg-gradient-to-r from-purple-700 to-warehouse-info text-white p-6 border-b-4 border-blue-900">
             <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-bold">Scan QR Code</h2>
-                <p className="text-purple-100 mt-1 text-sm sm:text-base">
-                  Hold steady over QR code
-                </p>
+              <div className="flex items-center gap-4">
+                <div className="warehouse-icon-lg bg-white bg-opacity-20 rounded-full p-3">
+                  <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" 
+                      d="M12 4v1m6 11l.01-.01M12 12h.01M3 12h.01M12 19v1m8-16.364l-.707.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-warehouse-3xl font-black">SCAN QR CODE</h2>
+                  <p className="text-warehouse-base text-blue-100 mt-1">
+                    HOLD PHONE STEADY
+                  </p>
+                </div>
               </div>
               <button
-                onClick={onClose}
-                className="text-white bg-white bg-opacity-20 rounded-full p-3 sm:p-2"
+                onClick={() => {
+                  warehouseFeedback.buttonPress();
+                  onClose();
+                }}
+                className="min-h-touch-sm min-w-[60px] p-4 bg-red-600 hover:bg-red-700 rounded-warehouse transition-all active:scale-95 shadow-warehouse"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={4} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
           </div>
 
-          {/* Scanner Area - Full height on mobile */}
-          <div className="flex-1 p-4 sm:p-6 bg-black sm:bg-white">
-            <div id="qr-reader" className="w-full h-full rounded-lg overflow-hidden"></div>
+          {/* Enhanced Scanner Area */}
+          <div className="flex-1 p-6 bg-black">
+            <div id="qr-reader" className="w-full h-full rounded-warehouse overflow-hidden"></div>
             
             {!isScanning && !error && (
-              <div className="flex items-center justify-center h-64 sm:h-64 bg-gray-900 sm:bg-gray-100 rounded-lg">
+              <div className="flex items-center justify-center min-h-[400px] bg-gray-900 rounded-warehouse-lg border-4 border-gray-700">
                 <div className="text-center">
-                  <svg className="w-16 h-16 text-gray-400 mx-auto mb-2 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <p className="text-gray-300 sm:text-gray-500">Starting camera...</p>
+                  <div className="warehouse-icon-2xl text-gray-400 mx-auto mb-4 animate-pulse-strong">
+                    <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-warehouse-xl font-bold text-gray-300">STARTING CAMERA...</p>
+                  <div className="flex justify-center gap-2 mt-4">
+                    <div className="w-3 h-3 bg-warehouse-caution rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-3 h-3 bg-warehouse-caution rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-3 h-3 bg-warehouse-caution rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  </div>
                 </div>
               </div>
             )}
             
             {error && (
-              <div className="flex items-center justify-center h-64 bg-red-50 rounded-lg p-4">
+              <div className="flex items-center justify-center min-h-[400px] warehouse-error rounded-warehouse-lg p-8">
                 <div className="text-center">
-                  <svg className="w-16 h-16 text-red-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <p className="text-red-600 font-semibold">{error}</p>
-                  <p className="text-sm text-gray-600 mt-2">Try entering the code manually below</p>
+                  <div className="warehouse-icon-2xl mx-auto mb-4">
+                    <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <p className="text-warehouse-2xl font-black mb-2">{error}</p>
+                  <p className="text-warehouse-lg font-bold">USE MANUAL ENTRY BELOW</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Manual Entry Option - Mobile optimized */}
-          <div className="border-t border-gray-200 p-4 sm:px-6 sm:py-4 bg-gray-50">
-            <div className="flex items-center gap-2 mb-3">
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-sm text-gray-600">Can't scan? Enter code:</p>
+          {/* Enhanced Manual Entry - Warehouse Optimized */}
+          <div className="border-t-4 border-warehouse-border-heavy p-6 bg-gradient-to-b from-gray-800 to-gray-900">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="warehouse-icon text-warehouse-caution">
+                  <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="warehouse-label text-white">CAN'T SCAN? TYPE IT HERE:</p>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row gap-4">
               <input
                 type="text"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
-                placeholder="6-digit code"
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-lg font-mono uppercase focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center sm:text-left"
-                maxLength={10}
+                placeholder="ENTER CODE"
+                className="flex-1 min-h-touch-base px-8 py-6 bg-white border-4 border-warehouse-border-heavy rounded-warehouse 
+                  text-warehouse-2xl font-black uppercase text-center tracking-wider
+                  focus:ring-4 focus:ring-warehouse-info focus:border-warehouse-info focus:outline-none
+                  placeholder-gray-400"
+                maxLength={20}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="characters"
@@ -228,10 +255,16 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
               <button
                 onClick={handleManualSubmit}
                 disabled={!manualCode.trim()}
-                className="px-8 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="warehouse-btn-go min-h-touch-base px-12 text-warehouse-xl
+                  disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600 disabled:border-gray-700"
               >
-                Submit
+                USE CODE
               </button>
+            </div>
+            <div className="mt-4 flex items-center justify-center gap-2 text-warehouse-base text-gray-400">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <span className="font-bold">TIP: CODES ARE USUALLY 6-10 CHARACTERS</span>
+              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
             </div>
           </div>
         </div>
