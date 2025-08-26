@@ -86,22 +86,8 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
       {/* Key Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <p className="text-sm text-slate-500">Order Total</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-900">{formatCurrency(order.orderTotal)}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-6">
           <p className="text-sm text-slate-500">Items</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{items.length}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <p className="text-sm text-slate-500">Weight</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-900">
-            {order.weight?.value || 0} {order.weight?.units || 'lbs'}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <p className="text-sm text-slate-500">Shipping</p>
-          <p className="mt-2 text-lg font-semibold text-slate-900">{order.requestedShippingService || 'Standard'}</p>
         </div>
       </div>
 
@@ -181,48 +167,10 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
                 </tr>
               ))}
             </tbody>
-            <tfoot className="bg-slate-50">
-              <tr>
-                <td colSpan={4} className="px-6 py-4 text-sm font-medium text-slate-700 text-right">Total:</td>
-                <td className="px-6 py-4 text-lg font-semibold text-slate-900 text-right">
-                  {formatCurrency(order.orderTotal)}
-                </td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       </div>
 
-      {/* Shipping Details */}
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Shipping Details</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <p className="text-sm text-slate-500">Method</p>
-            <p className="text-sm font-medium text-slate-900 mt-1">{order.requestedShippingService || 'Standard'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-500">Weight</p>
-            <p className="text-sm font-medium text-slate-900 mt-1">
-              {order.weight?.value || 0} {order.weight?.units || 'lbs'}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-500">Dimensions</p>
-            <p className="text-sm font-medium text-slate-900 mt-1">
-              {order.dimensions ? 
-                `${order.dimensions.length}x${order.dimensions.width}x${order.dimensions.height} ${order.dimensions.units}` : 
-                'Not specified'}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-500">Insurance</p>
-            <p className="text-sm font-medium text-slate-900 mt-1">
-              {order.insuranceOptions?.insuredValue ? formatCurrency(order.insuranceOptions.insuredValue) : 'None'}
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Tags */}
       {order.tagIds?.length > 0 && (

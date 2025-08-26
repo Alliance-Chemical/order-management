@@ -127,8 +127,6 @@ View workspace: ${workspaceUrl}`,
       subject: `Order Ready to Ship - ${workspace.orderNumber}`,
       body: `Order ${workspace.orderNumber} has been marked as ready to ship.
 
-${metadata?.bolNumber ? `BOL Number: ${metadata.bolNumber}` : ''}
-${metadata?.carrierName ? `Carrier: ${metadata.carrierName}` : ''}
 ${metadata?.trailerNumber ? `Trailer: ${metadata.trailerNumber}` : ''}
 
 View workspace: ${workspaceUrl}`,

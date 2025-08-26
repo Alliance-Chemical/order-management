@@ -55,10 +55,8 @@ export async function POST(
     });
 
     // Update workspace documents
-    const currentDocs = workspace.documents || { coa: [], sds: [], bol: null, other: [] };
-    if (documentType === 'bol') {
-      currentDocs.bol = document.id;
-    } else if (documentType in currentDocs) {
+    const currentDocs = workspace.documents || { coa: [], sds: [], other: [] };
+    if (documentType in currentDocs) {
       (currentDocs as any)[documentType].push(document.id);
     }
     

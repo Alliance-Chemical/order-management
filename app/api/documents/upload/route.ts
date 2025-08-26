@@ -75,10 +75,8 @@ export async function POST(request: NextRequest) {
     });
 
     // Update workspace documents JSONB
-    const currentDocs = workspace.documents || { coa: [], sds: [], bol: null, other: [] };
-    if (documentType === 'bol') {
-      currentDocs.bol = document.id;
-    } else if (currentDocs[documentType]) {
+    const currentDocs = workspace.documents || { coa: [], sds: [], other: [] };
+    if (currentDocs[documentType]) {
       currentDocs[documentType].push(document.id);
     } else {
       currentDocs.other.push(document.id);

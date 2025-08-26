@@ -14,14 +14,7 @@ export async function POST(
   try {
     const { orderId } = await params;
     const body = await request.json();
-    const { bolNumber, carrierName, trailerNumber, sealNumbers } = body;
-
-    if (!bolNumber || !carrierName) {
-      return NextResponse.json(
-        { error: 'BOL number and carrier name are required' },
-        { status: 400 }
-      );
-    }
+    const { trailerNumber, sealNumbers } = body;
 
     const workspace = await repository.findByOrderId(parseInt(orderId));
     
@@ -35,8 +28,6 @@ export async function POST(
       workflowPhase: 'shipping',
       shipstationData: {
         ...workspace.shipstationData,
-        bolNumber,
-        carrierName,
         trailerNumber,
         sealNumbers,
         markedReadyAt: new Date().toISOString(),
@@ -71,25 +62,23 @@ export async function POST(
     await repository.logActivity({
       workspaceId: workspace.id,
       activityType: 'marked_ready_to_ship',
-      activityDescription: `Order marked as ready to ship. BOL: ${bolNumber}, Carrier: ${carrierName}`,
+      activityDescription: `Order marked as ready to ship.`,
       performedBy: 'system', // Replace with actual user
       module: 'shipping',
-      metadata: { bolNumber, carrierName, trailerNumber, sealNumbers },
+      metadata: { trailerNumber, sealNumbers },
     });
 
     // Send notification
     const alertConfig = await repository.getAlertConfig(workspace.id, 'ready_to_ship');
     if (alertConfig?.enabled) {
       try {
-        const message = `Order ${workspace.orderNumber} is ready to ship.\n\nBOL: ${bolNumber}\nCarrier: ${carrierName}${trailerNumber ? `\nTrailer: ${trailerNumber}` : ''}${sealNumbers?.length ? `\nSeals: ${sealNumbers.join(', ')}` : ''}`;
+        const message = `Order ${workspace.orderNumber} is ready to ship.${trailerNumber ? `\n\nTrailer: ${trailerNumber}` : ''}${sealNumbers?.length ? `\nSeals: ${sealNumbers.join(', ')}` : ''}`;
         
         console.log('Ship notification:', {
           subject: `Ready to Ship - Order ${workspace.orderNumber}`,
           message,
           orderId: orderId.toString(),
-          orderNumber: workspace.orderNumber,
-          bolNumber,
-          carrierName
+          orderNumber: workspace.orderNumber
         });
 
         await repository.updateAlertConfig(alertConfig.id, {
@@ -110,8 +99,6 @@ export async function POST(
         orderId: workspace.orderId,
         orderNumber: workspace.orderNumber,
         status: 'ready_to_ship',
-        bolNumber,
-        carrierName,
         trailerNumber,
         sealNumbers,
       },

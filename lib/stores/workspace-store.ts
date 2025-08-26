@@ -55,9 +55,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     if (!prev.workspace) return prev;
     
     const docs = { ...prev.workspace.documents };
-    if (document.type === 'bol') {
-      docs.bol = document;
-    } else if (document.type in docs) {
+    if (document.type in docs) {
       (docs as any)[document.type] = [...(docs as any)[document.type], document];
     }
     

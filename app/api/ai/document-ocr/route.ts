@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const orderId = formData.get('orderId') as string;
     const documentFile = formData.get('document') as File;
-    const documentType = formData.get('type') as 'BOL' | 'COA';
+    const documentType = formData.get('type') as 'COA';
 
     if (!orderId || !documentFile || !documentType) {
       return NextResponse.json(
@@ -59,12 +59,7 @@ export async function POST(request: NextRequest) {
     // Store extracted data in workspace
     const updateData: any = {};
     
-    if (documentType === 'BOL') {
-      updateData.bol_number = extractedData.extracted_data.bol_number;
-      updateData.carrier = extractedData.extracted_data.carrier_name;
-      updateData.ship_date = extractedData.extracted_data.ship_date;
-      updateData.bol_metadata = extractedData.extracted_data;
-    } else if (documentType === 'COA') {
+    if (documentType === 'COA') {
       updateData.coa_number = extractedData.extracted_data.certificate_number;
       updateData.batch_number = extractedData.extracted_data.batch_number;
       updateData.coa_metadata = extractedData.extracted_data;

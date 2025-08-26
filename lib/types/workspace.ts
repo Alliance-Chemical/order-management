@@ -24,7 +24,6 @@ export interface OrderWorkspace {
 export interface WorkspaceDocuments {
   coa: DocumentFile[];
   sds: DocumentFile[];
-  bol: DocumentFile | null;
   other: DocumentFile[];
 }
 
@@ -38,7 +37,7 @@ export interface DocumentFile {
   uploadedAt: Date;
 }
 
-export type DocumentType = 'coa' | 'sds' | 'bol' | 'packing_slip' | 'other';
+export type DocumentType = 'coa' | 'sds' | 'packing_slip' | 'other';
 
 export interface AlertConfig {
   id: string;
