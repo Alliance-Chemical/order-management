@@ -55,7 +55,7 @@ async function resetDatabase() {
     await db.delete(qrSchema.workspaces);
     
     console.log('  - Clearing source_containers...');
-    await db.delete(qrSchema.sourceContainers);
+    // sourceContainers table removed
     
     console.log('  - Clearing chemicals...');
     await db.delete(qrSchema.chemicals);

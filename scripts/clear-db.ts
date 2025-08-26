@@ -26,7 +26,6 @@ const db = drizzle(client, { schema });
 import { 
   workspaces, 
   qrCodes, 
-  sourceContainers,
   activityLog,
   batchHistory,
   alertConfigs,
@@ -64,7 +63,7 @@ async function clearDatabase() {
     await db.delete(workspaces);
     
     console.log('Clearing source_containers...');
-    await db.delete(sourceContainers);
+    // sourceContainers table removed
     
     console.log('Clearing chemicals...');
     await db.delete(chemicals);

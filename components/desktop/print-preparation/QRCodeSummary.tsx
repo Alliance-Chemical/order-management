@@ -3,11 +3,10 @@
 import { DocumentCheckIcon } from '@heroicons/react/24/solid';
 
 interface LabelSummary {
-  master: number;
-  source: number;
   drums: number;
   totes: number;
   pallets: number;
+  containers: number; // Generic container count
 }
 
 interface QRCodeSummaryProps {
@@ -16,7 +15,7 @@ interface QRCodeSummaryProps {
 }
 
 export default function QRCodeSummary({ summary, hasUnassignedItems }: QRCodeSummaryProps) {
-  const totalLabels = summary.master + summary.source + summary.drums + summary.totes + summary.pallets;
+  const totalLabels = summary.drums + summary.totes + summary.pallets + (summary.containers || 0);
 
   return (
     <div className="bg-gray-50 p-4 rounded-lg">
@@ -26,20 +25,6 @@ export default function QRCodeSummary({ summary, hasUnassignedItems }: QRCodeSum
       </h3>
       
       <div className="grid grid-cols-2 gap-3 text-sm">
-        {summary.master > 0 && (
-          <div className="flex justify-between">
-            <span className="text-gray-600">Master Labels:</span>
-            <span className="font-medium text-blue-600">{summary.master}</span>
-          </div>
-        )}
-        
-        {summary.source > 0 && (
-          <div className="flex justify-between">
-            <span className="text-gray-600">Source Labels:</span>
-            <span className="font-medium text-orange-600">{summary.source}</span>
-          </div>
-        )}
-        
         {summary.drums > 0 && (
           <div className="flex justify-between">
             <span className="text-gray-600">Drum Labels:</span>
@@ -60,6 +45,13 @@ export default function QRCodeSummary({ summary, hasUnassignedItems }: QRCodeSum
             <span className="font-medium text-gray-900">{summary.pallets}</span>
           </div>
         )}
+        
+        {(summary.containers || 0) > 0 && (
+          <div className="flex justify-between">
+            <span className="text-gray-600">Container Labels:</span>
+            <span className="font-medium text-gray-900">{summary.containers}</span>
+          </div>
+        )}
       </div>
       
       <div className="mt-3 pt-3 border-t border-gray-200">
@@ -70,10 +62,9 @@ export default function QRCodeSummary({ summary, hasUnassignedItems }: QRCodeSum
       </div>
 
       {hasUnassignedItems && (
-        <div className="mt-3 p-2 bg-yellow-100 border border-yellow-300 rounded">
-          <p className="text-xs text-yellow-800">
-            ⚠️ Some pump & fill items don't have source containers assigned. 
-            Source labels will only be created for assigned containers.
+        <div className="mt-3 p-2 bg-blue-100 border border-blue-300 rounded">
+          <p className="text-xs text-blue-800">
+            ℹ️ Ready to print container labels for all order items.
           </p>
         </div>
       )}

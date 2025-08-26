@@ -72,22 +72,14 @@ export async function GET(
     const workspaceId = workspaceRecord.id;
 
     // Fetch all QR codes for this workspace
-    // Order: Master first, then alternating source->containers grouped by sourceContainerId
+    // Only container QRs now - simple ordering by container number
     const qrCodeRecords = await db
       .select()
       .from(qrCodes)
       .where(eq(qrCodes.workspaceId, workspaceId))
       .orderBy(
-        sql`CASE 
-          WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean IS NOT TRUE THEN 1
-          WHEN ${qrCodes.qrType} = 'source' THEN 2
-          WHEN ${qrCodes.qrType} = 'container' THEN 3
-          WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 4
-          ELSE 5
-        END`,
-        qrCodes.sourceContainerId,
-        qrCodes.chemicalName,
-        qrCodes.containerNumber
+        qrCodes.containerNumber,
+        qrCodes.chemicalName
       );
     console.log(`[QR] Found ${qrCodeRecords.length} existing QR codes.`);
 
@@ -96,22 +88,14 @@ export async function GET(
       console.log('[QR] --- TRIGGERING ON-DEMAND QR GENERATION (no existing codes) ---');
       await generateQRCodesForWorkspace(workspaceId, orderId);
       
-      // Fetch again after generation - with proper ordering
+      // Fetch again after generation - simple ordering
       const newQrCodes = await db
         .select()
         .from(qrCodes)
         .where(eq(qrCodes.workspaceId, workspaceId))
         .orderBy(
-          sql`CASE 
-            WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean IS NOT TRUE THEN 1
-            WHEN ${qrCodes.qrType} = 'source' THEN 2
-            WHEN ${qrCodes.qrType} = 'container' THEN 3
-            WHEN ${qrCodes.qrType} = 'order_master' AND (${qrCodes.encodedData}->>'isSource')::boolean = TRUE THEN 4
-            ELSE 5
-          END`,
-          qrCodes.sourceContainerId,
-          qrCodes.chemicalName,
-          qrCodes.containerNumber
+          qrCodes.containerNumber,
+          qrCodes.chemicalName
         );
       
       return NextResponse.json({
@@ -146,9 +130,7 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   
   console.log(`[QR] Found ${existingQRCodes.length} existing QR codes for workspace ${workspaceId}`);
   
-  // Check if master QR already exists
-  const hasMasterQR = existingQRCodes.some(qr => qr.qrType === 'order_master' && !qr.encodedData?.isSource);
-  const hasSourceQR = existingQRCodes.some(qr => qr.qrType === 'order_master' && qr.encodedData?.isSource);
+  // No longer need to check for master or source QRs
   
   // Attempt to read workspace to enrich records
   const ws = await db
@@ -229,30 +211,10 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     }
   }
 
-  // Only create master label if it doesn't exist - ALWAYS FIRST
-  if (!hasMasterQR) {
-    console.log('[QR] Creating new master QR code');
-    records.push({
-      workspaceId,
-      qrType: 'order_master',
-      qrCode: makeCode('MASTER'),
-      shortCode: makeShort(),
-      orderId,
-      orderNumber,
-      containerNumber: null,
-      chemicalName: null,
-      encodedData: { type: 'master', orderId, orderNumber },
-      qrUrl: `${baseUrl}/workspace/${orderId}`,
-      scanCount: 0,
-      isActive: true,
-      createdAt: new Date(),
-    });
-  }
+  // No master QRs - only generate container QRs for individual items
+  console.log('[QR] Generating container QRs only (no master, no source)');
 
-  // NOTE: Source QRs are now created on-demand when supervisors assign sources
-  // This ensures each source container has a unique QR with the correct chemical name
-
-  // Process each item to generate container QRs - AFTER MASTER
+  // Process each item to generate container QRs
   let globalContainerIndex = 0; // Global counter for unique container IDs across the order
   
   for (const item of items) {

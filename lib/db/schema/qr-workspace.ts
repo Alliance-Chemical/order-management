@@ -75,8 +75,7 @@ export const qrCodes = qrWorkspaceSchema.table('qr_codes', {
   qrCode: varchar('qr_code', { length: 500 }).notNull().unique(),
   shortCode: varchar('short_code', { length: 50 }),
   
-  // Source Container Tracking (for source QRs)
-  sourceContainerId: varchar('source_container_id', { length: 255 }),
+  // Source containers removed - tracking only customer orders
   
   // Associated Data
   orderId: bigint('order_id', { mode: 'number' }).notNull(),
@@ -112,7 +111,6 @@ export const qrCodes = qrWorkspaceSchema.table('qr_codes', {
   qrCodeIdx: index('idx_qr_code').on(table.qrCode),
   // Per-order short code uniqueness (allows reuse across orders)
   shortCodePerOrderIdx: index('idx_qr_short_code_per_order').on(table.orderId, table.shortCode),
-  uniqueSourceQrIdx: index('idx_unique_source_qr').on(table.workspaceId, table.sourceContainerId),
 }));
 
 export const alertConfigs = qrWorkspaceSchema.table('alert_configs', {
@@ -349,55 +347,9 @@ export const batchHistory = qrWorkspaceSchema.table('batch_history', {
   destinationQrIds: jsonb('destination_qr_ids').$type<string[]>().default([]), // Array of destination qr_codes.id
 });
 
-// Source Containers Table - for tracking inventory at source
-export const sourceContainers = qrWorkspaceSchema.table('source_containers', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  
-  // Shopify Product Info
-  shopifyProductId: varchar('shopify_product_id', { length: 255 }).notNull(),
-  shopifyVariantId: varchar('shopify_variant_id', { length: 255 }).notNull().unique(),
-  productTitle: varchar('product_title', { length: 500 }).notNull(),
-  variantTitle: varchar('variant_title', { length: 500 }),
-  sku: varchar('sku', { length: 255 }),
-  barcode: varchar('barcode', { length: 255 }),
-  
-  // QR Code Reference
-  qrCodeId: uuid('qr_code_id').references(() => qrCodes.id),
-  shortCode: varchar('short_code', { length: 50 }).unique(),
-  
-  // Container Details
-  containerType: varchar('container_type', { length: 100 }), // drum, tote, pail, etc.
-  capacity: varchar('capacity', { length: 100 }), // 55 gal, 275 gal, etc.
-  currentQuantity: decimal('current_quantity', { precision: 10, scale: 2 }),
-  unitOfMeasure: varchar('unit_of_measure', { length: 50 }), // gallons, pounds, etc.
-  
-  // Location & Status
-  warehouseLocation: varchar('warehouse_location', { length: 255 }),
-  status: varchar('status', { length: 50 }).default('active'), // active, empty, maintenance, retired
-  
-  // Chemical Properties (from Shopify metafields)
-  hazmatClass: varchar('hazmat_class', { length: 100 }),
-  unNumber: varchar('un_number', { length: 50 }),
-  packingGroup: varchar('packing_group', { length: 10 }),
-  flashPoint: varchar('flash_point', { length: 100 }),
-  
-  // Tracking
-  lastRefilled: timestamp('last_refilled'),
-  lastInventoryCheck: timestamp('last_inventory_check'),
-  expirationDate: timestamp('expiration_date'),
-  
-  // Metadata
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-  createdBy: varchar('created_by', { length: 255 }),
-});
+// Source containers table removed - no longer tracking source inventory
 
-export const sourceContainersRelations = relations(sourceContainers, ({ one }) => ({
-  qrCode: one(qrCodes, {
-    fields: [sourceContainers.qrCodeId],
-    references: [qrCodes.id],
-  }),
-}));
+// Source container relations removed
 
 export const batchHistoryRelations = relations(batchHistory, ({ one }) => ({
   workspace: one(workspaces, {

@@ -10,9 +10,9 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { qrCodes, labelSize = '4x6', sourceAssignments = [] } = body;
+    const { qrCodes, labelSize = '4x6', fulfillmentMethod = 'standard' } = body;
     console.log(`[PRINT API] Received request to print ${qrCodes?.length || 0} labels with size: ${labelSize}`);
-    console.log(`[PRINT API] Source assignments (with workflow types):`, sourceAssignments);
+    console.log(`[PRINT API] Fulfillment method: ${fulfillmentMethod}`);
 
     if (!qrCodes || !Array.isArray(qrCodes) || qrCodes.length === 0) {
       console.error('[PRINT API] Validation failed: qrCodes array is missing or empty.');
@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
       await repository.updateQRPrintCount(qrRecord.id, 'system');
     }
 
-    // Generate HTML page for printing with full data and source assignments (including workflow types)
-    const html = generatePrintHTML(labelsData, labelSize, sourceAssignments);
+    // Generate HTML page for printing with full data and fulfillment method
+    const html = generatePrintHTML(labelsData, labelSize, fulfillmentMethod);
     
     console.log(`[PRINT API] HTML generated successfully for ${labelsData.length} QR codes`);
     
@@ -154,45 +154,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSize: string, sourceAssignments: any[] = []): string {
+function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSize: string, fulfillmentMethod: string = 'standard'): string {
   const isLetter = labelSize === '8.5x11';
   const is4x6 = labelSize === '4x6';
   
-  // Helper function to find source assignment for an item
-  const findSourceAssignment = (record: any): any => {
-    if (!sourceAssignments || sourceAssignments.length === 0) return null;
-    
-    // Try multiple ways to match the record to a source assignment
-    const itemId = record.encodedData?.itemId || record.encodedData?.lineItemId;
-    const sku = record.encodedData?.sku;
-    const productName = record.chemicalName || record.encodedData?.itemName;
-    
-    return sourceAssignments.find(sa => {
-      // Match by line item ID (most reliable)
-      if (itemId && sa.lineItemId === itemId) return true;
-      
-      // Match by SKU
-      if (sku && sa.sku === sku) return true;
-      
-      // Match by product name (case-insensitive contains)
-      if (productName && sa.productName) {
-        const recordName = productName.toLowerCase().trim();
-        const assignmentName = sa.productName.toLowerCase().trim();
-        return recordName.includes(assignmentName) || assignmentName.includes(recordName);
-      }
-      
-      return false;
-    });
+  // Helper function to determine if item is direct resell based on fulfillment method
+  const isDirectResell = (record: any): boolean => {
+    if (fulfillmentMethod === 'direct_resell') return true;
+    if (fulfillmentMethod === 'pump_and_fill') return false;
+    // Default to checking the record itself for clues
+    const name = (record.chemicalName || record.encodedData?.itemName || '').toLowerCase();
+    return name.includes('ready to ship') || name.includes('pre-packaged');
   };
   
   // Helper function to get label type badge text
   const getLabelType = (record: any): string => {
-    // For container labels, check if this specific item is direct resell
+    // For container labels, check fulfillment method
     if (record.qrType === 'container') {
-      const assignment = findSourceAssignment(record);
-      console.log(`[PRINT] Container label - Record: ${record.chemicalName}, Assignment found: ${!!assignment}, WorkflowType: ${assignment?.workflowType}`);
+      console.log(`[PRINT] Container label - Record: ${record.chemicalName}, Fulfillment method: ${fulfillmentMethod}`);
       
-      if (assignment?.workflowType === 'direct_resell') {
+      if (fulfillmentMethod === 'direct_resell') {
         return 'READY TO SHIP';
       }
       return 'TO BE FILLED'; // Make it clear this needs to be filled!
@@ -299,145 +280,16 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
   };
   
   // Helper function to get source information for container labels
+  // Removed source info - no longer needed
   const getSourceInfo = (record: any): string => {
-    if (record.qrType === 'source') {
-      // For source containers, show what they're used for
-      return `<div style="background: #e8f4fd; border: 2px solid #0066cc; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0; overflow: visible;">
-              <div style="font-size: 10pt; font-weight: bold; color: #0066cc;">FILLS INTO →</div>
-              <div style="font-size: 12pt; color: #333; margin-top: 0.02in; font-weight: bold; word-wrap: break-word; word-break: break-word; white-space: normal; line-height: 1.2; overflow: visible;">Customer Order Containers</div>
-            </div>`;
-    }
-    
-    if (record.qrType !== 'container') return '';
-    
-    const assignment = findSourceAssignment(record);
-    if (!assignment || assignment.workflowType !== 'pump_and_fill') return '';
-    
-    // Get the source container names
-    if (assignment.sourceContainers && assignment.sourceContainers.length > 0) {
-      const sourceInfo = assignment.sourceContainers.map((sc: any) => {
-        // The source container name could be in different formats:
-        // 1. "tote275 #ABC123" - just container and code
-        // 2. "tote275 #- ChemicalName" - container with chemical name
-        // 3. "Drum #ABC123 - ChemicalName" - old format
-        
-        const name = sc.name || '';
-        let displayName = '';
-        let chemicalName = '';
-        
-        // Check for " - " separator (old format)
-        const dashIndex = name.indexOf(' - ');
-        if (dashIndex > -1) {
-          const beforeDash = name.substring(0, dashIndex).trim();
-          chemicalName = name.substring(dashIndex + 3).trim();
-          displayName = `${chemicalName.toUpperCase()} (${beforeDash})`;
-        } else {
-          // Check for # separator
-          const hashIndex = name.indexOf('#');
-          if (hashIndex > -1) {
-            const containerPart = name.substring(0, hashIndex).trim();
-            const afterHash = name.substring(hashIndex + 1).trim();
-            
-            // Convert container type
-            let readableType = containerPart;
-            if (containerPart.toLowerCase() === 'tote275') {
-              readableType = '275 GAL TOTE';
-            } else if (containerPart.toLowerCase() === 'drum55') {
-              readableType = '55 GAL DRUM';
-            } else if (containerPart.toLowerCase() === 'tote330') {
-              readableType = '330 GAL TOTE';
-            }
-            
-            // Check if afterHash has chemical name (starts with "- ")
-            if (afterHash.startsWith('- ')) {
-              chemicalName = afterHash.substring(2).trim();
-              displayName = `${chemicalName.toUpperCase()} (${readableType})`;
-            } else if (afterHash && afterHash.trim() !== '') {
-              // It's just a code - only show if not empty
-              displayName = `${readableType} #${afterHash}`;
-            } else {
-              // No code after hash, just show container type
-              displayName = readableType;
-            }
-          } else {
-            displayName = name.toUpperCase();
-          }
-        }
-        
-        return displayName;
-      });
-      
-      // Extract the source container shortcode if available
-      const sourceContainer = assignment.sourceContainers[0];
-      let sourceShortCode = '';
-      
-      if (sourceContainer && sourceContainer.shortCode) {
-        sourceShortCode = sourceContainer.shortCode;
-      } else if (sourceContainer && sourceContainer.name) {
-        // Extract from the name format "tote275 #ABC123 - Product" or "tote275 #ABC123"
-        const hashIndex = sourceContainer.name.indexOf('#');
-        if (hashIndex > -1) {
-          const afterHash = sourceContainer.name.substring(hashIndex + 1).trim();
-          // Check if there's a dash after the code
-          const dashIndex = afterHash.indexOf(' - ');
-          if (dashIndex > -1) {
-            // Extract code before the dash
-            sourceShortCode = afterHash.substring(0, dashIndex).trim();
-          } else if (!afterHash.startsWith('- ')) {
-            // Use the whole string after # if no dash
-            sourceShortCode = afterHash.split(' ')[0]; // Take first word/code
-          }
-        }
-      }
-      
-      // Return first source (primary source for this container) with clear labeling and shortcode
-      if (sourceShortCode) {
-        return `<div style="background: #fff3cd; border: 2px solid #ff6600; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0; overflow: visible;">
-                <div style="font-size: 11pt; font-weight: bold; color: #ff6600;">← FILL FROM SOURCE: ${sourceShortCode}</div>
-                <div style="font-size: 13pt; font-weight: bold; color: #333; margin-top: 0.02in; word-wrap: break-word; word-break: break-word; white-space: normal; line-height: 1.2; overflow: visible;">${sourceInfo[0]}</div>
-              </div>`;
-      } else {
-        return `<div style="background: #fff3cd; border: 2px solid #ff6600; padding: 0.08in; border-radius: 0.05in; margin: 0.08in 0; overflow: visible;">
-                <div style="font-size: 10pt; font-weight: bold; color: #ff6600;">← FILL FROM SOURCE</div>
-                <div style="font-size: 14pt; font-weight: bold; color: #333; margin-top: 0.02in; word-wrap: break-word; word-break: break-word; white-space: normal; line-height: 1.2; overflow: visible;">${sourceInfo[0]}</div>
-                <div style="font-size: 10pt; color: #ff0000; margin-top: 0.02in; font-weight: bold;">⚠️ SOURCE CODE MISSING</div>
-              </div>`;
-      }
-    }
-    
+    // Source label functionality removed
     return '';
   };
   
   // Helper function to get order items list for master label
-  const getOrderItemsList = (record: any, sourceAssignments: any[]): string => {
-    if (record.qrType !== 'master' && record.qrType !== 'order_master') return '';
-    
-    const isSource = record.encodedData?.isSource;
-    if (isSource) return ''; // Don't show items list for source master labels
-    
-    // Get unique product names from source assignments
-    const items = sourceAssignments
-      .map(sa => sa.productName)
-      .filter((value, index, self) => value && self.indexOf(value) === index)
-      .slice(0, 3); // Limit to 3 items to fit on label
-    
-    if (items.length === 0) return '';
-    
-    const itemsList = items.map(item => {
-      // Shorten long product names
-      if (item.length > 30) {
-        return item.substring(0, 27) + '...';
-      }
-      return item;
-    }).join('<br/>');
-    
-    const remaining = sourceAssignments.length - items.length;
-    const moreText = remaining > 0 ? `<br/>+ ${remaining} more items` : '';
-    
-    return `<div style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 0.08in; border-radius: 0.05in; margin-top: 0.1in;">
-              <div style="font-size: 10pt; font-weight: bold; color: #495057; margin-bottom: 0.05in;">ORDER CONTAINS:</div>
-              <div style="font-size: 11pt; color: #212529; line-height: 1.3;">${itemsList}${moreText}</div>
-            </div>`;
+  const getOrderItemsList = (record: any): string => {
+    // Removed order items list functionality
+    return '';
   };
   
   // Helper function to get item info - ONLY information about the label itself
@@ -502,9 +354,8 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
         // For master labels, order items list is handled separately
         return '';
       case 'container':
-        // Check if this specific item is direct resell
-        const assignment = findSourceAssignment(record);
-        if (assignment?.workflowType === 'direct_resell') {
+        // Check if this is direct resell based on fulfillment method
+        if (fulfillmentMethod === 'direct_resell') {
           // For direct resell, show it's ready
           const containerType = record.encodedData?.containerType || 'Container';
           return `<div style="font-size: 14pt; color: #28a745; font-weight: bold;">✓ Pre-packaged ${containerType}</div>`;
@@ -518,17 +369,11 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
         if (containerType === 'pallet' || containerType === 'case') {
           const itemName = record.chemicalName || record.encodedData?.itemName || 'Product';
           
-          // Get the actual quantity from the assignment
+          // Try to parse quantity from the item name (e.g., "6x Isopropyl Alcohol")
           let itemQuantity = '';
-          if (assignment && assignment.quantity) {
-            // Use the actual order quantity from sourceAssignments
-            itemQuantity = String(assignment.quantity);
-          } else {
-            // Try to parse quantity from the item name as fallback (e.g., "6x Isopropyl Alcohol")
-            const qtyMatch = itemName.match(/^(\d+)x?\s+/i);
-            if (qtyMatch) {
-              itemQuantity = qtyMatch[1];
-            }
+          const qtyMatch = itemName.match(/^(\d+)x?\s+/i);
+          if (qtyMatch) {
+            itemQuantity = qtyMatch[1];
           }
           
           const containerLabel = `${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}`;
@@ -577,7 +422,7 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
     const productName = getProductName(record);
     const itemInfo = getItemInfo(record);
     const sourceInfo = getSourceInfo(record);
-    const orderItemsList = getOrderItemsList(record, sourceAssignments);
+    const orderItemsList = getOrderItemsList(record);
     const shortCode = record.shortCode || '';
     
     // Standardized HTML structure for ALL label types
@@ -591,7 +436,6 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
             ${labelType ? `<span class="label-type-badge ${badgeClass}">${labelType}</span>` : ''}
           </div>
           <div class="product-name">${productName}</div>
-          ${sourceInfo ? `<div class="source-info">${sourceInfo}</div>` : ''}
           <div class="qr-box">
             ${qrSvg}
           </div>

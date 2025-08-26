@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { workspaces, qrCodes, sourceContainers, activityLog } from '@/lib/db/schema/qr-workspace';
+import { workspaces, qrCodes, activityLog } from '@/lib/db/schema/qr-workspace';
 import { sql } from 'drizzle-orm';
 import { seedDemoData } from '@/lib/demo/seed-data';
 
