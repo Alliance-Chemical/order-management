@@ -21,7 +21,13 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
     // Use Html5Qrcode directly for better mobile control
     const startScanner = async () => {
       try {
-        const html5QrCode = new Html5Qrcode('qr-reader');
+        const html5QrCode = new Html5Qrcode('qr-reader', {
+          formatsToSupport: [0, 1, 2, 3, 4, 5, 6, 7, 8], // Support all barcode formats for older devices
+          verbose: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: false // Disable for older Android compatibility
+          }
+        });
         scannerRef.current = html5QrCode;
         
         // Get cameras
@@ -37,35 +43,60 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
           
           const cameraId = backCamera ? backCamera.id : cameras[0].id;
           
-          // Mobile-optimized config
+          // Older Android tablet optimized config
           const config = {
-            fps: 10,
+            fps: 5, // Lower FPS for older devices
             qrbox: { 
-              width: Math.min(250, window.innerWidth - 100), 
-              height: Math.min(250, window.innerWidth - 100) 
+              width: Math.min(200, window.innerWidth - 120), // Smaller scan box for better performance
+              height: Math.min(200, window.innerWidth - 120) 
             },
-            aspectRatio: window.innerHeight / window.innerWidth,
-            // Use constraints for better mobile camera handling
+            // Simpler constraints for older Android compatibility
+            aspectRatio: 1.0,
+            disableFlip: true,
+            // Basic video constraints for older devices
             videoConstraints: {
-              facingMode: { ideal: "environment" },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
+              facingMode: "environment",
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 }
             }
           };
           
-          await html5QrCode.start(
-            cameraId,
-            config,
-            (decodedText) => {
-              if (mounted) {
-                // Enhanced feedback for successful scan
-                warehouseFeedback.scan();
-                onScan(decodedText);
-                html5QrCode.stop();
-              }
-            },
-            undefined
-          );
+          // Try to start scanner with fallback for older devices
+          try {
+            await html5QrCode.start(
+              cameraId,
+              config,
+              (decodedText) => {
+                if (mounted) {
+                  // Enhanced feedback for successful scan
+                  warehouseFeedback.scan();
+                  onScan(decodedText);
+                  html5QrCode.stop();
+                }
+              },
+              undefined
+            );
+          } catch (startErr) {
+            console.warn('Failed with advanced config, trying basic config:', startErr);
+            // Fallback to most basic config for very old devices
+            const basicConfig = {
+              fps: 2,
+              qrbox: 150
+            };
+            
+            await html5QrCode.start(
+              cameraId,
+              basicConfig,
+              (decodedText) => {
+                if (mounted) {
+                  warehouseFeedback.scan();
+                  onScan(decodedText);
+                  html5QrCode.stop();
+                }
+              },
+              undefined
+            );
+          }
           
           if (mounted) {
             setIsScanning(true);
@@ -82,8 +113,8 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
       }
     };
     
-    // Start scanner after a brief delay
-    const timer = setTimeout(startScanner, 100);
+    // Start scanner after a longer delay for older devices
+    const timer = setTimeout(startScanner, 500);
     
     return () => {
       mounted = false;
@@ -101,7 +132,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
     }
   };
 
-  // Inject CSS for cleaner mobile UI
+  // Inject CSS for cleaner mobile UI with better old Android support
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
@@ -109,18 +140,29 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         position: relative;
         padding: 0;
         border: none;
+        width: 100%;
+        min-height: 300px;
       }
       #qr-reader video {
         border-radius: 12px;
         width: 100% !important;
         height: auto !important;
-        object-fit: cover;
+        object-fit: contain !important; /* Better for older devices */
+        max-width: 100%;
       }
       #qr-reader__scan_region {
         background: transparent !important;
+        border: 3px solid #00ff00 !important;
       }
       #qr-reader__scan_region img {
         opacity: 0.5;
+        display: none !important; /* Hide corner images on old devices */
+      }
+      #qr-reader__dashboard_section_csr {
+        display: none !important;
+      }
+      #qr-reader__dashboard_section_swaplink {
+        display: none !important;
       }
       /* Mobile-specific styles */
       @media (max-width: 640px) {
@@ -129,6 +171,12 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
           height: 100vh;
           max-height: 100vh;
           border-radius: 0;
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          z-index: 9999 !important;
         }
         .qr-scanner-content {
           height: 100vh;
@@ -140,6 +188,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
           display: flex;
           align-items: center;
           justify-content: center;
+          min-height: 50vh;
         }
       }
     `;
@@ -151,7 +200,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-100 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 bg-black bg-opacity-100 z-[9999] flex items-center justify-center">
       <div className="bg-gradient-to-b from-gray-900 to-black rounded-none sm:rounded-warehouse-xl max-w-4xl w-full h-full sm:h-auto overflow-hidden shadow-warehouse-xl qr-scanner-modal">
         <div className="qr-scanner-content h-full flex flex-col">
           {/* Enhanced Warehouse Header */}
