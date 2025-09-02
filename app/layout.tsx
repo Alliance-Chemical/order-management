@@ -5,6 +5,9 @@ import { QueryProvider } from '@/providers/QueryProvider';
 import { MonitoringStatus } from '@/components/MonitoringStatus';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { Toaster } from '@/components/ui/toaster';
+import { FreightAlertProvider } from '@/providers/FreightAlertProvider';
+import { FreightAlertBadge } from '@/components/ui/freight-alert-badge';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -35,8 +38,12 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <QueryProvider>
-          {children}
-          <MonitoringStatus />
+          <FreightAlertProvider>
+            {children}
+            <MonitoringStatus />
+            <FreightAlertBadge />
+            <Toaster />
+          </FreightAlertProvider>
         </QueryProvider>
         <Analytics />
         <SpeedInsights />
