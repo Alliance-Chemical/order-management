@@ -293,27 +293,40 @@ export default function WorkQueueDashboard() {
                         <tr>
                           <td colSpan={7} className="px-6 py-4 bg-gray-50">
                             <div className="ml-8">
-                              <h4 className="text-sm font-semibold text-gray-700 mb-2">Order Items ({order.items.length})</h4>
-                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                  <thead className="bg-gray-50">
-                                    <tr>
-                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product Name</th>
-                                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-200">
-                                    {order.items.map((item, idx) => (
-                                      <tr key={idx}>
-                                        <td className="px-4 py-2 text-sm text-gray-900">{item.sku || 'N/A'}</td>
-                                        <td className="px-4 py-2 text-sm text-gray-900">{item.name}</td>
-                                        <td className="px-4 py-2 text-sm text-gray-900 text-center">{item.quantity}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
+                              {(() => {
+                                const physicalItems = order.items.filter((item: any) => {
+                                  const hasNoSku = !item.sku || item.sku === '';
+                                  const isDiscount = item.name?.toLowerCase().includes('discount') || 
+                                                   item.name?.toLowerCase().includes('welcome') ||
+                                                   item.unitPrice < 0;
+                                  return !(hasNoSku && isDiscount);
+                                });
+                                return (
+                                  <>
+                                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Order Items ({physicalItems.length})</h4>
+                                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                      <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                          <tr>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
+                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product Name</th>
+                                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                          {physicalItems.map((item, idx) => (
+                                            <tr key={idx}>
+                                              <td className="px-4 py-2 text-sm text-gray-900">{item.sku || 'N/A'}</td>
+                                              <td className="px-4 py-2 text-sm text-gray-900">{item.name}</td>
+                                              <td className="px-4 py-2 text-sm text-gray-900 text-center">{item.quantity}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </td>
                         </tr>

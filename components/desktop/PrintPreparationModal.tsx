@@ -46,9 +46,6 @@ export default function PrintPreparationModal({
   // Track custom label quantities per item
   const [labelQuantities, setLabelQuantities] = useState<Record<string, number>>({});
   
-  // Fulfillment method selection
-  const [showFulfillmentDialog, setShowFulfillmentDialog] = useState(false);
-  const [selectedFulfillmentMethod, setSelectedFulfillmentMethod] = useState<'pump_and_fill' | 'direct_resell'>('pump_and_fill');
 
   useEffect(() => {
     fetchQRCodes();
@@ -128,12 +125,11 @@ export default function PrintPreparationModal({
   };
 
   const handlePrintAll = async () => {
-    // Show fulfillment method selection dialog
-    setShowFulfillmentDialog(true);
+    // Skip fulfillment dialog and print directly
+    handleConfirmPrint();
   };
 
   const handleConfirmPrint = async () => {
-    setShowFulfillmentDialog(false);
     setPrinting(true);
     
     try {
@@ -172,7 +168,6 @@ export default function PrintPreparationModal({
           orderId: order.orderId,
           orderNumber: order.orderNumber,
           customerName: order.customerName,
-          fulfillmentMethod: selectedFulfillmentMethod,
           labelQuantities // Pass custom quantities to print API
         })
       });
@@ -207,73 +202,6 @@ export default function PrintPreparationModal({
 
   return (
     <>
-      {/* Fulfillment Method Selection Dialog */}
-      {showFulfillmentDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
-              Select Fulfillment Method
-            </h3>
-            <p className="text-gray-600 mb-6">
-              How will these items be fulfilled?
-            </p>
-            
-            <div className="space-y-3 mb-6">
-              <label className="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                     style={{ borderColor: selectedFulfillmentMethod === 'pump_and_fill' ? '#3B82F6' : '#E5E7EB' }}>
-                <input
-                  type="radio"
-                  name="fulfillmentMethod"
-                  value="pump_and_fill"
-                  checked={selectedFulfillmentMethod === 'pump_and_fill'}
-                  onChange={(e) => setSelectedFulfillmentMethod(e.target.value as 'pump_and_fill')}
-                  className="mt-1 mr-3"
-                />
-                <div>
-                  <div className="font-semibold text-gray-900">Pump & Fill</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    Items will be filled from bulk source containers into customer containers
-                  </div>
-                </div>
-              </label>
-              
-              <label className="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                     style={{ borderColor: selectedFulfillmentMethod === 'direct_resell' ? '#3B82F6' : '#E5E7EB' }}>
-                <input
-                  type="radio"
-                  name="fulfillmentMethod"
-                  value="direct_resell"
-                  checked={selectedFulfillmentMethod === 'direct_resell'}
-                  onChange={(e) => setSelectedFulfillmentMethod(e.target.value as 'direct_resell')}
-                  className="mt-1 mr-3"
-                />
-                <div>
-                  <div className="font-semibold text-gray-900">Direct Resell</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    Pre-packaged items ready to ship directly to the customer
-                  </div>
-                </div>
-              </label>
-            </div>
-            
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setShowFulfillmentDialog(false)}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmPrint}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Print Labels
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Main Modal */}
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4">
