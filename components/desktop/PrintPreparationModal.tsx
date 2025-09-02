@@ -131,6 +131,8 @@ export default function PrintPreparationModal({
       // If custom quantities are specified, we need to regenerate QR codes
       const hasCustomQuantities = Object.values(labelQuantities).some(qty => qty !== 1);
       
+      let qrCodesToPrint = qrCodes; // Default to existing QR codes
+      
       if (hasCustomQuantities) {
         // First, regenerate QR codes with custom quantities
         const regenResponse = await fetch(`/api/workspace/${order.orderId}/qrcodes/regenerate`, {
@@ -144,13 +146,14 @@ export default function PrintPreparationModal({
         if (regenResponse.ok) {
           const regenData = await regenResponse.json();
           if (regenData.success && regenData.qrCodes) {
-            setQrCodes(regenData.qrCodes);
+            qrCodesToPrint = regenData.qrCodes; // Use the fresh QR codes
+            setQrCodes(regenData.qrCodes); // Also update state for UI
           }
         }
       }
       
-      // Only print container QRs
-      const containerQRs = qrCodes.filter(qr => qr.qrType === 'container');
+      // Only print container QRs - use the correct array
+      const containerQRs = qrCodesToPrint.filter(qr => qr.qrType === 'container');
       
       const response = await fetch('/api/qr/print', {
         method: 'POST',
