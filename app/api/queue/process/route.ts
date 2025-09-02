@@ -87,7 +87,8 @@ export async function POST(request: NextRequest) {
       const batch = await kvQueue.pop('jobs', 20);
       
       if (batch.length === 0) {
-        return { processed: 0, flushed };
+        // Silent return when queue is empty - no logging to reduce noise
+        return { processed: 0, flushed, empty: true };
       }
       
       console.log(`Processing ${batch.length} jobs (${flushed} flushed from scheduled)`);
@@ -132,10 +133,16 @@ export async function POST(request: NextRequest) {
     
     // Check if lock was acquired
     if ('skipped' in result) {
+      // Silent return - another processor is already running
       return NextResponse.json(
-        { message: 'Processor already running', skipped: true },
+        { skipped: true },
         { status: 200 }
       );
+    }
+    
+    // Only log if something actually happened
+    if (result.processed > 0 || result.failed > 0) {
+      console.log(`Queue processed: ${result.processed} successful, ${result.failed} failed, ${result.flushed} flushed`);
     }
     
     return NextResponse.json(result);
