@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { jsonStringifyWithBigInt } from '@/lib/utils/bigint';
-import { db } from '@/lib/db';
+import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { desc, eq } from 'drizzle-orm';
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 const workspaceService = new WorkspaceService();
 
 export async function GET() {
   try {
-    const allWorkspaces = await db
-      .select()
-      .from(workspaces)
-      .orderBy(desc(workspaces.createdAt))
+    const db = getEdgeDb();
+    const allWorkspaces = await withEdgeRetry(() =>
+      db.select()
+        .from(workspaces)
+        .orderBy(desc(workspaces.createdAt))
+    )
       .limit(100);
 
     return new NextResponse(jsonStringifyWithBigInt({ workspaces: allWorkspaces }), {

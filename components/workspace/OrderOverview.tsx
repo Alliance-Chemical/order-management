@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useFreightOrder } from '@/lib/swr/hooks';
 // import { toast } from 'sonner';
 
 interface OrderOverviewProps {
@@ -15,6 +16,9 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
   const order = workspace.shipstationData || {};
   const shipTo = order.shipTo || {};
   const items = order.items || [];
+  
+  // Fetch freight order data
+  const { order: freightOrder, isLoading: isLoadingFreight } = useFreightOrder(orderId);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -119,6 +123,94 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
           )}
         </div>
       </div>
+
+      {/* Freight Information */}
+      {freightOrder && (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+            📦 Freight Information
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-slate-500">Status</p>
+              <span className={`mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                freightOrder.bookingStatus === 'delivered' ? 'bg-green-100 text-green-800' :
+                freightOrder.bookingStatus === 'shipped' ? 'bg-blue-100 text-blue-800' :
+                freightOrder.bookingStatus === 'booked' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {freightOrder.bookingStatus?.toUpperCase() || 'PENDING'}
+              </span>
+            </div>
+            
+            {freightOrder.carrierName && (
+              <div>
+                <p className="text-sm text-slate-500">Carrier</p>
+                <p className="text-sm text-slate-700 mt-1">{freightOrder.carrierName}</p>
+              </div>
+            )}
+            
+            {freightOrder.serviceType && (
+              <div>
+                <p className="text-sm text-slate-500">Service Type</p>
+                <p className="text-sm text-slate-700 mt-1">{freightOrder.serviceType}</p>
+              </div>
+            )}
+            
+            {freightOrder.trackingNumber && (
+              <div>
+                <p className="text-sm text-slate-500">Tracking Number</p>
+                <p className="text-sm text-slate-700 mt-1 font-mono">{freightOrder.trackingNumber}</p>
+              </div>
+            )}
+            
+            {freightOrder.estimatedCost && (
+              <div>
+                <p className="text-sm text-slate-500">Estimated Cost</p>
+                <p className="text-sm text-slate-700 mt-1">{formatCurrency(parseFloat(freightOrder.estimatedCost))}</p>
+              </div>
+            )}
+            
+            {freightOrder.bookedAt && (
+              <div>
+                <p className="text-sm text-slate-500">Booked Date</p>
+                <p className="text-sm text-slate-700 mt-1">{new Date(freightOrder.bookedAt).toLocaleDateString()}</p>
+              </div>
+            )}
+          </div>
+          
+          {freightOrder.specialInstructions && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">Special Instructions</p>
+              <p className="text-sm text-slate-600 bg-amber-50 rounded p-3">{freightOrder.specialInstructions}</p>
+            </div>
+          )}
+          
+          {freightOrder.aiSuggestions && freightOrder.aiSuggestions.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">AI Recommendations</p>
+              <div className="text-sm text-slate-600 bg-blue-50 rounded p-3">
+                <p>Confidence: {freightOrder.confidenceScore ? `${(parseFloat(freightOrder.confidenceScore) * 100).toFixed(0)}%` : 'N/A'}</p>
+                {freightOrder.aiSuggestions[0]?.reasoning && (
+                  <p className="mt-1">{freightOrder.aiSuggestions[0].reasoning}</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {isLoadingFreight && (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+            📦 Freight Information
+          </h3>
+          <div className="animate-pulse">
+            <div className="h-4 bg-slate-200 rounded w-1/4 mb-2"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+          </div>
+        </div>
+      )}
 
       {/* Order Items */}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">

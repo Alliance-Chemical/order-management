@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
 import { batchHistory, qrCodes, activityLog } from '@/lib/db/schema/qr-workspace';
 import { eq, inArray } from 'drizzle-orm';
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const db = getEdgeDb();
     const {
       workspaceId,
       orderId,

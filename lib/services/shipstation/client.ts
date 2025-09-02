@@ -32,7 +32,21 @@ export class ShipStationClient {
   }
 
   async getOrder(orderId: number): Promise<any> {
-    return this.makeRequest(`/orders/${orderId}`);
+    // ShipStation's /orders/{orderId} endpoint returns the full order including items
+    const order = await this.makeRequest(`/orders/${orderId}`);
+    
+    // If items are missing, try fetching via search endpoint which includes items
+    if (!order.items || order.items.length === 0) {
+      console.log(`Order ${orderId} missing items, fetching via search endpoint`);
+      const searchResponse = await this.makeRequest<{ orders: any[] }>(
+        `/orders?orderId=${orderId}`
+      );
+      if (searchResponse.orders && searchResponse.orders.length > 0) {
+        return searchResponse.orders[0];
+      }
+    }
+    
+    return order;
   }
 
   async getOrderByNumber(orderNumber: string): Promise<any> {

@@ -208,3 +208,155 @@ export function useWarehouseStats(timeRange: 'day' | 'week' | 'month' = 'day') {
     isError: error,
   };
 }
+
+// Freight Booking SWR Hooks
+
+// Freight order tracking
+export function useFreightOrder(orderId: string | undefined) {
+  const { data, error, isLoading, mutate } = useSWR(
+    orderId ? `/api/freight-booking/orders/${orderId}` : null,
+    {
+      refreshInterval: 5000, // Update every 5 seconds for freight tracking
+      keepPreviousData: true,
+    }
+  );
+
+  return {
+    order: data,
+    isLoading,
+    isError: error,
+    mutate,
+  };
+}
+
+// Freight quotes fetching
+export function useFreightQuotes(orderId: string | undefined) {
+  const { data, error, isLoading } = useSWR(
+    orderId ? `/api/freight-booking/quotes/${orderId}` : null,
+    {
+      // Cache quotes for 5 minutes since rates change frequently
+      refreshInterval: 300000,
+      revalidateOnFocus: false,
+    }
+  );
+
+  return {
+    quotes: data?.quotes || [],
+    isLoading,
+    isError: error,
+  };
+}
+
+// AI freight suggestions
+export function useFreightSuggestions(orderContext: any | undefined) {
+  const contextKey = orderContext ? JSON.stringify(orderContext).slice(0, 100) : null;
+  const { data, error, isLoading } = useSWR(
+    contextKey ? `/api/freight-booking/freight/suggest` : null,
+    async () => {
+      if (!orderContext) return null;
+      const res = await fetch('/api/freight-booking/freight/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderContext),
+      });
+      if (!res.ok) throw new Error('Failed to fetch suggestions');
+      return res.json();
+    },
+    {
+      // Cache AI suggestions for 1 hour
+      refreshInterval: 3600000,
+      revalidateOnFocus: false,
+    }
+  );
+
+  return {
+    suggestion: data?.suggestion,
+    confidence: data?.confidence,
+    reasoning: data?.reasoning,
+    isLoading,
+    isError: error,
+  };
+}
+
+// Freight booking mutation
+export function useCreateFreightBooking() {
+  const { trigger, isMutating, error } = useSWRMutation(
+    '/api/freight-booking/capture-order',
+    async (url, { arg }: { arg: any }) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(arg),
+      });
+      
+      if (!res.ok) throw new Error('Failed to create freight booking');
+      return res.json();
+    },
+    {
+      // Revalidate related data after booking
+      onSuccess: (data, key, config) => {
+        // Invalidate freight orders list
+        mutate(key => typeof key === 'string' && key.startsWith('/api/freight-booking/orders'));
+        // Invalidate workspace data since booking affects workspace
+        mutate(key => typeof key === 'string' && key.startsWith('/api/workspaces'));
+      },
+    }
+  );
+
+  return {
+    createBooking: trigger,
+    isCreating: isMutating,
+    error,
+  };
+}
+
+// Hazmat freight suggestions
+export function useHazmatSuggestions(hazmatContext: any | undefined) {
+  const contextKey = hazmatContext ? JSON.stringify(hazmatContext).slice(0, 100) : null;
+  const { data, error, isLoading } = useSWR(
+    contextKey ? `/api/freight-booking/freight/hazmat-suggest` : null,
+    async () => {
+      if (!hazmatContext) return null;
+      const res = await fetch('/api/freight-booking/freight/hazmat-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(hazmatContext),
+      });
+      if (!res.ok) throw new Error('Failed to fetch hazmat suggestions');
+      return res.json();
+    },
+    {
+      // Cache hazmat suggestions for longer since regulations change slowly
+      refreshInterval: 7200000, // 2 hours
+      revalidateOnFocus: false,
+    }
+  );
+
+  return {
+    suggestion: data?.suggestion,
+    confidence: data?.confidence,
+    complianceScore: data?.complianceScore,
+    riskAssessment: data?.riskAssessment,
+    hazmatRequirements: data?.suggestion?.hazmatRequirements || [],
+    isLoading,
+    isError: error,
+  };
+}
+
+// Freight order history
+export function useFreightOrderHistory(workspaceId: string | undefined, limit = 20) {
+  const { data, error, isLoading } = useSWR(
+    workspaceId ? `/api/freight-booking/history/${workspaceId}?limit=${limit}` : null,
+    {
+      // History doesn't change often, update every 2 minutes
+      refreshInterval: 120000,
+      revalidateOnFocus: false,
+    }
+  );
+
+  return {
+    history: data?.orders || [],
+    isLoading,
+    isError: error,
+  };
+}
