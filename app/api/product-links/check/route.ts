@@ -17,6 +17,23 @@ export async function POST(request: NextRequest) {
 
     const sql = getEdgeSql();
     
+    // First check if product exists
+    const productCheck = await sql`
+      SELECT id, sku, name, is_hazardous, un_number 
+      FROM products 
+      WHERE sku = ${sku} 
+      LIMIT 1
+    `;
+    
+    if (productCheck.length === 0) {
+      // Product doesn't exist yet - this is normal for new products
+      return NextResponse.json({
+        success: true,
+        hasClassification: false,
+        message: `Product ${sku} not yet in database`
+      });
+    }
+    
     // Check if product has approved classification links
     const result = await sql`
       SELECT 

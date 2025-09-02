@@ -230,6 +230,7 @@ export default function FreightBookingPage() {
     description: string;
     saving?: boolean;
     error?: string | null;
+    successMessage?: string;
     hazmatData?: {
       unNumber: string | null;
       hazardClass: string | null;
@@ -842,6 +843,11 @@ export default function FreightBookingPage() {
                                   />
                                 </div>
                               </div>
+                              {manualInputs[item.sku]?.successMessage && (
+                                <div className="text-green-600 text-xs mb-2 font-bold animate-pulse">
+                                  {manualInputs[item.sku]?.successMessage}
+                                </div>
+                              )}
                               {manualInputs[item.sku]?.error && (
                                 <div className="text-red-600 text-xs mb-2">{manualInputs[item.sku]?.error}</div>
                               )}
@@ -873,7 +879,7 @@ export default function FreightBookingPage() {
                                     if (!res.ok || !data.success) {
                                       throw new Error(data.error || 'Failed to save classification');
                                     }
-                                    // Update local state so this item is now classified
+                                    // Update local state so this item is now classified with full hazmat data
                                     setBookingData(prev => ({
                                       ...prev,
                                       classifiedItems: prev.classifiedItems.map(ci =>
@@ -882,7 +888,12 @@ export default function FreightBookingPage() {
                                           classification: {
                                             nmfcCode: data.classification.nmfcCode,
                                             freightClass: data.classification.freightClass,
-                                            isHazmat: inputs.hazmatData?.isHazmat || false,
+                                            isHazmat: data.classification.isHazmat || inputs.hazmatData?.isHazmat || false,
+                                            // Include full hazmat details from API response
+                                            hazmatClass: data.classification.hazmatClass || inputs.hazmatData?.hazardClass,
+                                            unNumber: data.product?.unNumber || inputs.hazmatData?.unNumber,
+                                            packingGroup: data.classification.packingGroup || inputs.hazmatData?.packingGroup,
+                                            properShippingName: data.classification.description || inputs.hazmatData?.properShippingName,
                                           }
                                         } : ci
                                       )
@@ -926,13 +937,33 @@ export default function FreightBookingPage() {
                                        bookingData.selectedOrder?.items.find(i => i.sku === sku)?.name || 
                                        'Chemical Product';
                     
+                    // Auto-map NMFC codes based on hazard class
+                    let nmfcCode = '';
+                    let nmfcSub = '';
+                    if (hazmatClass) {
+                      // Common NMFC mappings for hazmat classes
+                      const hazmatNmfcMap: Record<string, { code: string; sub?: string }> = {
+                        '3': { code: '49040' },        // Flammable liquids
+                        '4.1': { code: '49080' },      // Flammable solids
+                        '5.1': { code: '48575' },      // Oxidizers
+                        '6.1': { code: '49120' },      // Toxic substances
+                        '8': { code: '48960' },        // Corrosives
+                        '9': { code: '49140' },        // Miscellaneous dangerous goods
+                      };
+                      const mapping = hazmatNmfcMap[hazmatClass || ''];
+                      if (mapping) {
+                        nmfcCode = mapping.code;
+                        nmfcSub = mapping.sub || '';
+                      }
+                    }
+                    
                     // Update manual inputs with RAG data
                     setManualInputs(prev => ({
                       ...prev,
                       [sku]: {
                         freightClass: freightClass,
-                        nmfcCode: '', // NMFC code would need to be looked up separately
-                        nmfcSub: '',
+                        nmfcCode: nmfcCode,
+                        nmfcSub: nmfcSub,
                         description: description,
                         // Store hazmat data in the form state (we'll pass this to the API)
                         hazmatData: {
@@ -945,7 +976,29 @@ export default function FreightBookingPage() {
                       }
                     }));
                     
+                    // Show visual feedback that RAG data was applied
                     warehouseFeedback.success();
+                    
+                    // Add a temporary success message in the form
+                    setManualInputs(prev => ({
+                      ...prev,
+                      [sku]: {
+                        ...prev[sku],
+                        successMessage: '✅ Hazmat data auto-populated from RAG'
+                      }
+                    }));
+                    
+                    // Clear success message after 3 seconds
+                    setTimeout(() => {
+                      setManualInputs(prev => ({
+                        ...prev,
+                        [sku]: {
+                          ...prev[sku],
+                          successMessage: undefined
+                        }
+                      }));
+                    }, 3000);
+                    
                     console.log('Applied hazmat classification for SKU:', sku, suggestion);
                   }}
                 />

@@ -15,6 +15,13 @@
       "when": 1755062164752,
       "tag": "0001_past_human_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1756838490897,
+      "tag": "0002_colorful_loners",
+      "breakpoints": true
     }
   ]
 }

@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve product ID
-    const productRows = await withEdgeRetry(async () => {
+    // Resolve product ID - create if doesn't exist
+    let productRows = await withEdgeRetry(async () => {
       if (productId) {
         return (await sql`SELECT id, sku, name FROM products WHERE id = ${productId} LIMIT 1`) as any[];
       }
@@ -57,9 +57,22 @@ export async function POST(request: NextRequest) {
     });
 
     if (!productRows?.length) {
-      return NextResponse.json(
-        { success: false, error: 'Product not found' },
-        { status: 404 },
+      // Create product if it doesn't exist (common for first-time SKUs)
+      const productName = description || hazmatData?.properShippingName || `Product ${sku}`;
+      productRows = await withEdgeRetry(async () =>
+        (await sql`
+          INSERT INTO products (
+            id, sku, name, is_hazardous, un_number, created_at, updated_at
+          ) VALUES (
+            gen_random_uuid(),
+            ${sku},
+            ${productName},
+            ${hazmatData?.isHazmat || false},
+            ${hazmatData?.unNumber || null},
+            NOW(), NOW()
+          )
+          RETURNING id, sku, name
+        `) as any[]
       );
     }
 
