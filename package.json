@@ -35,7 +35,15 @@
     "test:unit": "./run-working-tests.sh unit",
     "test:working": "./run-working-tests.sh all",
     "test:mcp:legacy": "./run-mcp-tests.sh",
-    "test:all": "npm run test:run && npm run test:e2e"
+    "test:all": "npm run test:run && npm run test:e2e",
+    "rag:extract": "node scripts/extract-hmt-from-cfr.js",
+    "rag:build": "node scripts/build-hmt-index.js",
+    "ingest:history": "node scripts/ingest-historical.js",
+    "ingest:erg": "node scripts/ingest-erg.js",
+    "hazmat:search": "node scripts/search-hazmat.js",
+    "classify:shopify": "node scripts/classify-shopify-products.js",
+    "link:freight-class": "node scripts/link-freight-classifications.js",
+    "reclassify:products": "node scripts/reclassify-products.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.864.0",
