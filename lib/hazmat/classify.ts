@@ -35,6 +35,8 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
       'ammonia': ['spirits of ammonia'],
       'acetic acid': ['vinegar'],
       'ethanol': ['ethyl alcohol', 'denatured alcohol'],
+      'isopropyl alcohol': ['isopropanol', '2-propanol', 'ipa'],
+      'kerosene': ['k-1', 'k1'],
       'hexane': ['hexanes', 'n-hexane'],
     };
     let extra: string[] = [];
@@ -69,11 +71,15 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
       { match: /(\bhypochlorite\b|bleach)/, baseRegex: 'sodium hypochlorite' },
       // Alcohol family (denatured ethanol)
       { match: /(denatured\s+alcohol|ethanol\b|ethyl\s+alcohol)/, baseRegex: 'ethanol|ethyl alcohol|alcohols, n\.o\.s\.', classRegex: '^3' },
+      // Isopropyl alcohol
+      { match: /(isopropyl\s+alcohol|isopropanol|2\-propanol|\bipa\b)/, baseRegex: 'isopropyl alcohol|isopropanol', classRegex: '^3' },
       // Petroleum family
       { match: /(petroleum|mineral\s+spirits|white\s+spirit|naphtha|naptha|vm&p|petroleum\s+ether|ligroin|hydrocarbon|paint\s+thinner)/,
         baseRegex: 'petroleum distillates|hydrocarbons, liquid|naphtha|white spirits', classRegex: '^3' },
       // Alkanes: hexane family
       { match: /(\bn-?hexane\b|\bhexanes?\b|\bheptane\b|\bpentane\b)/, baseRegex: 'hexane|hexanes|n-hexane', classRegex: '^3' },
+      // Kerosene
+      { match: /(\bkerosene\b|k\-?1\b)/, baseRegex: 'kerosene', classRegex: '^3' },
     ];
     for (const f of fam) {
       if (f.match.test(s)) {
@@ -98,6 +104,8 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
     if (/propylene\s+glycol/.test(s)) return { nonhaz: true, reason: 'Propylene glycol is typically not regulated for DOT' };
     if (/castor\s+oil/.test(s)) return { nonhaz: true, reason: 'Castor oil is typically not regulated for DOT' };
     if (/(vegetable\s+glycerin|glycerin|glycerol)/.test(s)) return { nonhaz: true, reason: 'Glycerin is typically not regulated for DOT' };
+    if (/magnesium\s+chloride/.test(s)) return { nonhaz: true, reason: 'Magnesium chloride (incl. hexahydrate) is typically not regulated for DOT' };
+    if (/magnesium\s+hydroxide/.test(s)) return { nonhaz: true, reason: 'Magnesium hydroxide is typically not regulated for DOT' };
     // Dilute acetic acid / vinegar thresholds
     if (/acetic\s+acid|vinegar/.test(s)) {
       const pct = parsePercent(q);
@@ -317,6 +325,21 @@ function directMapToHMT(productName: string, rows: any[]): Classification | null
     const r = pickByBaseName(/hydrochloric acid/);
     if (r) return build(r, 'Hydrochloric acid');
   }
+  // Ferric chloride mapping: default to solution when % present or "solution" in name; else anhydrous
+  if (/ferric\s+chloride/i.test(productName)) {
+    if (/anhydrous/i.test(productName)) {
+      const r = pickByBaseName(/ferric chloride, anhydrous/);
+      if (r) return build(r, 'Ferric chloride, anhydrous');
+    }
+    // percent or "solution" implies solution
+    if (pct !== null || /solution/i.test(productName)) {
+      const r = pickByBaseName(/ferric chloride, solution/);
+      if (r) return build(r, `Ferric chloride solution${pct !== null ? ' ' + pct + '%' : ''}`);
+    }
+    // fallback to solution entry
+    const r = pickByBaseName(/ferric chloride, solution/);
+    if (r) return build(r, 'Ferric chloride solution');
+  }
   // Sulfuric drain cleaner (assume >51% if unspecified)
   if (/sulfuric/i.test(productName) && /drain/i.test(productName)) {
     const r = rows.find(x => /sulfuric acid/i.test(x.base_name || '') && /more than 51%/i.test(x.qualifier || '')) || pickByBaseName(/sulfuric acid/);
@@ -331,6 +354,26 @@ function directMapToHMT(productName: string, rows: any[]): Classification | null
     }
     const r = pickByBaseName(/\bethanol\b|ethyl alcohol/);
     if (r) return build(r, 'Ethanol');
+  }
+  // Methanol / Methyl alcohol
+  if (/(\bmethanol\b|methyl\s+alcohol)/i.test(productName)) {
+    const r = pickByBaseName(/\bmethanol\b/);
+    if (r) return build(r, 'Methanol');
+  }
+  // MEK / 2-Butanone / Ethyl methyl ketone
+  if (/(methyl\s+ethyl\s+ketone|\bmek\b|2\-butanone|ethyl\s+methyl\s+ketone)/i.test(productName)) {
+    const r = pickByBaseName(/methyl ethyl ketone|2\-butanone/);
+    if (r) return build(r, 'Methyl ethyl ketone (MEK)');
+  }
+  // Isopropyl alcohol / Isopropanol
+  if (/(isopropyl\s+alcohol|isopropanol|2\-propanol|\bipa\b)/i.test(productName)) {
+    const r = pickByBaseName(/isopropyl alcohol|isopropanol/);
+    if (r) return build(r, 'Isopropyl alcohol');
+  }
+  // Kerosene
+  if (/(\bkerosene\b|k\-?1\b)/i.test(productName)) {
+    const r = pickByBaseName(/\bkerosene\b/);
+    if (r) return build(r, 'Kerosene');
   }
   // Glycol Ether EE (EGEE)
   if (/glycol\s+ether\s+ee\b/i.test(productName)) {
