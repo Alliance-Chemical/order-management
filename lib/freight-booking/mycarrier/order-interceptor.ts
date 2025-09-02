@@ -177,6 +177,7 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
     const { getApprovedClassificationBySku } = await import('../product-classification');
     const { getCfrHazmatBySku } = await import('../cfr-hazmat');
     const { getHazmatOverrideBySku } = await import('../hazmat-override');
+    const nmfcBySku: Record<string, any> = userOverrides?.nmfcBySku || {};
 
     const itemsWithClass = await Promise.all(
       (shipstationOrder.items || []).map(async (item: any) => {
@@ -185,6 +186,7 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
         const cfr = item?.sku ? await getCfrHazmatBySku(item.sku) : null;
 
         const lineOvr = (userOverrides?.hazmatBySku && item?.sku) ? (userOverrides.hazmatBySku[item.sku] || {}) : {};
+        const lineNmfc = (item?.sku && nmfcBySku[item.sku]) ? nmfcBySku[item.sku] : {};
         const globalOvr = userOverrides?.hazmat || {};
         const hazmatYes = (
           (typeof lineOvr.isHazmat === 'boolean' ? lineOvr.isHazmat : null) ??
@@ -200,9 +202,16 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
         const packingGroup = (lineOvr.packingGroup ?? globalOvr.packingGroup) ?? override?.packingGroup ?? cfr?.packingGroup ?? saved?.packingGroup ?? item.packingGroup;
         const properShippingName = (lineOvr.properShippingName ?? globalOvr.properShippingName) ?? override?.properShippingName ?? cfr?.properShippingName ?? item.hazmatName;
 
+        // Build NMFC string with precedence: per-line override > saved > derived (flagged)
+        let nmfc: string | undefined = undefined;
+        if (lineNmfc?.nmfcCode) {
+          nmfc = `${lineNmfc.nmfcCode}${lineNmfc.nmfcSub ? '-' + lineNmfc.nmfcSub : ''}`;
+        } else {
+          nmfc = saved?.nmfcCode || undefined;
+        }
+
         // Optional helper: Derive NMFC sub from Packing Group only when explicitly enabled.
-        // Disabled by default because NMFC submeaning varies by item (e.g., density brackets in 43940).
-        let nmfc: string | undefined = saved?.nmfcCode || undefined;
+        // Disabled by default because NMFC sub meaning varies by item (e.g., density brackets in 43940).
         if (process.env.NMFC_DERIVE_SUB_FROM_PG === '1' || process.env.NMFC_DERIVE_SUB_FROM_PG === 'true') {
           if (nmfc && !nmfc.includes('-')) {
             const pgUpper = (packingGroup || '').toString().trim().toUpperCase();
@@ -213,7 +222,7 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
 
         return {
           ...item,
-          freightClass: userOverrides.freightClass || saved?.freightClass || item.freightClass,
+          freightClass: lineNmfc?.freightClass || userOverrides.freightClass || saved?.freightClass || item.freightClass,
           nmfc,
           hazmat: hazmatYes,
           hazmatId: unNumber,
