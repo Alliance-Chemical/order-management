@@ -43,6 +43,9 @@ export default function PrintPreparationModal({
     containers: number;
   }>({ drums: 0, totes: 0, pallets: 0, containers: 0 });
   
+  // Track custom label quantities per item
+  const [labelQuantities, setLabelQuantities] = useState<Record<string, number>>({});
+  
   // Fulfillment method selection
   const [showFulfillmentDialog, setShowFulfillmentDialog] = useState(false);
   const [selectedFulfillmentMethod, setSelectedFulfillmentMethod] = useState<'pump_and_fill' | 'direct_resell'>('pump_and_fill');
@@ -91,6 +94,28 @@ export default function PrintPreparationModal({
     });
 
     setLabelSummary(summary);
+    
+    // Initialize label quantities based on existing QR codes
+    if (order.items) {
+      const quantities: Record<string, number> = {};
+      order.items.forEach(item => {
+        // Count how many QR codes exist for this item
+        const itemQRs = codes.filter(qr => 
+          qr.encodedData?.sku === item.sku || 
+          qr.encodedData?.itemId === item.sku
+        );
+        quantities[item.sku] = itemQRs.length || 1;
+      });
+      setLabelQuantities(quantities);
+    }
+  };
+  
+  const updateLabelQuantity = (sku: string, quantity: string) => {
+    const qty = parseInt(quantity) || 1;
+    setLabelQuantities(prev => ({
+      ...prev,
+      [sku]: Math.min(Math.max(1, qty), 10) // Limit between 1 and 10
+    }));
   };
 
   const handlePrintAll = async () => {
@@ -103,6 +128,27 @@ export default function PrintPreparationModal({
     setPrinting(true);
     
     try {
+      // If custom quantities are specified, we need to regenerate QR codes
+      const hasCustomQuantities = Object.values(labelQuantities).some(qty => qty !== 1);
+      
+      if (hasCustomQuantities) {
+        // First, regenerate QR codes with custom quantities
+        const regenResponse = await fetch(`/api/workspace/${order.orderId}/qrcodes/regenerate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            labelQuantities
+          })
+        });
+        
+        if (regenResponse.ok) {
+          const regenData = await regenResponse.json();
+          if (regenData.success && regenData.qrCodes) {
+            setQrCodes(regenData.qrCodes);
+          }
+        }
+      }
+      
       // Only print container QRs
       const containerQRs = qrCodes.filter(qr => qr.qrType === 'container');
       
@@ -114,7 +160,8 @@ export default function PrintPreparationModal({
           orderId: order.orderId,
           orderNumber: order.orderNumber,
           customerName: order.customerName,
-          fulfillmentMethod: selectedFulfillmentMethod
+          fulfillmentMethod: selectedFulfillmentMethod,
+          labelQuantities // Pass custom quantities to print API
         })
       });
 
@@ -246,22 +293,57 @@ export default function PrintPreparationModal({
                   hasUnassignedItems={false}
                 />
 
-                {/* Order Items List */}
+                {/* Order Items List with Label Quantity Selectors */}
                 {order.items && order.items.length > 0 && (
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">Order Items</h3>
-                    <div className="space-y-2">
-                      {order.items.map((item: any, index: number) => (
-                        <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                          <div>
-                            <span className="font-medium text-gray-900">{item.name || 'Unknown Product'}</span>
-                            {item.sku && <span className="text-sm text-gray-500 ml-2">({item.sku})</span>}
+                    <div className="space-y-3">
+                      {order.items.map((item: any, index: number) => {
+                        const isFreightItem = item.name && (
+                          item.name.toLowerCase().includes('case') ||
+                          item.name.toLowerCase().includes('pail') ||
+                          item.name.toLowerCase().includes('box') ||
+                          (item.name.toLowerCase().includes('gallon') && 
+                           !item.name.toLowerCase().includes('drum') && 
+                           !item.name.toLowerCase().includes('tote'))
+                        );
+                        
+                        return (
+                          <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900">{item.name || 'Unknown Product'}</div>
+                                <div className="text-sm text-gray-600 mt-1">
+                                  SKU: {item.sku || 'N/A'} | Order Qty: {item.quantity || 1}
+                                </div>
+                                {isFreightItem && (
+                                  <div className="text-xs text-blue-600 mt-1">
+                                    💡 Freight item - typically ships on pallet(s)
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 ml-4">
+                                <label className="text-sm text-gray-700 whitespace-nowrap">
+                                  Labels to print:
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="10"
+                                  value={labelQuantities[item.sku] || 1}
+                                  onChange={(e) => updateLabelQuantity(item.sku, e.target.value)}
+                                  className="w-16 px-2 py-1 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </div>
+                            </div>
+                            {labelQuantities[item.sku] > 1 && (
+                              <div className="text-xs text-gray-500 mt-2">
+                                Will print {labelQuantities[item.sku]} labels for this item (e.g., split across {labelQuantities[item.sku]} pallets)
+                              </div>
+                            )}
                           </div>
-                          <span className="text-sm font-medium text-gray-700">
-                            Qty: {item.quantity || 1}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
