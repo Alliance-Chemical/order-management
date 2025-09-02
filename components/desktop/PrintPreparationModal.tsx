@@ -275,7 +275,7 @@ export default function PrintPreparationModal({
                               </div>
                             )}
                           </div>
-                        ))
+                        ))}
                     </div>
                   </div>
                 )}
