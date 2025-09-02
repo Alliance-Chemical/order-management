@@ -12,6 +12,10 @@ type Classification = {
   confidence: number;
   source: string;
   explanation?: string;
+  packaging?: any;
+  quantity_limitations?: any;
+  vessel_stowage?: any;
+  special_provisions?: any;
 };
 
 let cachedIndex: any | null = null;
