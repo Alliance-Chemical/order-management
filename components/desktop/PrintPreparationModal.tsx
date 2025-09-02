@@ -247,17 +247,7 @@ export default function PrintPreparationModal({
                                            item.unitPrice < 0;
                           return !(hasNoSku && isDiscount);
                         })
-                        .map((item: any, index: number) => {
-                        const isFreightItem = item.name && (
-                          item.name.toLowerCase().includes('case') ||
-                          item.name.toLowerCase().includes('pail') ||
-                          item.name.toLowerCase().includes('box') ||
-                          (item.name.toLowerCase().includes('gallon') && 
-                           !item.name.toLowerCase().includes('drum') && 
-                           !item.name.toLowerCase().includes('tote'))
-                        );
-                        
-                        return (
+                        .map((item: any, index: number) => (
                           <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
@@ -265,11 +255,6 @@ export default function PrintPreparationModal({
                                 <div className="text-sm text-gray-600 mt-1">
                                   SKU: {item.sku || 'N/A'} | Order Qty: {item.quantity || 1}
                                 </div>
-                                {isFreightItem && (
-                                  <div className="text-xs text-blue-600 mt-1">
-                                    💡 Freight item - typically ships on pallet(s)
-                                  </div>
-                                )}
                               </div>
                               <div className="flex items-center gap-2 ml-4">
                                 <label className="text-sm text-gray-700 whitespace-nowrap">
@@ -290,7 +275,7 @@ export default function PrintPreparationModal({
                               </div>
                             )}
                           </div>
-                        );
+                        ))
                       })}
                     </div>
                   </div>
