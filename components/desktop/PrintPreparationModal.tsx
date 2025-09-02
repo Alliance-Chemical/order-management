@@ -286,7 +286,7 @@ export default function PrintPreparationModal({
                             </div>
                             {labelQuantities[item.sku] > 1 && (
                               <div className="text-xs text-gray-500 mt-2">
-                                Will print {labelQuantities[item.sku]} labels for this item (e.g., split across {labelQuantities[item.sku]} pallets)
+                                Will print {labelQuantities[item.sku]} labels for this item
                               </div>
                             )}
                           </div>
