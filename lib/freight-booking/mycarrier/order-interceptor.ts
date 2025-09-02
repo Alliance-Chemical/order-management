@@ -152,12 +152,16 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
               commodityDescription: item.name,
               commodityPieces: item.quantity.toString(),
               commodityWeight: item.weight?.value?.toString() || "100",
-              commodityClass: item.freightClass || "85",
+              commodityClass: userOverrides.freightClass || item.freightClass || "85",
               commodityHazMat: item.hazmat ? "YES" : "NO",
               hazmatIDNumber: item.hazmatId,
               hazmatProperShippingName: item.hazmatName,
               hazmatHazardClass: item.hazmatClass,
               hazmatPackingGroup: item.packingGroup,
+              // Optional: pass NMFC as freeform if provided (MyCarrier may accept or ignore unknown keys)
+              ...(userOverrides.nmfcCode || userOverrides.nmfcSub
+                ? { nmfc: `${userOverrides.nmfcCode || ""}${userOverrides.nmfcSub ? '-' + userOverrides.nmfcSub : ''}` }
+                : {}),
             },
           ],
         })) || [],
