@@ -30,15 +30,49 @@ export async function GET(
       .limit(1);
 
     if (!workspace || workspace.length === 0) {
-      // If no workspace exists, create one first (populate required fields)
-      console.warn(`[QR] Workspace not found for orderId=${orderId}. Creating on-demand...`);
+      // If no workspace exists, create one first but FETCH ShipStation data immediately
+      console.warn(`[QR] Workspace not found for orderId=${orderId}. Creating on-demand with ShipStation data...`);
+      
+      // Fetch order data from ShipStation FIRST
+      let shipstationData = null;
+      let orderNumber = String(orderId);
+      let customerName = null;
+      
+      try {
+        const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
+        const apiSecret = process.env.SHIPSTATION_API_SECRET?.trim() || '';
+        const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+        
+        console.log(`[QR] Fetching order ${orderId} from ShipStation...`);
+        const response = await fetch(`https://ssapi.shipstation.com/orders/${orderId}`, {
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          shipstationData = await response.json();
+          orderNumber = shipstationData.orderNumber || String(orderId);
+          customerName = shipstationData.shipTo?.name || null;
+          console.log(`[QR] Successfully fetched ShipStation order ${orderNumber} with ${shipstationData.items?.length || 0} items`);
+        } else {
+          console.error(`[QR] Failed to fetch from ShipStation: ${response.status} ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error('[QR] Error fetching order from ShipStation:', error);
+      }
+      
       const newWorkspace = await db
         .insert(workspaces)
         .values({
           orderId,
-          orderNumber: String(orderId),
+          orderNumber,
+          customerName,
           workspaceUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/workspace/${orderId}`,
           status: 'pending',
+          shipstationData,
+          lastShipstationSync: shipstationData ? new Date() : null,
           createdAt: new Date(),
           updatedAt: new Date()
         })
@@ -52,7 +86,7 @@ export async function GET(
       }
 
       // Generate QR codes for the new workspace
-      console.log('[QR] --- TRIGGERING ON-DEMAND QR GENERATION (new workspace) ---');
+      console.log('[QR] --- TRIGGERING ON-DEMAND QR GENERATION (new workspace with ShipStation data) ---');
       await generateQRCodesForWorkspace(newWorkspace[0].id, orderId);
     }
 
@@ -166,6 +200,13 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   
   // First, try to use data from workspace
   if (shipstationData?.items && Array.isArray(shipstationData.items)) {
+    console.log(`[QR] Found ${shipstationData.items.length} total items in workspace shipstationData`);
+    
+    // Log ALL items before filtering for debugging
+    shipstationData.items.forEach((item: any, index: number) => {
+      console.log(`[QR] Item ${index + 1}: SKU="${item.sku || 'N/A'}", Name="${item.name}", Price=${item.unitPrice}, Qty=${item.quantity}`);
+    });
+    
     // Filter out discount items
     items = shipstationData.items.filter((item: any) => {
       const hasNoSku = !item.sku || item.sku === '';
@@ -173,19 +214,22 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
                        item.unitPrice < 0 || 
                        item.lineItemKey?.includes('discount');
       if (hasNoSku && isDiscount) {
-        console.log(`[QR] Filtering out discount item: ${item.name}`);
+        console.log(`[QR] ✗ Filtering out discount item: ${item.name} (no SKU + discount indicator)`);
         return false;
       }
+      console.log(`[QR] ✓ Including physical item: ${item.name} (SKU: ${item.sku || 'N/A'})`);
       return true;
     });
-    console.log(`[QR] Using ${items.length} physical items from workspace shipstationData (after filtering discounts)`);
+    console.log(`[QR] Result: ${items.length} physical items from workspace (after filtering ${shipstationData.items.length - items.length} discounts)`);
   } else {
     // If no items in workspace, fetch from ShipStation
+    console.log('[QR] No items in workspace, fetching from ShipStation API...');
     try {
       const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
       const apiSecret = process.env.SHIPSTATION_API_SECRET?.trim() || '';
       const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
       
+      console.log(`[QR] Fetching order ${orderId} from ShipStation...`);
       const response = await fetch(`https://ssapi.shipstation.com/orders/${orderId}`, {
         headers: {
           'Authorization': `Basic ${auth}`,
@@ -195,6 +239,13 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
       
       if (response.ok) {
         const orderData = await response.json();
+        console.log(`[QR] ShipStation returned ${orderData.items?.length || 0} total items`);
+        
+        // Log ALL items before filtering
+        (orderData.items || []).forEach((item: any, index: number) => {
+          console.log(`[QR] Item ${index + 1}: SKU="${item.sku || 'N/A'}", Name="${item.name}", Price=${item.unitPrice}, Qty=${item.quantity}`);
+        });
+        
         // Filter out discount items
         items = (orderData.items || []).filter((item: any) => {
           const hasNoSku = !item.sku || item.sku === '';
@@ -202,12 +253,13 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
                            item.unitPrice < 0 || 
                            item.lineItemKey?.includes('discount');
           if (hasNoSku && isDiscount) {
-            console.log(`[QR] Filtering out discount item: ${item.name}`);
+            console.log(`[QR] ✗ Filtering out discount item: ${item.name} (no SKU + discount indicator)`);
             return false;
           }
+          console.log(`[QR] ✓ Including physical item: ${item.name} (SKU: ${item.sku || 'N/A'})`);
           return true;
         });
-        console.log(`[QR] Fetched ${items.length} physical items from ShipStation API (after filtering discounts)`);
+        console.log(`[QR] Result: ${items.length} physical items from API (after filtering ${orderData.items.length - items.length} discounts)`);
         
         // Update workspace with the fetched data
         await db
@@ -217,9 +269,11 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
             lastShipstationSync: new Date()
           })
           .where(eq(workspaces.id, workspaceId));
+      } else {
+        console.error(`[QR] ShipStation API error: ${response.status} ${response.statusText}`);
       }
     } catch (error) {
-      console.error('Error fetching order details for QR generation:', error);
+      console.error('[QR] Error fetching order details:', error);
     }
   }
 
@@ -253,6 +307,7 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     const sku = (item.sku || '').toLowerCase();
     
     // Smart container logic based on product type
+    // Always create at least 1 label per physical item
     if (name.includes('drum') || sku.includes('drum')) {
       totalContainersForThisItem = quantity; // 1 label per drum
       containerType = 'drum';
@@ -260,16 +315,29 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
       totalContainersForThisItem = quantity; // 1 label per tote
       containerType = 'tote';
     } else if (name.includes('pail') || sku.includes('pail')) {
-      // For pails, we create labels per pallet (36 pails per pallet)
-      totalContainersForThisItem = Math.ceil(quantity / 36); 
-      containerType = 'pallet';
+      // For pails, assume 1 label per pail for now (can be grouped later)
+      totalContainersForThisItem = quantity; 
+      containerType = 'pail';
     } else if (name.includes('box') || sku.includes('box')) {
-      // For boxes, we create labels per pallet (144 boxes per pallet)
-      totalContainersForThisItem = Math.ceil(quantity / 144);
-      containerType = 'pallet';
+      // For boxes, assume 1 label per box for now
+      totalContainersForThisItem = quantity;
+      containerType = 'box';
+    } else if (name.includes('gallon') || sku.includes('gallon')) {
+      // For gallon containers
+      totalContainersForThisItem = quantity;
+      containerType = 'container';
+    } else {
+      // Default: 1 label per quantity
+      totalContainersForThisItem = quantity;
+      containerType = 'container';
     }
     
-    console.log(`[QR] Creating ${totalContainersForThisItem} ${containerType} QRs for item: ${itemName} (qty: ${quantity})`);
+    // Ensure we always create at least 1 label
+    if (totalContainersForThisItem < 1) {
+      totalContainersForThisItem = 1;
+    }
+    
+    console.log(`[QR] Creating ${totalContainersForThisItem} ${containerType} label(s) for: "${itemName}" (SKU: ${item.sku || 'N/A'}, Qty: ${quantity})`);
     
     // Generate container labels for THIS SPECIFIC ITEM
     // Each item gets its own numbered sequence (1 of N, 2 of N, etc.)
