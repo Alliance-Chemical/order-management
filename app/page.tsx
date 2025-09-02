@@ -154,7 +154,7 @@ export default function WorkQueueDashboard() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -211,8 +211,8 @@ export default function WorkQueueDashboard() {
                             ID: {order.orderId}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900" data-testid="customer-name">
+                        <td className="px-6 py-4 min-w-0">
+                          <div className="text-sm text-gray-900 truncate max-w-xs" data-testid="customer-name" title={order.customerName || 'Unknown Customer'}>
                             {order.customerName || 'Unknown Customer'}
                           </div>
                         </td>
@@ -247,8 +247,8 @@ export default function WorkQueueDashboard() {
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <div className="flex items-center justify-center gap-2">
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex flex-wrap items-center justify-center gap-2">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
