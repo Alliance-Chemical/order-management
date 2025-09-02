@@ -17,6 +17,7 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
     preMix: boolean;
     warehouse: boolean;
     documents: boolean;
+    freight?: boolean;
   }>().default({ preMix: true, warehouse: true, documents: true }),
   moduleStates: jsonb('module_states').$type<Record<string, any>>().default({}),
   

@@ -7,7 +7,7 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
 
   constructor(useProduction = true) {
     super(useProduction);
-    this.captureEndpoint = "/api/capture-order";
+    this.captureEndpoint = "/api/freight-booking/capture-order";
   }
 
   async createOrderWithCapture(
@@ -166,5 +166,80 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
           ],
         })) || [],
     };
+  }
+
+  // Async variant that auto-applies saved classification (freight class/NMFC) per SKU
+  static async buildOrderFromFreightSelectionWithSavedClass(
+    shipstationOrder: any,
+    carrierSelection: any,
+    userOverrides: any = {},
+  ) {
+    const { getApprovedClassificationBySku } = await import('../product-classification');
+    const { getCfrHazmatBySku } = await import('../cfr-hazmat');
+    const { getHazmatOverrideBySku } = await import('../hazmat-override');
+
+    const itemsWithClass = await Promise.all(
+      (shipstationOrder.items || []).map(async (item: any) => {
+        const saved = item?.sku ? await getApprovedClassificationBySku(item.sku) : null;
+        const override = item?.sku ? await getHazmatOverrideBySku(item.sku) : null;
+        const cfr = item?.sku ? await getCfrHazmatBySku(item.sku) : null;
+
+        const lineOvr = (userOverrides?.hazmatBySku && item?.sku) ? (userOverrides.hazmatBySku[item.sku] || {}) : {};
+        const globalOvr = userOverrides?.hazmat || {};
+        const hazmatYes = (
+          (typeof lineOvr.isHazmat === 'boolean' ? lineOvr.isHazmat : null) ??
+          (typeof globalOvr.isHazmat === 'boolean' ? globalOvr.isHazmat : null) ??
+          override?.isHazmat ??
+          cfr?.isHazmat ??
+          saved?.isHazmat ??
+          item.hazmat
+        ) || false;
+
+        const unNumber = (lineOvr.unNumber ?? globalOvr.unNumber) ?? override?.unNumber ?? cfr?.unNumber ?? saved?.unNumber ?? item.hazmatId;
+        const hazardClass = (lineOvr.hazardClass ?? globalOvr.hazardClass) ?? override?.hazardClass ?? cfr?.hazardClass ?? saved?.hazmatClass ?? item.hazmatClass;
+        const packingGroup = (lineOvr.packingGroup ?? globalOvr.packingGroup) ?? override?.packingGroup ?? cfr?.packingGroup ?? saved?.packingGroup ?? item.packingGroup;
+        const properShippingName = (lineOvr.properShippingName ?? globalOvr.properShippingName) ?? override?.properShippingName ?? cfr?.properShippingName ?? item.hazmatName;
+
+        // Optional helper: Derive NMFC sub from Packing Group only when explicitly enabled.
+        // Disabled by default because NMFC submeaning varies by item (e.g., density brackets in 43940).
+        let nmfc: string | undefined = saved?.nmfcCode || undefined;
+        if (process.env.NMFC_DERIVE_SUB_FROM_PG === '1' || process.env.NMFC_DERIVE_SUB_FROM_PG === 'true') {
+          if (nmfc && !nmfc.includes('-')) {
+            const pgUpper = (packingGroup || '').toString().trim().toUpperCase();
+            const sub = pgUpper === 'I' ? '1' : pgUpper === 'II' ? '2' : pgUpper === 'III' ? '3' : undefined;
+            if (sub) nmfc = `${nmfc}-${sub}`;
+          }
+        }
+
+        return {
+          ...item,
+          freightClass: userOverrides.freightClass || saved?.freightClass || item.freightClass,
+          nmfc,
+          hazmat: hazmatYes,
+          hazmatId: unNumber,
+          hazmatName: properShippingName,
+          hazmatClass: hazardClass,
+          packingGroup: packingGroup,
+        };
+      })
+    );
+
+    const order = MyCarrierOrderInterceptor.buildOrderFromFreightSelection(
+      { ...shipstationOrder, items: itemsWithClass },
+      carrierSelection,
+      userOverrides,
+    );
+
+    // Also propagate NMFC string if available
+    order.quoteUnits = (order.quoteUnits || []).map((unit: any, idx: number) => {
+      const first = unit.quoteCommodities?.[0];
+      const src = itemsWithClass[idx];
+      if (first && src?.nmfc && !first.nmfc) {
+        first.nmfc = src.nmfc;
+      }
+      return unit;
+    });
+
+    return order;
   }
 }

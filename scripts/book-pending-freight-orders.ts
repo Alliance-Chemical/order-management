@@ -66,61 +66,86 @@ async function bookPendingOrders() {
       console.log(`   Service: ${order.service_type}`);
       
       try {
-        // Build quote units with hazmat classification
-        const quoteUnits = await buildQuoteUnitsWithHazmat(order);
+        // Try to fetch real items from ShipStation for accurate SKUs
+        const ssOrder = await fetchShipStationOrder(order.order_number);
 
-        // Build MyCarrier order format
-        const myCarrierOrder = {
-          quoteReferenceID: order.order_number,
-          serviceType: order.service_type || 'LTL',
-          pickupDate: new Date().toISOString().split('T')[0],
-          paymentDirection: 'Prepaid',
-          carrier: order.carrier_name || 'SAIA',
-          carrierService: order.service_type || 'Standard',
-          specialInstructions: order.special_instructions || '',
-          readyToDispatch: 'NO', // Set to YES when ready to dispatch
-          
-          originStop: {
+        let myCarrierOrder: any;
+        if (ssOrder) {
+          const shipstationOrder = mapShipStationToInternal(ssOrder);
+          myCarrierOrder = await MyCarrierOrderInterceptor.buildOrderFromFreightSelectionWithSavedClass(
+            shipstationOrder,
+            { carrier: order.carrier_name || 'SAIA', service: order.service_type || 'Standard', mode: 'LTL' },
+            {}
+          );
+          // Override addresses from freight_order if present
+          myCarrierOrder.originStop = {
             companyName: 'Alliance Chemical',
-            streetLine1: order.origin_address?.address || '598 Virginia Street',
-            city: order.origin_address?.city || 'River Grove',
-            state: order.origin_address?.state || 'IL',
-            zip: order.origin_address?.zipCode || '60171',
+            streetLine1: order.origin_address?.address || myCarrierOrder.originStop?.streetLine1,
+            city: order.origin_address?.city || myCarrierOrder.originStop?.city,
+            state: order.origin_address?.state || myCarrierOrder.originStop?.state,
+            zip: order.origin_address?.zipCode || myCarrierOrder.originStop?.zip,
             country: 'USA',
             locationType: 'Business',
             contactFirstName: 'Warehouse',
             contactLastName: 'Manager',
             contactPhone: '(555) 555-1234',
-          },
-          
-          destinationStop: {
-            companyName: order.destination_address?.company || 'Customer',
-            streetLine1: order.destination_address?.address || '123 Main St',
-            city: order.destination_address?.city || 'Charlotte',
-            state: order.destination_address?.state || 'NC',
-            zip: order.destination_address?.zipCode || '28202',
+          };
+          myCarrierOrder.destinationStop = {
+            companyName: order.destination_address?.company || myCarrierOrder.destinationStop?.companyName,
+            streetLine1: order.destination_address?.address || myCarrierOrder.destinationStop?.streetLine1,
+            city: order.destination_address?.city || myCarrierOrder.destinationStop?.city,
+            state: order.destination_address?.state || myCarrierOrder.destinationStop?.state,
+            zip: order.destination_address?.zipCode || myCarrierOrder.destinationStop?.zip,
             country: 'USA',
             locationType: 'Business',
-            contactFirstName: order.destination_address?.contactName?.split(' ')[0] || 'Contact',
-            contactLastName: order.destination_address?.contactName?.split(' ')[1] || 'Person',
-            contactPhone: order.destination_address?.phone || '(555) 555-5678',
-          },
-          
-          originAccessorials: {
-            insidePickup: 'NO',
-            liftgatePickup: 'NO',
-            protectFromFreeze: 'NO',
-          },
-          
-          destinationAccessorials: {
-            notifyBeforeDelivery: 'YES',
-            liftgateDelivery: 'NO',
-            insideDelivery: 'NO',
-            deliveryAppointment: 'NO',
-          },
-          
-          quoteUnits,
-        };
+            contactFirstName: order.destination_address?.contactName?.split(' ')[0] || myCarrierOrder.destinationStop?.contactFirstName,
+            contactLastName: order.destination_address?.contactName?.split(' ')[1] || myCarrierOrder.destinationStop?.contactLastName,
+            contactPhone: order.destination_address?.phone || myCarrierOrder.destinationStop?.contactPhone,
+          };
+          myCarrierOrder.quoteReferenceID = order.order_number;
+          myCarrierOrder.specialInstructions = order.special_instructions || '';
+          myCarrierOrder.readyToDispatch = 'NO';
+        } else {
+          // Fallback: prior path building a single pallet with hazmat classification
+          const quoteUnits = await buildQuoteUnitsWithHazmat(order);
+          myCarrierOrder = {
+            quoteReferenceID: order.order_number,
+            serviceType: order.service_type || 'LTL',
+            pickupDate: new Date().toISOString().split('T')[0],
+            paymentDirection: 'Prepaid',
+            carrier: order.carrier_name || 'SAIA',
+            carrierService: order.service_type || 'Standard',
+            specialInstructions: order.special_instructions || '',
+            readyToDispatch: 'NO',
+            originStop: {
+              companyName: 'Alliance Chemical',
+              streetLine1: order.origin_address?.address || '598 Virginia Street',
+              city: order.origin_address?.city || 'River Grove',
+              state: order.origin_address?.state || 'IL',
+              zip: order.origin_address?.zipCode || '60171',
+              country: 'USA',
+              locationType: 'Business',
+              contactFirstName: 'Warehouse',
+              contactLastName: 'Manager',
+              contactPhone: '(555) 555-1234',
+            },
+            destinationStop: {
+              companyName: order.destination_address?.company || 'Customer',
+              streetLine1: order.destination_address?.address || '123 Main St',
+              city: order.destination_address?.city || 'Charlotte',
+              state: order.destination_address?.state || 'NC',
+              zip: order.destination_address?.zipCode || '28202',
+              country: 'USA',
+              locationType: 'Business',
+              contactFirstName: order.destination_address?.contactName?.split(' ')[0] || 'Contact',
+              contactLastName: order.destination_address?.contactName?.split(' ')[1] || 'Person',
+              contactPhone: order.destination_address?.phone || '(555) 555-5678',
+            },
+            originAccessorials: { insidePickup: 'NO', liftgatePickup: 'NO', protectFromFreeze: 'NO' },
+            destinationAccessorials: { notifyBeforeDelivery: 'YES', liftgateDelivery: 'NO', insideDelivery: 'NO', deliveryAppointment: 'NO' },
+            quoteUnits,
+          };
+        }
         
         console.log('\n📡 Sending order to MyCarrier API...');
         
@@ -206,6 +231,60 @@ async function bookPendingOrders() {
 bookPendingOrders();
 
 // Helpers
+async function fetchShipStationOrder(orderNumber: string): Promise<any | null> {
+  try {
+    const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
+    const apiSecret = process.env.SHIPSTATION_API_SECRET?.trim() || '';
+    if (!apiKey || !apiSecret) return null;
+    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+    const params = new URLSearchParams({ orderNumber });
+    const res = await fetch(`https://ssapi.shipstation.com/orders?${params.toString()}`, {
+      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.orders && data.orders[0]) || null;
+  } catch {
+    return null;
+  }
+}
+
+function mapShipStationToInternal(ss: any) {
+  return {
+    orderId: ss.orderId,
+    orderNumber: ss.orderNumber,
+    customerEmail: ss.customerEmail || '',
+    customerName: ss.billTo?.name || '',
+    billTo: {
+      name: ss.billTo?.name || '',
+      company: ss.billTo?.company || '',
+      street1: ss.billTo?.street1 || '',
+      city: ss.billTo?.city || '',
+      state: ss.billTo?.state || '',
+      postalCode: ss.billTo?.postalCode || '',
+    },
+    shipTo: {
+      name: ss.shipTo?.name || '',
+      company: ss.shipTo?.company || '',
+      street1: ss.shipTo?.street1 || '',
+      city: ss.shipTo?.city || '',
+      state: ss.shipTo?.state || '',
+      postalCode: ss.shipTo?.postalCode || '',
+    },
+    items: (ss.items || []).map((it: any) => ({
+      sku: it.sku,
+      name: it.name,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice || 0,
+      weight: { value: it.weight?.value || it.weight || 0, units: (it.weight?.units || 'lbs') },
+    })),
+    orderTotal: ss.orderTotal || 0,
+    shippingAmount: ss.shippingAmount || 0,
+    orderDate: ss.orderDate,
+    orderStatus: ss.orderStatus,
+  };
+}
+
 async function buildQuoteUnitsWithHazmat(order: any) {
   const units: any[] = [];
   const description = order.package_details?.description || 'Chemical Product';

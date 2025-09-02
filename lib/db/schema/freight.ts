@@ -1,4 +1,4 @@
-import { pgTable, uuid, bigint, varchar, jsonb, timestamp, integer, boolean, index, decimal, text } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, bigint, varchar, jsonb, timestamp, integer, boolean, index, decimal, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { workspaces } from './qr-workspace';
 
@@ -220,6 +220,12 @@ export const freightClassifications = pgTable('freight_classifications', {
   nmfcIdx: index('idx_classifications_nmfc').on(table.nmfcCode),
   freightClassIdx: index('idx_classifications_class').on(table.freightClass),
   hazmatIdx: index('idx_classifications_hazmat').on(table.isHazmat),
+  // Ensure a single row per unique combination of class/NMFC/description
+  uqFreightClassKey: uniqueIndex('uq_freight_class_key').on(
+    table.freightClass,
+    table.nmfcCode,
+    table.description,
+  ),
 }));
 
 // Product Freight Links - mapping products to freight classifications
@@ -250,7 +256,33 @@ export const productFreightLinks = pgTable('product_freight_links', {
   approvedIdx: index('idx_product_freight_approved').on(table.isApproved),
   sourceIdx: index('idx_product_freight_source').on(table.linkSource),
   // Unique constraint to prevent duplicate links
-  uniqueProductClassification: index('idx_product_freight_unique').on(table.productId, table.classificationId),
+  uniqueProductClassification: uniqueIndex('uq_product_classification').on(table.productId, table.classificationId),
+}));
+
+// Product Hazmat Overrides - manual corrections to CFR data per product
+export const productHazmatOverrides = pgTable('product_hazmat_overrides', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  productId: uuid('product_id').references(() => products.id).notNull(),
+
+  // Hazmat override fields
+  unNumber: varchar('un_number', { length: 10 }),
+  hazardClass: varchar('hazard_class', { length: 10 }),
+  packingGroup: varchar('packing_group', { length: 5 }),
+  properShippingName: varchar('proper_shipping_name', { length: 255 }),
+  isHazmat: boolean('is_hazmat'),
+
+  // Approval and audit
+  isApproved: boolean('is_approved').default(true),
+  approvedBy: varchar('approved_by', { length: 255 }),
+  approvedAt: timestamp('approved_at'),
+
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdBy: varchar('created_by', { length: 255 }),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  updatedBy: varchar('updated_by', { length: 255 }),
+}, (table) => ({
+  productIdx: index('idx_product_hazmat_product').on(table.productId),
+  uqProduct: uniqueIndex('uq_product_hazmat_override').on(table.productId),
 }));
 
 // Chemical Classification Relations

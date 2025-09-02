@@ -110,6 +110,7 @@ export class WorkspaceFreightLinkingService {
             status: workspaceData.status || 'active',
             workspaceUrl: workspaceData.workspaceUrl,
             shipstationData: workspaceData.shipstationData || {},
+            shipstationTags: ['Freight'],
             activeModules: workspaceData.activeModules || {
               preMix: true,
               warehouse: true,

@@ -92,6 +92,83 @@ export default function FreightBookingPage() {
   const [booking, setBooking] = useState(false);
   const [success, setSuccess] = useState(false);
   const [workspaceLink, setWorkspaceLink] = useState<string>('');
+  // Per-SKU hazmat overrides captured in the UI
+  const [hazmatBySku, setHazmatBySku] = useState<Record<string, {
+    isHazmat?: boolean;
+    unNumber?: string;
+    hazardClass?: string;
+    packingGroup?: string;
+    properShippingName?: string;
+    persist?: boolean;
+  }>>({});
+  const [hazErrorsBySku, setHazErrorsBySku] = useState<Record<string, {
+    unNumber?: string;
+    hazardClass?: string;
+    packingGroup?: string;
+    properShippingName?: string;
+  }>>({});
+
+  function isValidHazardClass(value: string): boolean {
+    const allowed = new Set([
+      '1','2','3','4','4.1','4.2','4.3','5.1','5.2','6.1','6.2','7','8','9'
+    ]);
+    return allowed.has((value || '').trim());
+  }
+
+  function validateHazmatFields(v: { isHazmat?: boolean; unNumber?: string; hazardClass?: string; packingGroup?: string; properShippingName?: string; persist?: boolean; }): { unNumber?: string; hazardClass?: string; packingGroup?: string; properShippingName?: string; } {
+    const errs: any = {};
+    const isHaz = Boolean(v.isHazmat);
+    const requireIfHaz = (cond: boolean) => isHaz && cond;
+
+    const un = (v.unNumber || '').trim();
+    if (requireIfHaz(true)) {
+      if (!/^\d{3,4}$/.test(un)) {
+        errs.unNumber = 'UN must be 3-4 digits when Hazmat';
+      }
+    } else if (un && !/^\d{3,4}$/.test(un)) {
+      errs.unNumber = 'UN must be 3-4 digits';
+    }
+
+    const hc = (v.hazardClass || '').trim();
+    if (requireIfHaz(true)) {
+      if (!isValidHazardClass(hc)) {
+        errs.hazardClass = 'Use a valid class (e.g., 3, 5.1, 8)';
+      }
+    } else if (hc && !isValidHazardClass(hc)) {
+      errs.hazardClass = 'Invalid hazard class';
+    }
+
+    const pg = (v.packingGroup || '').trim().toUpperCase();
+    if (pg && !['I','II','III'].includes(pg)) {
+      errs.packingGroup = 'Packing Group must be I, II, or III';
+    }
+
+    const psn = (v.properShippingName || '').trim();
+    if (requireIfHaz(true) && !psn) {
+      errs.properShippingName = 'Proper Shipping Name is required when Hazmat';
+    }
+
+    return errs;
+  }
+
+  function updateHazmatForSku(sku: string, patch: Partial<{ isHazmat: boolean; unNumber: string; hazardClass: string; packingGroup: string; properShippingName: string; persist: boolean; }>) {
+    setHazmatBySku(prev => {
+      const next = { ...(prev[sku] || {}), ...patch } as any;
+      const copy = { ...prev, [sku]: next };
+      // validate
+      const errs = validateHazmatFields(next);
+      setHazErrorsBySku(ePrev => ({ ...ePrev, [sku]: errs }));
+      return copy;
+    });
+  }
+  const [manualInputs, setManualInputs] = useState<Record<string, {
+    freightClass: string;
+    nmfcCode: string;
+    nmfcSub: string;
+    description: string;
+    saving?: boolean;
+    error?: string | null;
+  }>>({});
 
   useEffect(() => {
     fetchAvailableOrders();
@@ -253,6 +330,20 @@ export default function FreightBookingPage() {
     );
     
     if (hasHazmat) {
+      // Initialize per-SKU hazmat overrides from current classification
+      const initial: Record<string, any> = {};
+      for (const it of bookingData.classifiedItems) {
+        const c = it.classification;
+        initial[it.sku] = {
+          isHazmat: c?.isHazmat ?? false,
+          unNumber: c?.unNumber || '',
+          hazardClass: c?.hazmatClass || '',
+          packingGroup: c?.packingGroup || '',
+          properShippingName: c?.properShippingName || '',
+          persist: false,
+        };
+      }
+      setHazmatBySku(initial);
       setCurrentStep('hazmat-analysis');
     } else {
       setCurrentStep('confirmation');
@@ -269,50 +360,44 @@ export default function FreightBookingPage() {
     
     setBooking(true);
     try {
-      const response = await fetch('/api/freight-booking/complete-booking', {
+      // Build userOverrides.hazmatBySku payload from state
+      const hazBySkuPayload: Record<string, any> = {};
+      for (const it of bookingData.selectedOrder.items) {
+        const h = hazmatBySku[it.sku];
+        if (!h) continue;
+        hazBySkuPayload[it.sku] = {
+          persist: Boolean(h.persist),
+          // Only include fields that are set, so we don't stomp values unintentionally
+          ...(typeof h.isHazmat === 'boolean' ? { isHazmat: h.isHazmat } : {}),
+          ...(h.unNumber ? { unNumber: h.unNumber } : {}),
+          ...(h.hazardClass ? { hazardClass: h.hazardClass } : {}),
+          ...(h.packingGroup ? { packingGroup: h.packingGroup } : {}),
+          ...(h.properShippingName ? { properShippingName: h.properShippingName } : {}),
+        };
+      }
+
+      // Prevent submit if there are validation errors for any persisted lines
+      const anyInvalid = bookingData.selectedOrder.items.some(it => {
+        const v = hazmatBySku[it.sku];
+        const errs = validateHazmatFields(v || {});
+        const hasErrs = Object.keys(errs).length > 0;
+        const willPersist = Boolean(v?.persist);
+        return willPersist && hasErrs;
+      });
+      if (anyInvalid) {
+        alert('Fix hazmat validation errors before booking.');
+        setBooking(false);
+        return;
+      }
+
+      const response = await fetch('/api/freight-booking/book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderId: bookingData.selectedOrder.orderId,
-          orderNumber: bookingData.selectedOrder.orderNumber,
-          carrierName: bookingData.carrierName,
-          serviceType: bookingData.serviceType,
-          estimatedCost: bookingData.estimatedCost,
-          specialInstructions: bookingData.specialInstructions,
-          customerEmail: bookingData.selectedOrder.customerEmail,
-          customerName: bookingData.selectedOrder.customerName || bookingData.selectedOrder.billTo.name,
-          customerCompany: bookingData.selectedOrder.billTo.company,
-          originAddress: {
-            address: bookingData.selectedOrder.billTo.street1,
-            city: bookingData.selectedOrder.billTo.city,
-            state: bookingData.selectedOrder.billTo.state,
-            zipCode: bookingData.selectedOrder.billTo.postalCode
-          },
-          destinationAddress: {
-            address: bookingData.selectedOrder.shipTo.street1,
-            city: bookingData.selectedOrder.shipTo.city,
-            state: bookingData.selectedOrder.shipTo.state,
-            zipCode: bookingData.selectedOrder.shipTo.postalCode
-          },
-          packageDetails: {
-            weight: {
-              value: bookingData.selectedOrder.items.reduce((sum, item) => 
-                sum + (item.weight?.value || 0) * item.quantity, 0),
-              units: 'lbs'
-            },
-            dimensions: { length: 48, width: 40, height: 48, units: 'in' },
-            packageCount: bookingData.selectedOrder.items.length,
-            description: bookingData.selectedOrder.items.map(item => item.name).join(', ')
-          },
-          classifiedItems: bookingData.classifiedItems,
-          hazmatAnalysis: bookingData.hazmatAnalysis,
-          sessionId: null,
-          confidenceScore: 0.95,
-          telemetryData: {
-            hasClassifications: bookingData.classifiedItems.filter(i => i.classification).length,
-            hasHazmat: bookingData.classifiedItems.some(i => i.classification?.isHazmat),
-            bookingFlow: currentStep
-          }
+          shipstationOrder: bookingData.selectedOrder,
+          carrierSelection: { carrier: bookingData.carrierName, service: bookingData.serviceType, mode: 'LTL' },
+          userOverrides: { instructions: bookingData.specialInstructions, hazmatBySku: hazBySkuPayload },
+          estimatedCost: bookingData.estimatedCost
         })
       });
 
@@ -588,28 +673,140 @@ export default function FreightBookingPage() {
                               </p>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => {
-                                warehouseFeedback.warning();
-                                // Quick approve logic
-                                const quickClassification = {
-                                  nmfcCode: '50000',
-                                  freightClass: '55',
-                                  isHazmat: false
-                                };
-                                setBookingData(prev => ({
-                                  ...prev,
-                                  classifiedItems: prev.classifiedItems.map(ci =>
-                                    ci.sku === item.sku ? { ...ci, classification: quickClassification } : ci
-                                  )
-                                }));
-                                warehouseFeedback.success();
-                              }}
-                              className="px-8 py-6 bg-warehouse-caution text-white rounded-warehouse text-warehouse-xl font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95 animate-pulse"
-                              style={{ minHeight: '80px' }}
-                            >
-                              ⚡ TAP TO CLASSIFY
-                            </button>
+                            <div className="bg-gray-50 p-4 rounded-md border border-gray-200 w-[380px]">
+                              <div className="font-bold text-gray-800 mb-2">Set Classification</div>
+                              <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Freight Class</label>
+                                  <input
+                                    type="text"
+                                    value={manualInputs[item.sku]?.freightClass ?? ''}
+                                    onChange={(e) => setManualInputs(prev => ({
+                                      ...prev,
+                                      [item.sku]: {
+                                        freightClass: e.target.value,
+                                        nmfcCode: prev[item.sku]?.nmfcCode ?? '',
+                                        nmfcSub: prev[item.sku]?.nmfcSub ?? '',
+                                        description: prev[item.sku]?.description ?? '',
+                                      }
+                                    }))}
+                                    placeholder="e.g. 85"
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">NMFC Code</label>
+                                  <input
+                                    type="text"
+                                    value={manualInputs[item.sku]?.nmfcCode ?? ''}
+                                    onChange={(e) => setManualInputs(prev => ({
+                                      ...prev,
+                                      [item.sku]: {
+                                        freightClass: prev[item.sku]?.freightClass ?? '',
+                                        nmfcCode: e.target.value,
+                                        nmfcSub: prev[item.sku]?.nmfcSub ?? '',
+                                        description: prev[item.sku]?.description ?? '',
+                                      }
+                                    }))}
+                                    placeholder="e.g. 12345"
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">NMFC Sub</label>
+                                  <input
+                                    type="text"
+                                    value={manualInputs[item.sku]?.nmfcSub ?? ''}
+                                    onChange={(e) => setManualInputs(prev => ({
+                                      ...prev,
+                                      [item.sku]: {
+                                        freightClass: prev[item.sku]?.freightClass ?? '',
+                                        nmfcCode: prev[item.sku]?.nmfcCode ?? '',
+                                        nmfcSub: e.target.value,
+                                        description: prev[item.sku]?.description ?? '',
+                                      }
+                                    }))}
+                                    placeholder="e.g. 03"
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">Description</label>
+                                  <input
+                                    type="text"
+                                    value={manualInputs[item.sku]?.description ?? ''}
+                                    onChange={(e) => setManualInputs(prev => ({
+                                      ...prev,
+                                      [item.sku]: {
+                                        freightClass: prev[item.sku]?.freightClass ?? '',
+                                        nmfcCode: prev[item.sku]?.nmfcCode ?? '',
+                                        nmfcSub: prev[item.sku]?.nmfcSub ?? '',
+                                        description: e.target.value,
+                                      }
+                                    }))}
+                                    placeholder="Label for this classification"
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                  />
+                                </div>
+                              </div>
+                              {manualInputs[item.sku]?.error && (
+                                <div className="text-red-600 text-xs mb-2">{manualInputs[item.sku]?.error}</div>
+                              )}
+                              <button
+                                onClick={async () => {
+                                  const inputs = manualInputs[item.sku] || { freightClass: '', nmfcCode: '', nmfcSub: '', description: '' };
+                                  if (!inputs.freightClass) {
+                                    setManualInputs(prev => ({ ...prev, [item.sku]: { ...inputs, error: 'Freight class is required' } }));
+                                    warehouseFeedback.warning();
+                                    return;
+                                  }
+                                  try {
+                                    setManualInputs(prev => ({ ...prev, [item.sku]: { ...inputs, saving: true, error: null } }));
+                                    const res = await fetch('/api/products/freight-link', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        sku: item.sku,
+                                        freightClass: inputs.freightClass,
+                                        nmfcCode: inputs.nmfcCode || undefined,
+                                        nmfcSub: inputs.nmfcSub || undefined,
+                                        description: inputs.description || undefined,
+                                        approve: true,
+                                      })
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok || !data.success) {
+                                      throw new Error(data.error || 'Failed to save classification');
+                                    }
+                                    // Update local state so this item is now classified
+                                    setBookingData(prev => ({
+                                      ...prev,
+                                      classifiedItems: prev.classifiedItems.map(ci =>
+                                        ci.sku === item.sku ? {
+                                          ...ci,
+                                          classification: {
+                                            nmfcCode: data.classification.nmfcCode,
+                                            freightClass: data.classification.freightClass,
+                                            isHazmat: false,
+                                          }
+                                        } : ci
+                                      )
+                                    }));
+                                    warehouseFeedback.success();
+                                  } catch (err: any) {
+                                    setManualInputs(prev => ({ ...prev, [item.sku]: { ...inputs, saving: false, error: err?.message || 'Save failed' } }));
+                                    warehouseFeedback.error();
+                                    return;
+                                  } finally {
+                                    setManualInputs(prev => ({ ...prev, [item.sku]: { ...prev[item.sku], saving: false } }));
+                                  }
+                                }}
+                                disabled={manualInputs[item.sku]?.saving}
+                                className="w-full px-4 py-3 bg-warehouse-caution text-white rounded-warehouse text-warehouse-lg font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95"
+                              >
+                                {manualInputs[item.sku]?.saving ? 'SAVING…' : 'SAVE & LINK'}
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -666,7 +863,91 @@ export default function FreightBookingPage() {
 
         {/* Step 3: Hazmat Analysis */}
         {currentStep === 'hazmat-analysis' && bookingData.selectedOrder && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="bg-white rounded-lg shadow-lg p-6 space-y-6">
+            {/* Per-line Hazmat Overrides */}
+            <div>
+              <h3 className="text-warehouse-xl font-black text-gray-900 uppercase mb-3">Per-SKU Hazmat Overrides</h3>
+              <div className="space-y-4">
+                {bookingData.selectedOrder.items.map((item) => {
+                  const v = hazmatBySku[item.sku] || {};
+                  const err = hazErrorsBySku[item.sku] || {};
+                  return (
+                    <div key={item.sku} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <div className="font-bold text-gray-900">{item.name}</div>
+                          <div className="text-sm text-gray-600">SKU: <span className="font-mono">{item.sku}</span></div>
+                        </div>
+                        <label className="inline-flex items-center gap-2 text-sm font-medium">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(v.persist)}
+                            onChange={(e) => updateHazmatForSku(item.sku, { persist: e.target.checked })}
+                          />
+                          <span>Save as override</span>
+                        </label>
+                      </div>
+
+                      <div className="grid md:grid-cols-5 gap-3">
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(v.isHazmat)}
+                            onChange={(e) => updateHazmatForSku(item.sku, { isHazmat: e.target.checked })}
+                          />
+                          Hazmat
+                        </label>
+                        <div>
+                          <div className="text-xs text-gray-600 mb-1">UN Number</div>
+                          <input
+                            type="text"
+                            value={v.unNumber ?? ''}
+                            onChange={(e) => updateHazmatForSku(item.sku, { unNumber: e.target.value })}
+                            placeholder="e.g. 1993"
+                            className={`w-full p-2 border rounded-md ${err.unNumber ? 'border-red-500' : 'border-gray-300'}`}
+                          />
+                          {err.unNumber && <div className="text-xs text-red-600 mt-1">{err.unNumber}</div>}
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-600 mb-1">Hazard Class</div>
+                          <input
+                            type="text"
+                            value={v.hazardClass ?? ''}
+                            onChange={(e) => updateHazmatForSku(item.sku, { hazardClass: e.target.value })}
+                            placeholder="e.g. 3"
+                            className={`w-full p-2 border rounded-md ${err.hazardClass ? 'border-red-500' : 'border-gray-300'}`}
+                          />
+                          {err.hazardClass && <div className="text-xs text-red-600 mt-1">{err.hazardClass}</div>}
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-600 mb-1">Packing Group</div>
+                          <input
+                            type="text"
+                            value={v.packingGroup ?? ''}
+                            onChange={(e) => updateHazmatForSku(item.sku, { packingGroup: e.target.value })}
+                            placeholder="I / II / III"
+                            className={`w-full p-2 border rounded-md ${err.packingGroup ? 'border-red-500' : 'border-gray-300'}`}
+                          />
+                          {err.packingGroup && <div className="text-xs text-red-600 mt-1">{err.packingGroup}</div>}
+                        </div>
+                        <div className="md:col-span-5">
+                          <div className="text-xs text-gray-600 mb-1">Proper Shipping Name</div>
+                          <input
+                            type="text"
+                            value={v.properShippingName ?? ''}
+                            onChange={(e) => updateHazmatForSku(item.sku, { properShippingName: e.target.value })}
+                            placeholder="e.g. Flammable liquids, n.o.s."
+                            className={`w-full p-2 border rounded-md ${err.properShippingName ? 'border-red-500' : 'border-gray-300'}`}
+                          />
+                          {err.properShippingName && <div className="text-xs text-red-600 mt-1">{err.properShippingName}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <AIHazmatFreightSuggestion
               orderNumber={bookingData.selectedOrder.orderNumber}
               orderData={{

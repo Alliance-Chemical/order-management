@@ -3,7 +3,7 @@
  * Single responsibility: NMFC codes and freight class management
  */
 
-import { pgTable, uuid, varchar, text, boolean, decimal, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, boolean, decimal, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const freightClassifications = pgTable('freight_classifications', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -31,4 +31,9 @@ export const freightClassifications = pgTable('freight_classifications', {
   nmfcIdx: index('idx_classifications_nmfc').on(table.nmfcCode),
   freightClassIdx: index('idx_classifications_class').on(table.freightClass),
   hazmatIdx: index('idx_classifications_hazmat').on(table.isHazmat),
+  uqFreightClassKey: uniqueIndex('uq_freight_class_key').on(
+    table.freightClass,
+    table.nmfcCode,
+    table.description,
+  ),
 }));

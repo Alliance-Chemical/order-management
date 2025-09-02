@@ -6,8 +6,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const filter = searchParams.get('filter');
     
-    // Get freight tag ID from environment
-    const freightTagId = parseInt(process.env.FREIGHT_ORDER_TAG || '19844');
+    // Get freight ready tag ID from environment - only show orders ready for booking
+    const freightTagId = parseInt(process.env.FREIGHT_READY_TAG_ID || '44123');
     
     // Trim any whitespace from environment variables
     const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
