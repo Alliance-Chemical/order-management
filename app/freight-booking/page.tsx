@@ -15,7 +15,7 @@ import {
 } from '@heroicons/react/24/solid';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import AIHazmatFreightSuggestion from '@/components/freight-booking/AIHazmatFreightSuggestion';
-import { HazmatRAGPanel } from '@/components/freight-booking/HazmatRAGPanel';
+import { HazmatRAGPanel, type RAGSuggestion } from '@/components/freight-booking/HazmatRAGPanel';
 import { warehouseFeedback, visualFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
 
 interface ShipStationOrder {
@@ -230,6 +230,13 @@ export default function FreightBookingPage() {
     description: string;
     saving?: boolean;
     error?: string | null;
+    hazmatData?: {
+      unNumber: string | null;
+      hazardClass: string | null;
+      packingGroup: string | null;
+      properShippingName: string | null;
+      isHazmat: boolean;
+    };
   }>>({});
 
   useEffect(() => {
@@ -753,7 +760,14 @@ export default function FreightBookingPage() {
                             </div>
                           ) : (
                             <div className="bg-gray-50 p-4 rounded-md border border-gray-200 w-[380px]">
-                              <div className="font-bold text-gray-800 mb-2">Set Classification</div>
+                              <div className="font-bold text-gray-800 mb-2">
+                                Set Classification
+                                {manualInputs[item.sku]?.hazmatData?.isHazmat && (
+                                  <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                                    ⚠️ HAZMAT DATA LOADED
+                                  </span>
+                                )}
+                              </div>
                               <div className="grid grid-cols-2 gap-3 mb-3">
                                 <div>
                                   <label className="block text-xs text-gray-600 mb-1">Freight Class</label>
@@ -851,6 +865,8 @@ export default function FreightBookingPage() {
                                         nmfcSub: inputs.nmfcSub || undefined,
                                         description: inputs.description || undefined,
                                         approve: true,
+                                        // Include hazmat data if available
+                                        hazmatData: inputs.hazmatData || undefined,
                                       })
                                     });
                                     const data = await res.json();
@@ -866,7 +882,7 @@ export default function FreightBookingPage() {
                                           classification: {
                                             nmfcCode: data.classification.nmfcCode,
                                             freightClass: data.classification.freightClass,
-                                            isHazmat: false,
+                                            isHazmat: inputs.hazmatData?.isHazmat || false,
                                           }
                                         } : ci
                                       )
@@ -902,9 +918,35 @@ export default function FreightBookingPage() {
                     .map(item => item.sku)
                   }
                   items={bookingData.selectedOrder.items}
-                  onSuggestionAccepted={(sku: string) => {
-                    // Handle suggestion acceptance
-                    console.log('Classification suggested for SKU:', sku);
+                  onSuggestionAccepted={async (sku: string, suggestion: RAGSuggestion) => {
+                    // Auto-populate the manual classification form with hazmat data
+                    const hazmatClass = suggestion.hazard_class;
+                    const freightClass = hazmatClass ? '85' : '50'; // Default to class 85 for hazmat, 50 for non-hazmat
+                    const description = suggestion.proper_shipping_name || 
+                                       bookingData.selectedOrder?.items.find(i => i.sku === sku)?.name || 
+                                       'Chemical Product';
+                    
+                    // Update manual inputs with RAG data
+                    setManualInputs(prev => ({
+                      ...prev,
+                      [sku]: {
+                        freightClass: freightClass,
+                        nmfcCode: '', // NMFC code would need to be looked up separately
+                        nmfcSub: '',
+                        description: description,
+                        // Store hazmat data in the form state (we'll pass this to the API)
+                        hazmatData: {
+                          unNumber: suggestion.un_number,
+                          hazardClass: suggestion.hazard_class,
+                          packingGroup: suggestion.packing_group,
+                          properShippingName: suggestion.proper_shipping_name,
+                          isHazmat: !!suggestion.un_number
+                        }
+                      }
+                    }));
+                    
+                    warehouseFeedback.success();
+                    console.log('Applied hazmat classification for SKU:', sku, suggestion);
                   }}
                 />
               )}

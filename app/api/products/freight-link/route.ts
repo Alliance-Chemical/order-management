@@ -12,6 +12,13 @@ type Body = {
   nmfcSub?: string; // e.g., "03" -> stored as 12345-03
   description?: string; // label/notes
   approve?: boolean; // default true
+  hazmatData?: {
+    unNumber: string | null;
+    hazardClass: string | null;
+    packingGroup: string | null;
+    properShippingName: string | null;
+    isHazmat: boolean;
+  };
 };
 
 export async function POST(request: NextRequest) {
@@ -27,6 +34,7 @@ export async function POST(request: NextRequest) {
       nmfcSub,
       description,
       approve = true,
+      hazmatData,
     } = body;
 
     if ((!productId && !sku) || !freightClass) {
@@ -56,6 +64,20 @@ export async function POST(request: NextRequest) {
     }
 
     const product = productRows[0];
+    
+    // Update product with hazmat info if provided
+    if (hazmatData) {
+      await withEdgeRetry(async () => {
+        await sql`
+          UPDATE products
+          SET 
+            is_hazardous = ${hazmatData.isHazmat},
+            un_number = ${hazmatData.unNumber},
+            updated_at = NOW()
+          WHERE id = ${product.id}
+        `;
+      });
+    }
 
     // Normalize NMFC code (combine code + sub if provided)
     const nmfc_full = nmfcCode
@@ -77,17 +99,34 @@ export async function POST(request: NextRequest) {
     let classificationId: string;
     if (existingClassRows.length) {
       classificationId = existingClassRows[0].id;
+      // Update classification with hazmat data if provided
+      if (hazmatData) {
+        await withEdgeRetry(async () => {
+          await sql`
+            UPDATE freight_classifications
+            SET 
+              is_hazmat = ${hazmatData.isHazmat},
+              hazmat_class = ${hazmatData.hazardClass},
+              packing_group = ${hazmatData.packingGroup},
+              updated_at = NOW()
+            WHERE id = ${classificationId}
+          `;
+        });
+      }
     } else {
       const inserted = (await withEdgeRetry(async () =>
         (await sql`
           INSERT INTO freight_classifications (
-            id, description, nmfc_code, freight_class, is_hazmat, created_at, updated_at
+            id, description, nmfc_code, freight_class, is_hazmat, 
+            hazmat_class, packing_group, created_at, updated_at
           ) VALUES (
             gen_random_uuid(),
-            ${description || `Manual classification ${freightClass}`},
+            ${description || hazmatData?.properShippingName || `Manual classification ${freightClass}`},
             ${nmfc_full},
             ${freightClass},
-            false,
+            ${hazmatData?.isHazmat || false},
+            ${hazmatData?.hazardClass || null},
+            ${hazmatData?.packingGroup || null},
             NOW(), NOW()
           )
           RETURNING id
@@ -165,13 +204,21 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      product: { id: product.id, sku: product.sku, name: product.name },
+      product: { 
+        id: product.id, 
+        sku: product.sku, 
+        name: product.name,
+        isHazardous: hazmatData?.isHazmat || false,
+        unNumber: hazmatData?.unNumber || null,
+      },
       classification: {
         id: classificationId,
         nmfcCode: nmfc_full,
         freightClass,
-        description: description || null,
-        isHazmat: false,
+        description: description || hazmatData?.properShippingName || null,
+        isHazmat: hazmatData?.isHazmat || false,
+        hazmatClass: hazmatData?.hazardClass || null,
+        packingGroup: hazmatData?.packingGroup || null,
       },
       link: {
         source: 'manual',

@@ -3,7 +3,7 @@ import { Card, Badge, Button, Alert, Spinner } from 'flowbite-react';
 import { HiLightBulb, HiSparkles, HiCheckCircle, HiArrowRight, HiRefresh, HiExclamation } from 'react-icons/hi';
 import Link from 'next/link';
 
-interface RAGSuggestion {
+export interface RAGSuggestion {
   un_number: string | null;
   proper_shipping_name: string | null;
   hazard_class: string | null;
@@ -16,7 +16,7 @@ interface RAGSuggestion {
 interface HazmatRAGPanelProps {
   unclassifiedSKUs: string[];
   items: Array<{ sku: string; name: string }>;
-  onSuggestionAccepted?: (sku: string) => void;
+  onSuggestionAccepted?: (sku: string, suggestion: RAGSuggestion) => void;
 }
 
 export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }: HazmatRAGPanelProps) {
@@ -171,10 +171,24 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
 
         {/* Actions */}
         <div className="flex gap-2">
-          <Link href={`/link?query=${currentSKU}`} className="flex-1">
+          {currentSuggestion && currentSuggestion.confidence > 0.75 && !currentSuggestion.exemption_reason && (
+            <Button 
+              color="success" 
+              className="flex-1"
+              onClick={() => {
+                if (onSuggestionAccepted) {
+                  onSuggestionAccepted(currentSKU, currentSuggestion);
+                }
+              }}
+            >
+              <HiCheckCircle className="mr-2 h-4 w-4" />
+              Apply Classification
+            </Button>
+          )}
+          <Link href={`/link?query=${currentSKU}`} className={currentSuggestion && currentSuggestion.confidence > 0.75 ? "" : "flex-1"}>
             <Button color="failure" className="w-full">
               <HiArrowRight className="mr-2 h-4 w-4" />
-              Go to Link Page to Classify
+              Go to Link Page
             </Button>
           </Link>
           {hasSuggestions && (
