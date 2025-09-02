@@ -98,14 +98,23 @@ export default function PrintPreparationModal({
     // Initialize label quantities based on existing QR codes
     if (order.items) {
       const quantities: Record<string, number> = {};
-      order.items.forEach(item => {
-        // Count how many QR codes exist for this item
-        const itemQRs = codes.filter(qr => 
-          qr.encodedData?.sku === item.sku || 
-          qr.encodedData?.itemId === item.sku
-        );
-        quantities[item.sku] = itemQRs.length || 1;
-      });
+      order.items
+        .filter((item: any) => {
+          // Filter out discount codes and items with no SKU
+          const hasNoSku = !item.sku || item.sku === '';
+          const isDiscount = item.name?.toLowerCase().includes('discount') || 
+                           item.name?.toLowerCase().includes('welcome') ||
+                           item.unitPrice < 0;
+          return !(hasNoSku && isDiscount);
+        })
+        .forEach(item => {
+          // Count how many QR codes exist for this item
+          const itemQRs = codes.filter(qr => 
+            qr.encodedData?.sku === item.sku || 
+            qr.encodedData?.itemId === item.sku
+          );
+          quantities[item.sku] = itemQRs.length || 1;
+        });
       setLabelQuantities(quantities);
     }
   };
@@ -301,7 +310,16 @@ export default function PrintPreparationModal({
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">Order Items</h3>
                     <div className="space-y-3">
-                      {order.items.map((item: any, index: number) => {
+                      {order.items
+                        .filter((item: any) => {
+                          // Filter out discount codes and items with no SKU
+                          const hasNoSku = !item.sku || item.sku === '';
+                          const isDiscount = item.name?.toLowerCase().includes('discount') || 
+                                           item.name?.toLowerCase().includes('welcome') ||
+                                           item.unitPrice < 0;
+                          return !(hasNoSku && isDiscount);
+                        })
+                        .map((item: any, index: number) => {
                         const isFreightItem = item.name && (
                           item.name.toLowerCase().includes('case') ||
                           item.name.toLowerCase().includes('pail') ||
