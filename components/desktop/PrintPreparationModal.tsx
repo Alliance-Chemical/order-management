@@ -120,7 +120,7 @@ export default function PrintPreparationModal({
     const qty = parseInt(quantity) || 1;
     setLabelQuantities(prev => ({
       ...prev,
-      [sku]: Math.min(Math.max(1, qty), 10) // Limit between 1 and 10
+      [sku]: Math.max(1, qty) // No upper limit, minimum 1
     }));
   };
 
@@ -278,10 +278,9 @@ export default function PrintPreparationModal({
                                 <input
                                   type="number"
                                   min="1"
-                                  max="10"
                                   value={labelQuantities[item.sku] || 1}
                                   onChange={(e) => updateLabelQuantity(item.sku, e.target.value)}
-                                  className="w-16 px-2 py-1 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  className="w-20 px-2 py-1 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
                               </div>
                             </div>
