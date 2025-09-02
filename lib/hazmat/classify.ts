@@ -38,6 +38,7 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
       'isopropyl alcohol': ['isopropanol', '2-propanol', 'ipa'],
       'kerosene': ['k-1', 'k1'],
       'hexane': ['hexanes', 'n-hexane'],
+      'sodium hypochlorite': ['bleach', 'hypochlorite solution', 'liquid bleach'],
     };
     let extra: string[] = [];
     for (const [canon, alts] of Object.entries(synonyms)) {
@@ -68,7 +69,7 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
       { match: /(\bsodium\s+hydroxide\b|\blye\b|caustic\s+soda)/, baseRegex: 'sodium hydroxide' },
       { match: /(\bpotassium\s+hydroxide\b|caustic\s+potash)/, baseRegex: 'potassium hydroxide' },
       { match: /(\bhydrogen\s+peroxide\b)/, baseRegex: 'hydrogen peroxide' },
-      { match: /(\bhypochlorite\b|bleach)/, baseRegex: 'sodium hypochlorite' },
+      { match: /(\bhypochlorite\b|bleach)/, baseRegex: 'hypochlorite solutions' },
       // Alcohol family (denatured ethanol)
       { match: /(denatured\s+alcohol|ethanol\b|ethyl\s+alcohol)/, baseRegex: 'ethanol|ethyl alcohol|alcohols, n\.o\.s\.', classRegex: '^3' },
       // Isopropyl alcohol
@@ -111,6 +112,11 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
       const pct = parsePercent(q);
       if (pct !== null && pct <= 10) return { nonhaz: true, reason: `Acetic acid ${pct}% is not regulated for DOT` };
       if (/vinegar/.test(s) && (pct === null || pct <= 10)) return { nonhaz: true, reason: 'Vinegar is typically not regulated for DOT' };
+    }
+    // Hypochlorite/bleach threshold - ≤10% is non-regulated
+    if (/(\bhypochlorite\b|bleach)/i.test(s)) {
+      const pct = parsePercent(q);
+      if (pct !== null && pct <= 10) return { nonhaz: true, reason: `Hypochlorite solution ${pct}% is not regulated for DOT (≤10% available chlorine)` };
     }
     return null;
   }
@@ -393,6 +399,40 @@ function directMapToHMT(productName: string, rows: any[]): Classification | null
     } else {
       const r = pickByBaseNameAndPG(/hydrochloric acid/, 'II');
       if (r) return build(r, `Hydrochloric acid ${pct}% (PG II)`);
+    }
+  }
+  // Sodium hypochlorite / bleach - maps to "Hypochlorite solutions" UN1791
+  if (/(\bsodium\s+hypochlorite\b|\bhypochlorite\b|bleach)/i.test(productName)) {
+    // Find "Hypochlorite solutions" entry which is UN1791
+    const r = rows.find(x => /hypochlorite solutions/i.test(x.base_name || '') && x.id_number === 'UN1791');
+    if (r) {
+      // Determine packing group based on concentration
+      // >20% available chlorine = PG II, 10-20% = PG III
+      let pgOverride = r.packing_group;
+      let qualifierText = '';
+      if (pct !== null) {
+        if (pct > 20) {
+          pgOverride = 'II';
+          qualifierText = ` (>${pct}% available chlorine)`;
+        } else if (pct > 10) {
+          pgOverride = 'III';
+          qualifierText = ` (${pct}% available chlorine)`;
+        }
+      }
+      const pg = String(pgOverride || '').toUpperCase();
+      const normalizedPG = (pg === 'I' || pg === 'II' || pg === 'III') ? (pg as any) : (pg ? 'NONE' : null);
+      return {
+        un_number: 'UN1791',
+        proper_shipping_name: `Hypochlorite solutions${qualifierText}`,
+        hazard_class: '8', // Class 8 corrosive
+        packing_group: normalizedPG,
+        labels: '8',
+        erg_guide: null,
+        citations: [{ type: 'CFR', ref: '49 CFR 172.101', entry: { id_number: 'UN1791', base_name: 'Hypochlorite solutions', qualifier: qualifierText } }],
+        confidence: 0.95,
+        source: 'rule-direct',
+        explanation: `Direct CFR match for Sodium hypochlorite/bleach${pct !== null ? ' ' + pct + '%' : ''}`,
+      };
     }
   }
   return null;
