@@ -1,0 +1,96 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getEdgeSql } from '@/lib/db/neon-edge';
+import { classifyWithRAG } from '@/lib/hazmat/classify';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+interface ClassificationRequest {
+  sku: string;
+  productName: string;
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body: ClassificationRequest = await request.json();
+    const { sku, productName } = body;
+
+    if (!sku || !productName) {
+      return NextResponse.json({
+        success: false,
+        error: 'SKU and product name are required'
+      }, { status: 400 });
+    }
+
+    // First, try to find existing classification in database
+    const sql = getEdgeSql();
+    
+    try {
+      // Check if product already has a classification  
+      const existingLinks = await sql`
+        SELECT 
+           p.sku, p.name, p.is_hazardous, p.un_number,
+           fc.description as classification_description,
+           fc.nmfc_code, fc.freight_class, fc.is_hazmat,
+           fc.hazmat_class, fc.packing_group
+         FROM products p
+         JOIN product_freight_links pfl ON p.id = pfl.product_id
+         JOIN freight_classifications fc ON pfl.classification_id = fc.id
+         WHERE p.sku = ${sku} AND pfl.is_approved = true
+      `;
+
+      if (existingLinks.length > 0) {
+        const existing = existingLinks[0];
+        return NextResponse.json({
+          success: true,
+          un_number: existing.un_number || 'UN1830', // Default if not set
+          proper_shipping_name: existing.name || existing.classification_description,
+          hazard_class: existing.hazmat_class,
+          packing_group: existing.packing_group,
+          confidence: 1.0,
+          source: 'database',
+          sku,
+          productName
+        });
+      }
+    } catch (dbError) {
+      console.warn('Database lookup failed, falling back to RAG:', dbError);
+    }
+
+    // If no existing classification, use RAG retrieval over CFR HMT + ERG/historical
+    const suggestion = await classifyWithRAG(sku, productName);
+
+    return NextResponse.json({
+      success: true,
+      ...suggestion,
+      // passthrough richer CFR fields for UI
+      labels: (suggestion as any).labels,
+      packaging: (suggestion as any).packaging,
+      quantity_limitations: (suggestion as any).quantity_limitations,
+      vessel_stowage: (suggestion as any).vessel_stowage,
+      special_provisions: (suggestion as any).special_provisions,
+      sku,
+      productName
+    });
+
+  } catch (error) {
+    console.error('Hazmat classification API error:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to classify product',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
+// RAG logic moved to lib/hazmat/classify.ts for reuse by scripts and routes
+
+// GET endpoint for health check
+export async function GET() {
+  return NextResponse.json({
+    success: true,
+    message: 'Hazmat classification API is operational',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+}

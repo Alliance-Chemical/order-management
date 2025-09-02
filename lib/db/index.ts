@@ -1,15 +1,11 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as qrSchema from './schema/qr-workspace';
+/**
+ * Database client exports
+ */
+import { getDb } from '../../src/data/db/client';
 
-const connectionString = process.env.DATABASE_URL!;
+// Export db as a direct instance for backward compatibility
+export const db = getDb();
 
-const client = postgres(connectionString, {
-  prepare: false,
-});
-
-const schema = { ...qrSchema };
-
-export const db = drizzle(client, { schema });
-
-export type Database = typeof db;
+// Also export the function for those who need it
+export { getDb } from '../../src/data/db/client';
+export type { Database } from '../../src/data/db/client';

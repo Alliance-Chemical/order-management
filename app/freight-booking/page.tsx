@@ -1,0 +1,846 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { 
+  TruckIcon, 
+  CheckCircleIcon,
+  ClockIcon,
+  DocumentCheckIcon,
+  BeakerIcon,
+  ArrowRightIcon,
+  ExclamationTriangleIcon,
+  HandRaisedIcon,
+  MicrophoneIcon
+} from '@heroicons/react/24/solid';
+import FreightNavigation from '@/components/navigation/FreightNavigation';
+import AIHazmatFreightSuggestion from '@/components/freight-booking/AIHazmatFreightSuggestion';
+import { HazmatRAGPanel } from '@/components/freight-booking/HazmatRAGPanel';
+import { warehouseFeedback, visualFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
+
+interface ShipStationOrder {
+  orderId: number;
+  orderNumber: string;
+  customerEmail: string;
+  customerName: string;
+  billTo: {
+    name: string;
+    company: string;
+    street1: string;
+    city: string;
+    state: string;
+    postalCode: string;
+  };
+  shipTo: {
+    name: string;
+    company: string;
+    street1: string;
+    city: string;
+    state: string;
+    postalCode: string;
+  };
+  items: Array<{
+    sku: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    weight: { value: number; units: string };
+  }>;
+  orderTotal: number;
+  shippingAmount: number;
+  orderDate: string;
+  orderStatus: string;
+}
+
+interface FreightBookingData {
+  selectedOrder: ShipStationOrder | null;
+  carrierName: string;
+  serviceType: string;
+  estimatedCost: number;
+  specialInstructions: string;
+  classifiedItems: Array<{
+    sku: string;
+    classification: {
+      nmfcCode: string;
+      freightClass: string;
+      isHazmat: boolean;
+      hazmatClass?: string;
+      unNumber?: string;
+      packingGroup?: string;
+      properShippingName?: string;
+    } | null;
+  }>;
+  hazmatAnalysis: any;
+}
+
+type BookingStep = 'selection' | 'classification' | 'hazmat-analysis' | 'confirmation';
+
+export default function FreightBookingPage() {
+  const router = useRouter();
+  const [currentStep, setCurrentStep] = useState<BookingStep>('selection');
+  const [bookingData, setBookingData] = useState<FreightBookingData>({
+    selectedOrder: null,
+    carrierName: 'SAIA',
+    serviceType: 'Standard LTL',
+    estimatedCost: 0,
+    specialInstructions: '',
+    classifiedItems: [],
+    hazmatAnalysis: null
+  });
+  const [availableOrders, setAvailableOrders] = useState<ShipStationOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [booking, setBooking] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [workspaceLink, setWorkspaceLink] = useState<string>('');
+
+  useEffect(() => {
+    fetchAvailableOrders();
+    
+    // Check if a specific order ID was passed in the URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderIdParam = urlParams.get('orderId');
+    if (orderIdParam) {
+      // Fetch the specific order and auto-select it
+      fetchSpecificOrder(parseInt(orderIdParam));
+    }
+  }, []);
+
+  const fetchAvailableOrders = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/shipstation/orders?filter=awaiting_shipment');
+      const data = await response.json();
+      
+      if (data.success && data.orders) {
+        setAvailableOrders(data.orders);
+      }
+    } catch (error) {
+      console.error('Failed to fetch orders:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSpecificOrder = async (orderId: number) => {
+    try {
+      // First check freight orders to see if we can get the ShipStation data
+      const freightResponse = await fetch('/api/freight-orders/poll');
+      const freightData = await freightResponse.json();
+      
+      if (freightData.success) {
+        const allOrders = [...freightData.created, ...freightData.existing];
+        const foundOrder = allOrders.find(order => order.orderId === orderId);
+        
+        if (foundOrder && foundOrder.shipstationData) {
+          // Convert freight order to ShipStation format
+          const shipstationOrder: ShipStationOrder = {
+            orderId: foundOrder.orderId,
+            orderNumber: foundOrder.orderNumber,
+            customerEmail: foundOrder.shipstationData.customerEmail || '',
+            customerName: foundOrder.shipstationData.billTo?.name || foundOrder.customerName || '',
+            billTo: foundOrder.shipstationData.billTo || {
+              name: foundOrder.customerName || '',
+              company: '',
+              street1: '',
+              city: '',
+              state: '',
+              postalCode: ''
+            },
+            shipTo: foundOrder.shipstationData.shipTo || foundOrder.shipstationData.billTo || {
+              name: foundOrder.customerName || '',
+              company: '',
+              street1: '',
+              city: '',
+              state: '',
+              postalCode: ''
+            },
+            items: foundOrder.items?.map((item: any) => ({
+              sku: item.sku || '',
+              name: item.name,
+              quantity: item.quantity,
+              unitPrice: 0,
+              weight: { value: 0, units: 'lbs' }
+            })) || [],
+            orderTotal: foundOrder.orderTotal || 0,
+            shippingAmount: 0,
+            orderDate: foundOrder.orderDate || new Date().toISOString(),
+            orderStatus: 'awaiting_shipment'
+          };
+          
+          // Auto-select this order
+          handleOrderSelection(shipstationOrder);
+          return;
+        }
+      }
+      
+      // Fallback: create a basic order structure from the orderId
+      console.warn(`Could not find detailed order data for ID ${orderId}, creating basic structure`);
+      const basicOrder: ShipStationOrder = {
+        orderId: orderId,
+        orderNumber: `ORDER-${orderId}`,
+        customerEmail: '',
+        customerName: 'Unknown Customer',
+        billTo: {
+          name: 'Unknown Customer',
+          company: '',
+          street1: '',
+          city: '',
+          state: '',
+          postalCode: ''
+        },
+        shipTo: {
+          name: 'Unknown Customer', 
+          company: '',
+          street1: '',
+          city: '',
+          state: '',
+          postalCode: ''
+        },
+        items: [],
+        orderTotal: 0,
+        shippingAmount: 0,
+        orderDate: new Date().toISOString(),
+        orderStatus: 'awaiting_shipment'
+      };
+      
+      handleOrderSelection(basicOrder);
+    } catch (error) {
+      console.error('Failed to fetch specific order:', error);
+    }
+  };
+
+  const handleOrderSelection = async (order: ShipStationOrder) => {
+    setBookingData(prev => ({ ...prev, selectedOrder: order }));
+    
+    // Auto-classify products
+    const classifiedItems: Array<{
+      sku: string;
+      classification: {
+        nmfcCode: string;
+        freightClass: string;
+        isHazmat: boolean;
+        hazmatClass?: string;
+        unNumber?: string;
+        packingGroup?: string;
+        properShippingName?: string;
+      } | null;
+    }> = [];
+    for (const item of order.items) {
+      try {
+        const response = await fetch('/api/product-links/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sku: item.sku })
+        });
+        const result = await response.json();
+        
+        classifiedItems.push({
+          sku: item.sku,
+          classification: result.hasClassification ? result.classification : null
+        });
+      } catch (error) {
+        classifiedItems.push({ sku: item.sku, classification: null });
+      }
+    }
+    
+    setBookingData(prev => ({ ...prev, classifiedItems }));
+    setCurrentStep('classification');
+  };
+
+  const handleClassificationComplete = () => {
+    const hasHazmat = bookingData.classifiedItems.some(
+      item => item.classification?.isHazmat
+    );
+    
+    if (hasHazmat) {
+      setCurrentStep('hazmat-analysis');
+    } else {
+      setCurrentStep('confirmation');
+    }
+  };
+
+  const handleHazmatAnalysisComplete = (analysis: any) => {
+    setBookingData(prev => ({ ...prev, hazmatAnalysis: analysis }));
+    setCurrentStep('confirmation');
+  };
+
+  const handleFinalBooking = async () => {
+    if (!bookingData.selectedOrder) return;
+    
+    setBooking(true);
+    try {
+      const response = await fetch('/api/freight-booking/complete-booking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: bookingData.selectedOrder.orderId,
+          orderNumber: bookingData.selectedOrder.orderNumber,
+          carrierName: bookingData.carrierName,
+          serviceType: bookingData.serviceType,
+          estimatedCost: bookingData.estimatedCost,
+          specialInstructions: bookingData.specialInstructions,
+          customerEmail: bookingData.selectedOrder.customerEmail,
+          customerName: bookingData.selectedOrder.customerName || bookingData.selectedOrder.billTo.name,
+          customerCompany: bookingData.selectedOrder.billTo.company,
+          originAddress: {
+            address: bookingData.selectedOrder.billTo.street1,
+            city: bookingData.selectedOrder.billTo.city,
+            state: bookingData.selectedOrder.billTo.state,
+            zipCode: bookingData.selectedOrder.billTo.postalCode
+          },
+          destinationAddress: {
+            address: bookingData.selectedOrder.shipTo.street1,
+            city: bookingData.selectedOrder.shipTo.city,
+            state: bookingData.selectedOrder.shipTo.state,
+            zipCode: bookingData.selectedOrder.shipTo.postalCode
+          },
+          packageDetails: {
+            weight: {
+              value: bookingData.selectedOrder.items.reduce((sum, item) => 
+                sum + (item.weight?.value || 0) * item.quantity, 0),
+              units: 'lbs'
+            },
+            dimensions: { length: 48, width: 40, height: 48, units: 'in' },
+            packageCount: bookingData.selectedOrder.items.length,
+            description: bookingData.selectedOrder.items.map(item => item.name).join(', ')
+          },
+          classifiedItems: bookingData.classifiedItems,
+          hazmatAnalysis: bookingData.hazmatAnalysis,
+          sessionId: null,
+          confidenceScore: 0.95,
+          telemetryData: {
+            hasClassifications: bookingData.classifiedItems.filter(i => i.classification).length,
+            hasHazmat: bookingData.classifiedItems.some(i => i.classification?.isHazmat),
+            bookingFlow: currentStep
+          }
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setSuccess(true);
+        setWorkspaceLink(result.workspaceLink || `/workspace/${bookingData.selectedOrder.orderId}`);
+      } else {
+        alert('Booking failed: ' + (result.error || 'Please try again'));
+      }
+    } catch (error) {
+      console.error('Booking error:', error);
+      alert('Network error: Please try again');
+    } finally {
+      setBooking(false);
+    }
+  };
+
+  const getStepTitle = () => {
+    switch (currentStep) {
+      case 'selection': return 'Select Order to Ship';
+      case 'classification': return 'Product Classification';
+      case 'hazmat-analysis': return 'Hazmat Analysis';
+      case 'confirmation': return 'Confirm Booking';
+    }
+  };
+
+  const getStepIcon = () => {
+    switch (currentStep) {
+      case 'selection': return ClockIcon;
+      case 'classification': return DocumentCheckIcon;
+      case 'hazmat-analysis': return BeakerIcon;
+      case 'confirmation': return TruckIcon;
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <FreightNavigation className="bg-white shadow-sm border-b px-6 py-4" />
+        <div className="flex items-center justify-center py-16">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
+            <CheckCircleIcon className="h-16 w-16 text-warehouse-go mx-auto mb-4" />
+            <h1 className="text-warehouse-3xl font-black text-gray-900 mb-4 uppercase">Freight Booked!</h1>
+            <p className="text-gray-600 mb-6">
+              Order <strong>{bookingData.selectedOrder?.orderNumber}</strong> booked with {bookingData.carrierName}
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  warehouseFeedback.complete();
+                  router.push(workspaceLink);
+                }}
+                className="w-full bg-warehouse-go text-white py-8 px-6 rounded-warehouse text-warehouse-2xl font-black hover:bg-green-700 transition-colors shadow-warehouse border-b-8 border-green-800 active:scale-95"
+                style={{ minHeight: '100px' }}
+              >
+                ✅ OPEN WORKSPACE
+              </button>
+              <button
+                onClick={() => {
+                  warehouseFeedback.buttonPress();
+                  router.push('/');
+                }}
+                className="w-full bg-warehouse-neutral text-white py-8 px-6 rounded-warehouse text-warehouse-xl font-black hover:bg-gray-600 transition-colors shadow-warehouse border-b-8 border-gray-700 active:scale-95"
+                style={{ minHeight: '100px' }}
+              >
+                ← DASHBOARD
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <FreightNavigation className="bg-white shadow-sm border-b px-6 py-4" />
+      
+      {/* Header with Progress */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-6xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              {(() => {
+                const Icon = getStepIcon();
+                return <Icon className="h-8 w-8 text-blue-600 mr-3" />;
+              })()}
+              <div>
+                <h1 className="text-warehouse-3xl font-black text-gray-900 uppercase">{getStepTitle()}</h1>
+                <p className="text-sm text-gray-600">Professional freight booking workflow</p>
+              </div>
+            </div>
+            
+            {/* Progress Steps */}
+            <div className="hidden md:flex items-center space-x-4">
+              {[
+                { key: 'selection', label: 'Select', icon: ClockIcon },
+                { key: 'classification', label: 'Classify', icon: DocumentCheckIcon },
+                { key: 'hazmat-analysis', label: 'Hazmat', icon: BeakerIcon },
+                { key: 'confirmation', label: 'Confirm', icon: TruckIcon }
+              ].map((step, index) => {
+                const isActive = currentStep === step.key;
+                const isCompleted = ['selection', 'classification', 'hazmat-analysis', 'confirmation'].indexOf(currentStep) > index;
+                const StepIcon = step.icon;
+                
+                return (
+                  <div key={step.key} className="flex items-center">
+                    <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
+                      isActive ? 'border-blue-600 bg-blue-600 text-white' :
+                      isCompleted ? 'border-green-600 bg-green-600 text-white' :
+                      'border-gray-300 bg-white text-gray-400'
+                    }`}>
+                      <StepIcon className="h-5 w-5" />
+                    </div>
+                    <span className={`ml-2 text-sm font-medium ${
+                      isActive ? 'text-blue-600' :
+                      isCompleted ? 'text-green-600' :
+                      'text-gray-400'
+                    }`}>
+                      {step.label}
+                    </span>
+                    {index < 3 && (
+                      <ArrowRightIcon className="h-4 w-4 text-gray-400 ml-4" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Step 1: Order Selection */}
+        {currentStep === 'selection' && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="mb-6">
+              <h2 className="text-warehouse-2xl font-black text-gray-900 uppercase mb-2">📦 Awaiting Shipment</h2>
+              <p className="text-gray-600">Select an order from ShipStation to book freight shipping</p>
+            </div>
+            
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading orders from ShipStation...</p>
+              </div>
+            ) : availableOrders.length === 0 ? (
+              <div className="text-center py-12">
+                <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                <p className="text-gray-600">No orders awaiting shipment found</p>
+                <button
+                  onClick={() => {
+                    warehouseFeedback.buttonPress();
+                    fetchAvailableOrders();
+                  }}
+                  className="mt-4 px-8 py-6 bg-warehouse-info text-white rounded-warehouse text-warehouse-xl font-black hover:bg-blue-700 transition-colors shadow-warehouse border-b-4 border-blue-800"
+                  style={{ minHeight: '80px' }}
+                >
+                  🔄 REFRESH ORDERS
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {availableOrders.map((order) => (
+                  <button
+                    key={order.orderId}
+                    className="w-full text-left border-2 border-gray-300 rounded-warehouse p-6 hover:border-warehouse-info hover:bg-blue-50 cursor-pointer transition-all active:scale-95 shadow-warehouse"
+                    onClick={() => {
+                      warehouseFeedback.buttonPress();
+                      handleOrderSelection(order);
+                    }}
+                    style={{ minHeight: '100px' }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-warehouse-xl font-black text-gray-900 uppercase">
+                          {order.orderNumber}
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-2">
+                          {order.billTo?.company || order.billTo?.name || 'Customer'} → {order.shipTo?.company || order.shipTo?.name || 'Destination'}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {order.items.length} items • ${order.orderTotal}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          {order.orderStatus}
+                        </span>
+                        <p className="text-xs text-gray-500 mt-1">{order.orderDate}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 flex items-center text-warehouse-xl font-black text-warehouse-info uppercase">
+                      <TruckIcon className="h-6 w-6 mr-2" />
+                      {formatWarehouseText('Tap to book freight', 'action')}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 2: Product Classification */}
+        {currentStep === 'classification' && bookingData.selectedOrder && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-warehouse-2xl font-black text-gray-900 uppercase mb-4">⚡ Classification Status</h2>
+              
+              {/* Manual Entry Options */}
+              <div className="mb-6 p-4 bg-amber-50 border-2 border-warehouse-caution rounded-warehouse">
+                <div className="flex items-center mb-2">
+                  <HandRaisedIcon className="h-6 w-6 text-warehouse-caution mr-2" />
+                  <span className="text-warehouse-xl font-black text-gray-900 uppercase">Manual Override Available</span>
+                </div>
+                <p className="text-gray-700 mb-3">Scanner not working? Use manual entry or voice input.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      warehouseFeedback.buttonPress();
+                      // Manual entry logic would go here
+                      alert('Manual entry feature coming soon');
+                    }}
+                    className="px-6 py-4 bg-warehouse-caution text-white rounded-warehouse text-warehouse-lg font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95"
+                    style={{ minHeight: '60px' }}
+                  >
+                    ⌨️ MANUAL ENTRY
+                  </button>
+                  <button
+                    onClick={() => {
+                      warehouseFeedback.buttonPress();
+                      // Voice input logic would go here
+                      alert('Voice input feature coming soon');
+                    }}
+                    className="px-6 py-4 bg-warehouse-info text-white rounded-warehouse text-warehouse-lg font-black hover:bg-blue-700 transition-colors shadow-warehouse border-b-4 border-blue-800 active:scale-95"
+                    style={{ minHeight: '60px' }}
+                  >
+                    <MicrophoneIcon className="h-5 w-5 inline mr-2" />
+                    VOICE INPUT
+                  </button>
+                </div>
+              </div>
+              
+              <div className="grid gap-4">
+                {bookingData.selectedOrder.items.map((item, index) => {
+                  const classification = bookingData.classifiedItems.find(c => c.sku === item.sku);
+                  const hasClassification = classification?.classification;
+                  
+                  return (
+                    <div key={item.sku} className="border-2 border-gray-300 rounded-warehouse p-6 shadow-warehouse">
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <h3 className="text-warehouse-xl font-black text-gray-900 uppercase">{item.name}</h3>
+                          <p className="text-warehouse-lg text-gray-600 mt-1">
+                            SKU: <span className="font-mono font-bold">{item.sku}</span> • 
+                            QTY: <span className="font-black">{item.quantity}</span>
+                          </p>
+                        </div>
+                        <div className="ml-4">
+                          {hasClassification ? (
+                            <div className="text-center">
+                              <div className="inline-flex items-center px-6 py-3 rounded-warehouse text-warehouse-lg font-black bg-warehouse-go text-white shadow-warehouse">
+                                ✅ CLASSIFIED
+                              </div>
+                              <p className="text-warehouse-lg font-bold text-gray-700 mt-2">
+                                CLASS {classification.classification?.freightClass}
+                                {classification.classification?.isHazmat && (
+                                  <span className="block text-warehouse-stop mt-1">⚠️ HAZMAT</span>
+                                )}
+                              </p>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                warehouseFeedback.warning();
+                                // Quick approve logic
+                                const quickClassification = {
+                                  nmfcCode: '50000',
+                                  freightClass: '55',
+                                  isHazmat: false
+                                };
+                                setBookingData(prev => ({
+                                  ...prev,
+                                  classifiedItems: prev.classifiedItems.map(ci =>
+                                    ci.sku === item.sku ? { ...ci, classification: quickClassification } : ci
+                                  )
+                                }));
+                                warehouseFeedback.success();
+                              }}
+                              className="px-8 py-6 bg-warehouse-caution text-white rounded-warehouse text-warehouse-xl font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95 animate-pulse"
+                              style={{ minHeight: '80px' }}
+                            >
+                              ⚡ TAP TO CLASSIFY
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* RAG Panel for Auto-Classification */}
+              {bookingData.classifiedItems.some(item => !item.classification) && (
+                <HazmatRAGPanel
+                  unclassifiedSKUs={bookingData.classifiedItems
+                    .filter(item => !item.classification)
+                    .map(item => item.sku)
+                  }
+                  items={bookingData.selectedOrder.items}
+                  onSuggestionAccepted={(sku: string) => {
+                    // Handle suggestion acceptance
+                    console.log('Classification suggested for SKU:', sku);
+                  }}
+                />
+              )}
+              
+              <div className="mt-6 flex justify-between gap-4">
+                <button
+                  onClick={() => {
+                    warehouseFeedback.buttonPress();
+                    setCurrentStep('selection');
+                  }}
+                  className="flex-1 px-8 py-6 bg-warehouse-neutral text-white rounded-warehouse text-warehouse-xl font-black hover:bg-gray-600 transition-colors shadow-warehouse border-b-4 border-gray-700 active:scale-95"
+                  style={{ minHeight: '80px' }}
+                >
+                  ← BACK
+                </button>
+                <button
+                  onClick={() => {
+                    if (!bookingData.classifiedItems.some(item => !item.classification)) {
+                      warehouseFeedback.success();
+                      handleClassificationComplete();
+                    } else {
+                      warehouseFeedback.warning();
+                    }
+                  }}
+                  disabled={bookingData.classifiedItems.some(item => !item.classification)}
+                  className="flex-1 px-8 py-6 bg-warehouse-go text-white rounded-warehouse text-warehouse-xl font-black hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-warehouse border-b-4 border-green-800 disabled:border-gray-500 active:scale-95"
+                  style={{ minHeight: '80px' }}
+                >
+                  CONTINUE →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Hazmat Analysis */}
+        {currentStep === 'hazmat-analysis' && bookingData.selectedOrder && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <AIHazmatFreightSuggestion
+              orderNumber={bookingData.selectedOrder.orderNumber}
+              orderData={{
+                items: bookingData.selectedOrder.items.map(item => ({
+                  sku: item.sku,
+                  name: item.name,
+                  quantity: item.quantity,
+                  weight: item.weight?.value || 0,
+                  classification: bookingData.classifiedItems.find(c => c.sku === item.sku)?.classification
+                })),
+                customer: {
+                  name: bookingData.selectedOrder.billTo.name,
+                  company: bookingData.selectedOrder.billTo.company
+                },
+                destination: bookingData.selectedOrder.shipTo,
+                origin: bookingData.selectedOrder.billTo
+              }}
+              classificationInfo={{
+                hasHazmat: bookingData.classifiedItems.some(item => item.classification?.isHazmat),
+                hazmatItems: bookingData.classifiedItems
+                  .filter(item => item.classification?.isHazmat)
+                  .map(item => ({
+                    sku: item.sku,
+                    hazardClass: item.classification?.hazmatClass,
+                    unNumber: item.classification?.unNumber,
+                    packingGroup: item.classification?.packingGroup,
+                    properShippingName: item.classification?.properShippingName
+                  }))
+              }}
+              onAccept={handleHazmatAnalysisComplete}
+              onReject={() => setCurrentStep('classification')}
+            />
+          </div>
+        )}
+
+        {/* Step 4: Confirmation */}
+        {currentStep === 'confirmation' && bookingData.selectedOrder && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-warehouse-2xl font-black text-gray-900 uppercase mb-6">🎯 Confirm Booking</h2>
+            
+            {/* Order Summary */}
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Order Details</h3>
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-medium">Order:</span> {bookingData.selectedOrder.orderNumber}</p>
+                  <p><span className="font-medium">Customer:</span> {bookingData.selectedOrder.billTo.company || bookingData.selectedOrder.billTo.name}</p>
+                  <p><span className="font-medium">Items:</span> {bookingData.selectedOrder.items.length}</p>
+                  <p><span className="font-medium">Value:</span> ${bookingData.selectedOrder.orderTotal}</p>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Freight Details</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Carrier</label>
+                    <select
+                      value={bookingData.carrierName}
+                      onChange={(e) => setBookingData(prev => ({ ...prev, carrierName: e.target.value }))}
+                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="SAIA">SAIA</option>
+                      <option value="XPO">XPO Logistics</option>
+                      <option value="FedEx Freight">FedEx Freight</option>
+                      <option value="YRC">YRC Freight</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Service Type</label>
+                    <select
+                      value={bookingData.serviceType}
+                      onChange={(e) => setBookingData(prev => ({ ...prev, serviceType: e.target.value }))}
+                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="Standard LTL">Standard LTL</option>
+                      <option value="Expedited">Expedited</option>
+                      <option value="Volume LTL">Volume LTL</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Cost ($)</label>
+                    <input
+                      type="number"
+                      value={bookingData.estimatedCost}
+                      onChange={(e) => setBookingData(prev => ({ ...prev, estimatedCost: Number(e.target.value) }))}
+                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter estimated cost"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Special Instructions */}
+            <div className="mb-8">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Special Instructions</label>
+              <textarea
+                value={bookingData.specialInstructions}
+                onChange={(e) => setBookingData(prev => ({ ...prev, specialInstructions: e.target.value }))}
+                placeholder="Any special handling requirements..."
+                className="w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                rows={3}
+              />
+            </div>
+            
+            {/* Classification Summary */}
+            <div className="mb-8">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Classification Summary</h3>
+              <div className="grid gap-3">
+                {bookingData.classifiedItems.map((item) => {
+                  const orderItem = bookingData.selectedOrder!.items.find(i => i.sku === item.sku);
+                  return (
+                    <div key={item.sku} className="flex justify-between items-center p-3 bg-gray-50 rounded">
+                      <div>
+                        <span className="font-medium">{orderItem?.name}</span>
+                        <span className="text-sm text-gray-500 ml-2">({item.sku})</span>
+                      </div>
+                      <div className="text-sm">
+                        {item.classification ? (
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            item.classification.isHazmat 
+                              ? 'bg-red-100 text-red-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            Class {item.classification.freightClass}
+                            {item.classification.isHazmat && ' • HAZMAT'}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            Unclassified
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Actions */}
+            <div className="flex justify-between gap-4">
+              <button
+                onClick={() => {
+                  warehouseFeedback.buttonPress();
+                  setCurrentStep('classification');
+                }}
+                className="flex-1 px-8 py-6 bg-warehouse-neutral text-white rounded-warehouse text-warehouse-xl font-black hover:bg-gray-600 transition-colors shadow-warehouse border-b-4 border-gray-700 active:scale-95"
+                style={{ minHeight: '80px' }}
+              >
+                ← BACK
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (!booking && bookingData.estimatedCost > 0) {
+                    warehouseFeedback.buttonPress();
+                    handleFinalBooking();
+                  } else if (bookingData.estimatedCost === 0) {
+                    warehouseFeedback.warning();
+                  }
+                }}
+                disabled={booking || bookingData.estimatedCost === 0}
+                className="flex-1 bg-warehouse-go text-white py-6 px-8 rounded-warehouse text-warehouse-2xl font-black hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-warehouse border-b-8 border-green-800 disabled:border-gray-500 active:scale-95"
+                style={{ minHeight: '100px' }}
+              >
+                {booking ? '🚛 BOOKING...' : '🚛 BOOK FREIGHT'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

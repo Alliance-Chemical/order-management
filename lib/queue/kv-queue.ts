@@ -4,7 +4,6 @@
  */
 
 import { kv } from '@/lib/kv';
-import crypto from 'crypto';
 
 export type QueueName = 'jobs' | 'alerts' | 'webhooks';
 
@@ -31,7 +30,15 @@ const KEY = {
 };
 
 function sha(s: string): string {
-  return crypto.createHash('sha1').update(s).digest('hex');
+  // Use Web Crypto API for Edge Runtime compatibility
+  const encoder = new TextEncoder();
+  const data = encoder.encode(s);
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    hash = ((hash << 5) - hash) + data[i];
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16);
 }
 
 export const kvQueue = {

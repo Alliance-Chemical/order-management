@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces, qrCodes } from '@/lib/db/schema/qr-workspace';
+import { freightOrders } from '@/lib/db/schema/freight';
 import { eq, sql } from 'drizzle-orm';
 
 export async function GET(
@@ -132,7 +133,7 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   
   // No longer need to check for master or source QRs
   
-  // Attempt to read workspace to enrich records
+  // Attempt to read workspace and freight info to enrich records
   const ws = await db
     .select()
     .from(workspaces)
@@ -140,6 +141,17 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     .limit(1);
   const orderNumber = ws[0]?.orderNumber || String(orderId);
   const shipstationData = ws[0]?.shipstationData as any;
+  
+  // Fetch freight order information for enhanced QR context
+  const freightOrder = await db
+    .select()
+    .from(freightOrders)
+    .where(eq(freightOrders.workspaceId, workspaceId))
+    .limit(1);
+  
+  const freightData = freightOrder[0] || null;
+  console.log(`[QR] Found freight order for workspace: ${freightData ? 'Yes' : 'No'}`, 
+              freightData ? { carrier: freightData.carrierName, status: freightData.bookingStatus } : {});
 
   const now = Date.now();
   const makeCode = (suffix: string) => `QR-${orderId}-${suffix}-${now}-${Math.floor(Math.random() * 1000)}`;
@@ -282,7 +294,20 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
           totalContainers: totalContainersForThisItem, // Total containers for THIS specific item only
           itemId: itemId,
           sku: item.sku,
-          itemName: itemName
+          itemName: itemName,
+          // Add freight booking context for warehouse workers
+          freight: freightData ? {
+            status: freightData.bookingStatus,
+            carrier: freightData.carrierName,
+            serviceType: freightData.serviceType,
+            trackingNumber: freightData.trackingNumber,
+            estimatedCost: freightData.estimatedCost,
+            bookedAt: freightData.bookedAt,
+            expectedDelivery: freightData.deliveredAt || 'TBD',
+            originAddress: freightData.originAddress,
+            destinationAddress: freightData.destinationAddress,
+            specialInstructions: freightData.specialInstructions
+          } : null
         },
         qrUrl: `${baseUrl}/workspace/${orderId}`,
         scanCount: 0,
@@ -310,7 +335,20 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
         orderNumber, 
         containerType: 'drum', 
         containerNumber: 1,
-        totalContainers: 1
+        totalContainers: 1,
+        // Add freight booking context for warehouse workers
+        freight: freightData ? {
+          status: freightData.bookingStatus,
+          carrier: freightData.carrierName,
+          serviceType: freightData.serviceType,
+          trackingNumber: freightData.trackingNumber,
+          estimatedCost: freightData.estimatedCost,
+          bookedAt: freightData.bookedAt,
+          expectedDelivery: freightData.deliveredAt || 'TBD',
+          originAddress: freightData.originAddress,
+          destinationAddress: freightData.destinationAddress,
+          specialInstructions: freightData.specialInstructions
+        } : null
       },
       qrUrl: `${baseUrl}/workspace/${orderId}`,
       scanCount: 0,

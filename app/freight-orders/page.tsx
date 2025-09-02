@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { TruckIcon } from '@heroicons/react/24/solid';
+import { warehouseFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
+import FreightNavigation from '@/components/navigation/FreightNavigation';
 
 interface FreightOrder {
   orderId: number;
@@ -96,20 +99,26 @@ export default function FreightOrdersPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            Freight Order Management
+    <div className="min-h-screen bg-gray-50">
+      <FreightNavigation className="bg-white shadow-sm border-b px-6 py-4" />
+      
+      <div className="max-w-6xl mx-auto p-8">
+        <div className="bg-white rounded-warehouse shadow-warehouse p-6 mb-6">
+          <h1 className="text-warehouse-3xl font-black text-gray-900 uppercase mb-4">
+            {formatWarehouseText('Freight Order Management', 'critical')}
           </h1>
           
           <div className="flex gap-4 mb-6">
             <button
-              onClick={pollFreightOrders}
+              onClick={() => {
+                warehouseFeedback.buttonPress();
+                pollFreightOrders();
+              }}
               disabled={polling}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+              className="px-8 py-6 bg-warehouse-info text-white rounded-warehouse text-warehouse-xl font-black hover:bg-blue-700 disabled:bg-gray-400 transition-colors shadow-warehouse border-b-4 border-blue-800 disabled:border-gray-500 active:scale-95"
+              style={{ minHeight: '80px' }}
             >
-              {polling ? 'Polling...' : 'Poll Freight Orders'}
+              {polling ? '⏳ POLLING...' : '🔄 POLL FREIGHT ORDERS'}
             </button>
             
             {stats.total && (
@@ -189,22 +198,43 @@ export default function FreightOrdersPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          {order.workspaceId ? (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex gap-2">
+                            {order.workspaceId ? (
+                              <button
+                                onClick={() => {
+                                  warehouseFeedback.buttonPress();
+                                  router.push(`/workspace/${order.orderId}`);
+                                }}
+                                className="px-6 py-4 bg-warehouse-info text-white rounded-warehouse text-warehouse-lg font-black hover:bg-blue-700 transition-colors shadow-warehouse border-b-4 border-blue-800 active:scale-95"
+                                style={{ minHeight: '60px' }}
+                              >
+                                📂 OPEN WORKSPACE
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  warehouseFeedback.success();
+                                  createWorkspace(order.orderId, order.orderNumber);
+                                }}
+                                className="px-6 py-4 bg-warehouse-go text-white rounded-warehouse text-warehouse-lg font-black hover:bg-green-700 transition-colors shadow-warehouse border-b-4 border-green-800 active:scale-95"
+                                style={{ minHeight: '60px' }}
+                              >
+                                ➕ CREATE WORKSPACE
+                              </button>
+                            )}
                             <button
-                              onClick={() => router.push(`/workspace/${order.orderId}`)}
-                              className="text-blue-600 hover:text-blue-900"
+                              onClick={() => {
+                                warehouseFeedback.buttonPress();
+                                router.push(`/freight-booking?orderId=${order.orderId}`);
+                              }}
+                              className="px-6 py-4 bg-warehouse-caution text-white rounded-warehouse text-warehouse-lg font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95 animate-pulse"
+                              style={{ minHeight: '60px' }}
                             >
-                              Open Workspace →
+                              <TruckIcon className="h-5 w-5 inline mr-2" />
+                              BOOK FREIGHT
                             </button>
-                          ) : (
-                            <button
-                              onClick={() => createWorkspace(order.orderId, order.orderNumber)}
-                              className="text-green-600 hover:text-green-900"
-                            >
-                              Create Workspace
-                            </button>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     ))}

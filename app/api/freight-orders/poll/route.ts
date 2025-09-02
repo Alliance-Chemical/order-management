@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
-import { db } from '@/lib/db';
+import { getDb } from '@/src/data/db/client';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
-import { eq } from 'drizzle-orm';
+import { freightOrders } from '@/lib/db/schema/freight';
+import { eq, and, isNotNull } from 'drizzle-orm';
+
+const db = getDb();
 
 const workspaceService = new WorkspaceService();
 
@@ -16,28 +19,46 @@ export async function GET(request: NextRequest) {
     const apiSecret = process.env.SHIPSTATION_API_SECRET?.trim() || '';
     const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
     
-    // Use the listbytag endpoint to get orders with the freight tag
-    const response = await fetch(
-      `https://ssapi.shipstation.com/orders/listbytag?` + 
-      `orderStatus=awaiting_shipment&` +
-      `tagId=${freightTagId}&` +
-      `pageSize=500`,
-      {
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    // Fetch ALL orders with the freight tag - paginate through all pages
+    let allFreightOrders = [];
+    let page = 1;
+    let hasMorePages = true;
     
-    if (!response.ok) {
-      throw new Error(`ShipStation API error: ${response.statusText}`);
+    while (hasMorePages) {
+      const response = await fetch(
+        `https://ssapi.shipstation.com/orders/listbytag?` + 
+        `orderStatus=awaiting_shipment&` +
+        `tagId=${freightTagId}&` +
+        `page=${page}&` +
+        `pageSize=500`,
+        {
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`ShipStation API error: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const orders = data.orders || [];
+      allFreightOrders = [...allFreightOrders, ...orders];
+      
+      // Check if there are more pages
+      hasMorePages = data.pages && page < data.pages;
+      page++;
+      
+      // Add a small delay to avoid rate limiting
+      if (hasMorePages) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
     }
     
-    const data = await response.json();
-    const freightOrders = data.orders || [];
+    const freightOrders = allFreightOrders;
     
-    console.log(`Found ${freightOrders.length} orders with freight tag ${freightTagId}`);
     
     const created = [];
     const existing = [];
@@ -45,9 +66,11 @@ export async function GET(request: NextRequest) {
     // Process each freight order
     for (const order of freightOrders) {
       // Check if workspace already exists
-      const existingWorkspace = await db.query.workspaces.findFirst({
-        where: eq(workspaces.orderId, order.orderId),
-      });
+      const [existingWorkspace] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.orderId, order.orderId))
+        .limit(1);
       
       if (existingWorkspace) {
         existing.push({
@@ -57,11 +80,7 @@ export async function GET(request: NextRequest) {
           customerName: order.shipTo?.name || 'Unknown Customer',
           orderDate: order.orderDate,
           orderTotal: order.orderTotal,
-          items: order.items?.filter((item: any) => 
-            !item.name?.toLowerCase().includes('discount') && 
-            item.unitPrice >= 0 && 
-            !item.lineItemKey?.includes('discount')
-          ).map((item: any) => ({
+          items: order.items?.map((item: any) => ({
             name: item.name,
             quantity: item.quantity,
             sku: item.sku,
@@ -73,7 +92,6 @@ export async function GET(request: NextRequest) {
       }
       
       // Create new workspace
-      console.log(`Creating workspace for order ${order.orderNumber}`);
       
       try {
         const workspace = await workspaceService.createWorkspace(
@@ -90,11 +108,7 @@ export async function GET(request: NextRequest) {
           customerName: order.shipTo?.name || 'Unknown Customer',
           orderDate: order.orderDate,
           orderTotal: order.orderTotal,
-          items: order.items?.filter((item: any) => 
-            !item.name?.toLowerCase().includes('discount') && 
-            item.unitPrice >= 0 && 
-            !item.lineItemKey?.includes('discount')
-          ).map((item: any) => ({
+          items: order.items?.map((item: any) => ({
             name: item.name,
             quantity: item.quantity,
             sku: item.sku,
@@ -138,9 +152,12 @@ export async function GET(request: NextRequest) {
       }
     }
     
+    // TODO: Add freight-booked orders integration (temporarily disabled for debugging)
+    const totalOrders = freightOrders.length;
+    
     return NextResponse.json({
       success: true,
-      totalFreightOrders: freightOrders.length,
+      totalFreightOrders: totalOrders,
       newWorkspaces: created.length,
       existingWorkspaces: existing.length,
       created,
