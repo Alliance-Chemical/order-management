@@ -301,33 +301,48 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     }
     
     // Determine container count and type for this specific item
-    let totalContainersForThisItem = quantity; // Default to quantity
-    let containerType = 'container'; // Default type
+    let totalContainersForThisItem = 1; // Default to 1 label for freight items
+    let containerType = 'freight'; // Default type
     const name = itemName.toLowerCase();
     const sku = (item.sku || '').toLowerCase();
     
-    // Smart container logic based on product type
-    // Always create at least 1 label per physical item
+    // LARGE CONTAINERS: 1 label per container (qty = label amount)
+    // Check these FIRST to avoid false matches (e.g., "55 gallon drum" should match drum, not gallon)
     if (name.includes('drum') || sku.includes('drum')) {
       totalContainersForThisItem = quantity; // 1 label per drum
       containerType = 'drum';
     } else if (name.includes('tote') || sku.includes('tote')) {
       totalContainersForThisItem = quantity; // 1 label per tote
       containerType = 'tote';
-    } else if (name.includes('pail') || sku.includes('pail')) {
-      // For pails, assume 1 label per pail for now (can be grouped later)
-      totalContainersForThisItem = quantity; 
-      containerType = 'pail';
+    } else if (name.includes('carboy') || sku.includes('carboy')) {
+      totalContainersForThisItem = quantity; // 1 label per carboy
+      containerType = 'carboy';
+    } else if (name.includes('ibc') || name.includes('intermediate bulk')) {
+      totalContainersForThisItem = quantity; // 1 label per IBC
+      containerType = 'ibc';
+    }
+    // FREIGHT ITEMS: Default to 1 label (warehouse can print more if needed)
+    else if (name.includes('case') || name.includes('pack') || name.includes('kit')) {
+      totalContainersForThisItem = 1; // 1 label for all cases
+      containerType = 'freight-case';
+    } else if (name.includes('pail') && !name.includes('drum')) {
+      // Check pail but exclude "55 gallon drum pail" type descriptions
+      totalContainersForThisItem = 1; // 1 label for all pails
+      containerType = 'freight-pail';
     } else if (name.includes('box') || sku.includes('box')) {
-      // For boxes, assume 1 label per box for now
-      totalContainersForThisItem = quantity;
-      containerType = 'box';
-    } else if (name.includes('gallon') || sku.includes('gallon')) {
-      // For gallon containers
-      totalContainersForThisItem = quantity;
-      containerType = 'container';
+      totalContainersForThisItem = 1; // 1 label for all boxes
+      containerType = 'freight-box';
+    } else if ((name.includes('gallon') || name.includes('gal')) && 
+               !name.includes('drum') && !name.includes('tote') && !name.includes('carboy')) {
+      // Only treat as small gallons if NOT part of a large container description
+      totalContainersForThisItem = 1; // 1 label for all gallons
+      containerType = 'freight-gallon';
+    } else if (quantity > 10) {
+      // Bulk quantities likely freight - default to 1 label
+      totalContainersForThisItem = 1;
+      containerType = 'freight-bulk';
     } else {
-      // Default: 1 label per quantity
+      // Small quantities - might be individual items
       totalContainersForThisItem = quantity;
       containerType = 'container';
     }
@@ -359,7 +374,8 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
           orderNumber, 
           containerType: containerType,
           containerNumber: containerIndexForThisItem, // THIS item's container number (1, 2, 3...)
-          totalContainers: totalContainersForThisItem, // Total containers for THIS specific item only
+          totalContainers: totalContainersForThisItem, // Total labels for THIS specific item
+          originalQuantity: quantity, // IMPORTANT: Show the actual quantity being shipped
           itemId: itemId,
           sku: item.sku,
           itemName: itemName,
