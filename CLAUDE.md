@@ -16,6 +16,51 @@
 
 **REMEMBER**: Your job is to find the BEST solution, not the FIRST solution. Push back FIRST, implement SECOND.
 
+# Label Printing System
+
+## QR Code Generation Logic
+**Location**: `/app/api/workspace/[orderId]/qrcodes/route.ts`
+
+### Container Type Detection (ORDER MATTERS!)
+```javascript
+// LARGE CONTAINERS: 1 label per container (qty = label amount)
+if (name.includes('drum')) → quantity labels (e.g., 5 drums = 5 labels)
+if (name.includes('tote')) → quantity labels
+if (name.includes('carboy')) → quantity labels  
+if (name.includes('ibc')) → quantity labels
+
+// FREIGHT ITEMS: Default to 1 label total
+if (name.includes('case')) → 1 label (e.g., "4 x 5 Gallon Pails" = 1 label)
+if (name.includes('pail')) → 1 label
+if (name.includes('box')) → 1 label
+if (name.includes('gallon') && !drum && !tote) → 1 label
+```
+
+**CRITICAL**: Check order matters! "55 gallon drum" must match 'drum' not 'gallon'
+
+### Discount Code Filtering
+**Always filter out items where**: `(!sku || sku === '') && (name.includes('discount') || name.includes('welcome') || unitPrice < 0)`
+
+Applies to:
+- `/components/desktop/PrintPreparationModal.tsx` - Label printing UI
+- `/app/page.tsx` - Dashboard order items display
+- `/app/api/workspace/[orderId]/qrcodes/regenerate/route.ts` - QR regeneration
+
+## Print Modal Behavior
+**Location**: `/components/desktop/PrintPreparationModal.tsx`
+
+### Custom Label Quantities
+- NO UPPER LIMIT on label quantity input (removed max=10)
+- Warehouse can type any number (100, 200, etc.)
+- Width: `w-20` to accommodate larger numbers
+- State management: Store regenerated QRs in local variable before using (async state issue)
+
+### UI Simplifications
+- NO "split across pallets" text - too assumptive
+- NO "freight item - typically ships on pallet(s)" - not always accurate  
+- NO fulfillment method dialog (pump & fill vs direct resell) - unnecessary
+- Keep it simple: just show item name, SKU, quantity, and label selector
+
 # Warehouse Worker UI Standards
 
 ## Design Philosophy
