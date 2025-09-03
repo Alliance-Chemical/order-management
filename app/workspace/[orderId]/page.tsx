@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
 import ErrorBoundary from '@/components/error-boundary';
+import { buildInspectionItems } from '@/lib/inspection/items';
 
 // Import worker view components
 import EntryScreen from '@/components/workspace/agent-view/EntryScreen';
@@ -223,39 +224,8 @@ export default function WorkspacePage() {
           itemWorkflowType = itemAssignment?.workflowType;
         }
         
-        // Build inspection items based on workflow types
-        let inspectionItems = [];
-        if (workspace.workflowPhase === 'pre_mix') {
-          // Only include source scanning for pump & fill items or if no specific item selected
-          // If a specific direct resell item is selected, skip source steps entirely
-          if (itemWorkflowType !== 'direct_resell') {
-            const hasPumpAndFillItems = sourceAssignments.some((a: any) => a.workflowType === 'pump_and_fill');
-            if (hasPumpAndFillItems || !selectedItem) {
-              inspectionItems.push(
-                { id: 'scan_source_qr', label: 'Scan Source QR', description: 'Scan QR code on source container' },
-                { id: 'verify_source_chemical', label: 'Verify Source Chemical', description: 'Confirm source container matches expected chemical' }
-              );
-            }
-          }
-          
-          // Common inspection steps for all workflows
-          inspectionItems.push(
-            { id: 'container_condition', label: 'Container Condition', description: 'Check for damage, leaks, or contamination' },
-            { id: 'label_verification', label: 'Label Verification', description: 'Verify product labels match order' },
-            { id: 'quantity_check', label: 'Quantity Check', description: 'Confirm correct quantity of containers' },
-            { id: 'scan_destination_qr', label: 'Scan Destination QR', description: 'Scan QR code on each destination container' },
-            { id: 'hazmat_placards', label: 'Hazmat Placards', description: 'Verify proper hazmat labeling if required' },
-            { id: 'seal_integrity', label: 'Seal Integrity', description: 'Check all seals are intact' }
-          );
-        } else {
-          inspectionItems = [
-          { id: 'final_container_check', label: 'Final Container Check', description: 'Verify containers are clean and sealed' },
-          { id: 'shipping_labels', label: 'Shipping Labels', description: 'Confirm all shipping labels are correct' },
-          { id: 'pallet_stability', label: 'Pallet Stability', description: 'Check pallet is stable and properly wrapped' },
-          { id: 'documentation_complete', label: 'Documentation Complete', description: 'All required documents are included' },
-          { id: 'weight_verification', label: 'Weight Verification', description: 'Verify total weight matches order' },
-          ];
-        }
+        // Build inspection items via shared helper
+        const inspectionItems = buildInspectionItems(workspace as any, selectedItem);
 
         // If a specific item was selected, show only that item
         const itemsToInspect = selectedItem ? [selectedItem] : (workspace.shipstationData?.items || []);
