@@ -3,6 +3,9 @@ import { withErrorHandler } from '@/lib/error-handler';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
 import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { db } from '@/lib/db';
+import { activityLog, workspaces } from '@/lib/db/schema/qr-workspace';
+import { and, eq, sql } from 'drizzle-orm';
 
 const workspaceService = new WorkspaceService();
 
@@ -13,10 +16,10 @@ export const POST = withErrorHandler(async (
   const { orderId: orderIdStr, phase } = await params;
   const orderId = asBigInt(orderIdStr);
   const body = await request.json();
-  const { result, data, userId = 'system' } = body;
+  const { result, data, userId = 'system', idempotencyKey } = body;
   
-  // Validate result
-  if (!['pass', 'fail'].includes(result)) {
+  // Validate result (support pass | fail | hold)
+  if (!['pass', 'fail', 'hold'].includes(result)) {
     return NextResponse.json({ error: 'Invalid result' }, { status: 400 });
   }
   
@@ -24,6 +27,20 @@ export const POST = withErrorHandler(async (
   const workspace = await workspaceService.repository.findByOrderId(Number(orderId));
   if (!workspace) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
+  }
+
+  // Idempotency: reject duplicate submissions with same key
+  if (idempotencyKey) {
+    const dup = await db.query.activityLog.findFirst({
+      where: and(
+        eq(activityLog.workspaceId, workspace.id),
+        // metadata->>'idempotencyKey' = key
+        sql`${activityLog.metadata} ->> 'idempotencyKey' = ${idempotencyKey}`
+      ),
+    });
+    if (dup) {
+      return NextResponse.json({ code: 'DUPLICATE', message: 'Duplicate submission' }, { status: 409 });
+    }
   }
   
   // Update module state
@@ -35,9 +52,15 @@ export const POST = withErrorHandler(async (
     data 
   };
   
+  // Update module state and phase completion timestamp
+  const phaseCompletedAt = (workspace.phaseCompletedAt as any) || {};
+  const nowIso = new Date().toISOString();
+  phaseCompletedAt[phase] = nowIso;
+
   await workspaceService.repository.update(workspace.id, {
     moduleStates,
-    updatedBy: userId
+    updatedBy: userId,
+    phaseCompletedAt,
   });
   
   // Log inspection activity
@@ -45,12 +68,12 @@ export const POST = withErrorHandler(async (
     workspaceId: workspace.id,
     activityType: `inspection_${phase}_${result}`,
     performedBy: userId,
-    metadata: { phase, result, data }
+    metadata: { phase, result, data, idempotencyKey }
   });
   
   // Determine target phase based on inspection result
   let targetPhase = workspace.workflowPhase; // default to current
-  let ensureResult = { success: true, finalTags: [], finalPhase: workspace.workflowPhase };
+  let ensureResult = { success: true as boolean, finalTags: [] as any[], finalPhase: workspace.workflowPhase };
   
   if (result === 'pass') {
     // Only transition phase on PASS results
@@ -78,8 +101,15 @@ export const POST = withErrorHandler(async (
     // e.g., pre_mix_inspection pass could transition to next phase
   }
   
-  // On FAIL, phase stays the same (no tag changes)
+  // On FAIL or HOLD, phase stays the same (no tag changes)
   
+  // Persist final phase if changed by ensurePhase
+  if (ensureResult.success && ensureResult.finalPhase && ensureResult.finalPhase !== workspace.workflowPhase) {
+    await workspaceService.repository.update(workspace.id, {
+      workflowPhase: ensureResult.finalPhase,
+    });
+  }
+
   return NextResponse.json(
     jsonStringifyWithBigInt({
       success: true,

@@ -38,6 +38,10 @@
     "test:all": "npm run test:run && npm run test:e2e",
     "rag:extract": "node scripts/extract-hmt-from-cfr.js",
     "rag:build": "node scripts/build-hmt-index.js",
+    "rag:migrate": "tsx scripts/migrate-hazmat-to-rag.ts",
+    "rag:embeddings": "tsx scripts/generate-rag-embeddings.ts",
+    "rag:test-comparison": "tsx scripts/test-rag-comparison.ts",
+    "rag:setup-complete": "npm run rag:migrate && npm run rag:embeddings",
     "cfr:extract-all": "node scripts/extract-full-cfr.js",
     "erg:extract": "node scripts/extract-erg-guide.js",
     "db:export-products": "node scripts/export-product-data.js",
@@ -50,7 +54,10 @@
     "reclassify:products": "node scripts/reclassify-products.js",
     "rag:search-test": "node scripts/test-rag-search.js",
     "rag:test": "node scripts/test-rag-search.js",
-    "test:advanced-rag": "node scripts/test-advanced-rag.js"
+    "test:advanced-rag": "node scripts/test-advanced-rag.js",
+    "rag:db:setup": "npx tsx scripts/setup-rag-database.ts",
+    "rag:db:migrate": "npx tsx scripts/migrate-rag-to-db.ts",
+    "rag:db:test": "npx tsx scripts/test-rag-db.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.864.0",

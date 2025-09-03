@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { qrCodes } from '@/lib/db/schema/qr-workspace';
-import { QRGenerator } from '@/lib/services/qr/generator';
+import { QRGenerator } from '@/src/services/qr/qrGenerator';
 import { eq } from 'drizzle-orm';
 
 const qrGenerator = new QRGenerator();

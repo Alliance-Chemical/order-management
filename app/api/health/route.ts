@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { sql } from 'drizzle-orm';
+import { getEdgeSql } from '@/lib/db/neon-edge';
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const checks = {
@@ -22,24 +24,25 @@ export async function GET(request: NextRequest) {
   try {
     // Check database
     const startDb = Date.now();
-    const dbResult = await db.execute(sql`SELECT 1`);
+    const sql = getEdgeSql();
+    const dbResult = await sql`SELECT 1 as ok`;
     checks.services.database = {
       status: 'healthy',
       latency: Date.now() - startDb
     };
-    
-    // Get workspace stats
-    const stats = await db.execute(sql`
+
+    // Get workspace stats (last 7 days)
+    const stats = await sql`
       SELECT 
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
         COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending
       FROM qr_workspace.workspaces
       WHERE created_at > NOW() - INTERVAL '7 days'
-    `);
-    
-    if (stats.rows.length > 0) {
-      checks.stats.activeWorkspaces = parseInt(stats.rows[0].active as string);
-      checks.stats.pendingInspections = parseInt(stats.rows[0].pending as string);
+    ` as unknown as Array<{ active: string; pending: string }>;
+
+    if (Array.isArray(stats) && stats.length > 0) {
+      checks.stats.activeWorkspaces = parseInt(stats[0].active as any);
+      checks.stats.pendingInspections = parseInt(stats[0].pending as any);
     }
   } catch (error) {
     checks.services.database.status = 'unhealthy';

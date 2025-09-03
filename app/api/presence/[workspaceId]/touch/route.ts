@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/lib/error-handler';
 import { touchPresence } from '@/lib/services/presence';
-import { WorkspaceRepository } from '@/lib/services/workspace/repository';
+import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
+import { activityLog } from '@/lib/db/schema/qr-workspace';
 
-const repository = new WorkspaceRepository();
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 export const POST = withErrorHandler(async (
   request: NextRequest,
@@ -27,13 +29,15 @@ export const POST = withErrorHandler(async (
     activity
   });
   
-  // Log activity
-  await repository.logActivity({
+  // Log activity (Edge DB)
+  const db = getEdgeDb();
+  await withEdgeRetry(() => db.insert(activityLog).values({
     workspaceId,
     activityType: 'presence_updated',
     performedBy: userId,
-    metadata: { activity }
-  });
+    performedAt: new Date(),
+    metadata: { activity } as any,
+  }));
   
   return NextResponse.json({ success: true });
 });

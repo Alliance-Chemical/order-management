@@ -7,6 +7,7 @@ import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as qrSchema from '../../../lib/db/schema/qr-workspace';
 import * as freightSchema from '../../../lib/db/schema/freight';
+import * as ragSchema from '../../../lib/db/schema/rag-embeddings';
 
 const connectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
 
@@ -34,7 +35,7 @@ function initializeDb() {
       fullResults: !isEdge, // Smaller payloads for Edge
     });
     
-    const schema = { ...qrSchema, ...freightSchema };
+    const schema = { ...qrSchema, ...freightSchema, ...ragSchema };
     _db = drizzle(_sql, { schema });
   }
   

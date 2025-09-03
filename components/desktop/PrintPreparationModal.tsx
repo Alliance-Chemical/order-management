@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { XMarkIcon, PrinterIcon, DocumentCheckIcon } from '@heroicons/react/24/solid';
+import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import QRCodeSummary from './print-preparation/QRCodeSummary';
+import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 
 interface FreightOrder {
   orderId: number;
@@ -45,6 +47,7 @@ export default function PrintPreparationModal({
   
   // Track custom label quantities per item
   const [labelQuantities, setLabelQuantities] = useState<Record<string, number>>({});
+  const [quantityErrors, setQuantityErrors] = useState<Record<string, string>>({});
   
 
   useEffect(() => {
@@ -95,15 +98,7 @@ export default function PrintPreparationModal({
     // Initialize label quantities based on existing QR codes
     if (order.items) {
       const quantities: Record<string, number> = {};
-      order.items
-        .filter((item: any) => {
-          // Filter out discount codes and items with no SKU
-          const hasNoSku = !item.sku || item.sku === '';
-          const isDiscount = item.name?.toLowerCase().includes('discount') || 
-                           item.name?.toLowerCase().includes('welcome') ||
-                           item.unitPrice < 0;
-          return !(hasNoSku && isDiscount);
-        })
+      filterOutDiscounts(order.items)
         .forEach(item => {
           // Count how many QR codes exist for this item
           const itemQRs = codes.filter(qr => 
@@ -116,11 +111,22 @@ export default function PrintPreparationModal({
     }
   };
   
-  const updateLabelQuantity = (sku: string, quantity: string) => {
-    const qty = parseInt(quantity) || 1;
+  const updateLabelQuantity = (sku: string, value: string) => {
+    // Validation: allow any positive integer; show error on 0/blank
+    if (value.trim() === '') {
+      setQuantityErrors((prev) => ({ ...prev, [sku]: 'Enter a positive number' }));
+      setLabelQuantities((prev) => ({ ...prev, [sku]: prev[sku] }));
+      return;
+    }
+    const qty = Number(value);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setQuantityErrors((prev) => ({ ...prev, [sku]: 'Quantity must be a positive integer' }));
+      return;
+    }
+    setQuantityErrors((prev) => ({ ...prev, [sku]: '' }));
     setLabelQuantities(prev => ({
       ...prev,
-      [sku]: Math.max(1, qty) // No upper limit, minimum 1
+      [sku]: qty
     }));
   };
 
@@ -130,6 +136,7 @@ export default function PrintPreparationModal({
   };
 
   const handleConfirmPrint = async () => {
+    try { warehouseFeedback.buttonPress(); } catch {}
     setPrinting(true);
     
     try {
@@ -189,11 +196,15 @@ export default function PrintPreparationModal({
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
+      // Haptic + audio success feedback
+      try { warehouseFeedback.success(); } catch {}
+
       // Show success message
       alert(`Labels printed successfully for Order ${order.orderNumber}`);
       onPrintComplete();
     } catch (error) {
       console.error('Print error:', error);
+      try { warehouseFeedback.error(); } catch {}
       alert('Failed to print labels');
     } finally {
       setPrinting(false);
@@ -238,15 +249,7 @@ export default function PrintPreparationModal({
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">Order Items</h3>
                     <div className="space-y-3">
-                      {order.items
-                        .filter((item: any) => {
-                          // Filter out discount codes and items with no SKU
-                          const hasNoSku = !item.sku || item.sku === '';
-                          const isDiscount = item.name?.toLowerCase().includes('discount') || 
-                                           item.name?.toLowerCase().includes('welcome') ||
-                                           item.unitPrice < 0;
-                          return !(hasNoSku && isDiscount);
-                        })
+                      {filterOutDiscounts(order.items)
                         .map((item: any, index: number) => (
                           <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                             <div className="flex justify-between items-start">
@@ -262,13 +265,17 @@ export default function PrintPreparationModal({
                                 </label>
                                 <input
                                   type="number"
-                                  min="1"
                                   value={labelQuantities[item.sku] || 1}
                                   onChange={(e) => updateLabelQuantity(item.sku, e.target.value)}
                                   className="w-20 px-2 py-1 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
                               </div>
                             </div>
+                            {quantityErrors[item.sku] && (
+                              <div className="text-xs text-red-600 mt-2">
+                                {quantityErrors[item.sku]}
+                              </div>
+                            )}
                             {labelQuantities[item.sku] > 1 && (
                               <div className="text-xs text-gray-500 mt-2">
                                 Will print {labelQuantities[item.sku]} labels for this item
@@ -286,16 +293,20 @@ export default function PrintPreparationModal({
           {/* Footer */}
           <div className="px-6 py-4 border-t bg-gray-50 flex justify-end space-x-3">
             <button
-              onClick={onClose}
+              onClick={() => { try { warehouseFeedback.buttonPress(); } catch {}; onClose(); }}
               className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handlePrintAll}
-              disabled={printing || qrCodes.length === 0}
+              disabled={
+                printing ||
+                qrCodes.length === 0 ||
+                Object.values(quantityErrors).some((e) => e && e.length > 0)
+              }
               className={`inline-flex items-center px-6 py-2 rounded-lg font-semibold transition-colors ${
-                !printing && qrCodes.length > 0
+                !printing && qrCodes.length > 0 && !Object.values(quantityErrors).some((e) => e && e.length > 0)
                   ? 'bg-green-600 hover:bg-green-700 text-white'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}

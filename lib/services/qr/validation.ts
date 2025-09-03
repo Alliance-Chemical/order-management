@@ -91,10 +91,31 @@ export class QRValidationService {
 
       if (!response.ok) {
         const error = await response.json();
+        const code = error.code as string | undefined;
+        // Map standardized codes to friendly messages
+        const messageMap: Record<string, { error: string; suggestion?: string }> = {
+          INVALID_FORMAT: {
+            error: 'Code format is invalid',
+            suggestion: 'Enter a valid short code (e.g., 8XOEZD) and try again',
+          },
+          NOT_FOUND: {
+            error: 'Code not recognized',
+            suggestion: 'Check the code and try again, or use manual lookup by order number',
+          },
+          WRONG_ENV: {
+            error: 'Code from different environment',
+            suggestion: 'Open the correct site (staging vs production) and try again',
+          },
+          ALREADY_CONSUMED: {
+            error: 'This code has already been used',
+            suggestion: 'Proceed to the next item or use supervisor override if appropriate',
+          },
+        };
+        const mapped = code && messageMap[code];
         return {
           valid: false,
-          error: error.message || 'Short code not found',
-          suggestion: 'Please check the code and try again'
+          error: (mapped?.error || error.message || 'Validation failed'),
+          suggestion: mapped?.suggestion || 'Please try again or enter the code manually',
         };
       }
 

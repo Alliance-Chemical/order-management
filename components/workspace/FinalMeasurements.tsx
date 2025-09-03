@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ScaleIcon, CubeIcon, QrCodeIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
-import { QRScanner } from '@/components/qr/QRScanner';
+import { QRScanner } from '@/components/qr/QRScannerAdapter';
 
 interface FinalMeasurementsProps {
   orderId: string;

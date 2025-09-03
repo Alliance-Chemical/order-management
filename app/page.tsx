@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PrinterIcon, ClipboardDocumentCheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ArrowRightIcon } from '@heroicons/react/24/solid';
 import PrintPreparationModal from '@/components/desktop/PrintPreparationModal';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
+import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 
 interface OrderItem {
   name: string;
@@ -39,6 +40,21 @@ export default function WorkQueueDashboard() {
     setLoading(true);
     try {
       const response = await fetch('/api/freight-orders/poll');
+      
+      // Check if response is ok and is JSON
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', response.status, errorText);
+        return;
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response received:', text);
+        return;
+      }
+      
       const data = await response.json();
       
       if (data.success) {
@@ -294,13 +310,7 @@ export default function WorkQueueDashboard() {
                           <td colSpan={7} className="px-6 py-4 bg-gray-50">
                             <div className="ml-8">
                               {(() => {
-                                const physicalItems = order.items.filter((item: any) => {
-                                  const hasNoSku = !item.sku || item.sku === '';
-                                  const isDiscount = item.name?.toLowerCase().includes('discount') || 
-                                                   item.name?.toLowerCase().includes('welcome') ||
-                                                   item.unitPrice < 0;
-                                  return !(hasNoSku && isDiscount);
-                                });
+                                const physicalItems = filterOutDiscounts(order.items);
                                 return (
                                   <>
                                     <h4 className="text-sm font-semibold text-gray-700 mb-2">Order Items ({physicalItems.length})</h4>

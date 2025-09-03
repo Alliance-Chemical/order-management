@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
+import { useRouter } from 'next/navigation';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -14,6 +15,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [error, setError] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     let mounted = true;
@@ -126,10 +128,46 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
   }, [onScan]);
 
   const handleManualSubmit = () => {
-    if (manualCode.trim()) {
+    const code = manualCode.trim().toUpperCase();
+    if (!code) return;
+    // If numeric → treat as Order # lookup
+    if (/^\d{3,}$/.test(code)) {
       warehouseFeedback.success();
-      onScan(manualCode.trim());
+      router.push(`/workspace/${code}`);
+      return;
     }
+    // Short code path → validate via API
+    if (/^[A-Z0-9]{4,12}$/.test(code)) {
+      fetch('/api/qr/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shortCode: code })
+      }).then(async (res) => {
+        if (res.ok) {
+          const rec = await res.json();
+          const orderId = rec.orderId || rec.encodedData?.orderId;
+          if (orderId) {
+            warehouseFeedback.success();
+            router.push(`/workspace/${orderId}`);
+          } else {
+            setError('Validated, but missing order link. Use workspace search.');
+          }
+        } else {
+          const err = await res.json().catch(() => ({ code: 'UNKNOWN', message: 'Validation failed' }));
+          const map: Record<string, string> = {
+            INVALID_FORMAT: 'Code format looks off. Check and try again.',
+            NOT_FOUND: 'We could not find that code. Double-check and retry.',
+            WRONG_ENV: 'This code belongs to another environment. Open the correct site.',
+            ALREADY_CONSUMED: 'This code was already used. Move to the next item.',
+          };
+          setError(map[err.code] || err.message || 'Validation failed. Try again.');
+        }
+      }).catch(() => setError('Network error validating code. Try again.'));
+      return;
+    }
+    // Fallback: pass through to parent
+    warehouseFeedback.success();
+    onScan(code);
   };
 
   // Inject CSS for cleaner mobile UI with better old Android support
@@ -220,17 +258,25 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  warehouseFeedback.buttonPress();
-                  onClose();
-                }}
-                className="min-h-touch-sm min-w-[60px] p-4 bg-red-600 hover:bg-red-700 rounded-warehouse transition-all active:scale-95 shadow-warehouse"
-              >
-                <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={4} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => document.getElementById('manual-lookup-input')?.focus()}
+                  className="min-h-touch-sm px-4 py-2 bg-yellow-500 hover:bg-yellow-600 rounded-warehouse transition-all shadow-warehouse text-black font-extrabold"
+                >
+                  Manual lookup
+                </button>
+                <button
+                  onClick={() => {
+                    warehouseFeedback.buttonPress();
+                    onClose();
+                  }}
+                  className="min-h-touch-sm min-w-[60px] p-4 bg-red-600 hover:bg-red-700 rounded-warehouse transition-all active:scale-95 shadow-warehouse"
+                >
+                  <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={4} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -266,7 +312,20 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
                     </svg>
                   </div>
                   <p className="text-warehouse-2xl font-black mb-2">{error}</p>
-                  <p className="text-warehouse-lg font-bold">USE MANUAL ENTRY BELOW</p>
+                  <div className="flex items-center justify-center gap-3 mt-4">
+                    <button
+                      onClick={() => setError('')}
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-warehouse"
+                    >
+                      Try Again
+                    </button>
+                    <button
+                      onClick={() => document.getElementById('manual-lookup-input')?.focus()}
+                      className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-extrabold rounded-warehouse"
+                    >
+                      Manual Lookup
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -291,6 +350,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
                 onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
                 placeholder="ENTER CODE"
+                id="manual-lookup-input"
                 className="flex-1 min-h-touch-base px-8 py-6 bg-white border-4 border-warehouse-border-heavy rounded-warehouse 
                   text-warehouse-2xl font-black uppercase text-center tracking-wider
                   focus:ring-4 focus:ring-warehouse-info focus:border-warehouse-info focus:outline-none

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { QRGenerator } from '@/lib/services/qr/generator';
-import { WorkspaceRepository } from '@/lib/services/workspace/repository';
+import { QRGenerator } from '@/src/services/qr/qrGenerator';
+import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
+import { kv } from '@/lib/kv';
+import { workspaces, activityLog } from '@/lib/db/schema/qr-workspace';
+import { eq } from 'drizzle-orm';
+
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
 const qrGenerator = new QRGenerator();
-const repository = new WorkspaceRepository();
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,22 +36,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid QR code' }, { status: 400 });
     }
 
-    // Find workspace
-    const workspace = await repository.findByOrderId(qrData.orderId);
+    // Find workspace (KV cache for 60s)
+    const db = getEdgeDb();
+    const cacheKey = `ws:byOrderId:${qrData.orderId}`;
+    let workspace = await kv.get(cacheKey);
+    if (!workspace) {
+      const rows = await withEdgeRetry(() => db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.orderId, Number(qrData.orderId)))
+        .limit(1)
+      );
+      workspace = rows?.[0] || null;
+      if (workspace) {
+        await kv.set(cacheKey, workspace, { ex: 60 });
+      }
+    }
     if (!workspace) {
       return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
     }
 
     // Log scan activity
-    await repository.logActivity({
+    await withEdgeRetry(() => db.insert(activityLog).values({
       workspaceId: workspace.id,
       activityType: 'qr_scanned',
       performedBy: userId,
+      performedAt: new Date(),
       metadata: {
-        qrType: qrData.type,
-        containerNumber: qrData.containerNumber,
-      },
-    });
+        qrType: (qrData as any).type,
+        containerNumber: (qrData as any).containerNumber,
+      } as any,
+    }));
 
     return NextResponse.json({
       workspace,

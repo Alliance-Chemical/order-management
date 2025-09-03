@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEdgeSql } from '@/lib/db/neon-edge';
 import { classifyWithRAG } from '@/lib/hazmat/classify';
+import { classifyWithEnhancedRAG } from '@/lib/hazmat/classify-enhanced';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// Feature flag to enable database RAG
+const USE_DATABASE_RAG = process.env.USE_DATABASE_RAG === 'true' || true; // Default to true
 
 interface ClassificationRequest {
   sku: string;
@@ -57,8 +61,21 @@ export async function POST(request: NextRequest) {
       console.warn('Database lookup failed, falling back to RAG:', dbError);
     }
 
-    // If no existing classification, use RAG retrieval over CFR HMT + ERG/historical
-    const suggestion = await classifyWithRAG(sku, productName);
+    // Use enhanced RAG with database if enabled, otherwise fallback to JSON
+    let suggestion;
+    if (USE_DATABASE_RAG) {
+      try {
+        suggestion = await classifyWithEnhancedRAG(sku, productName, {
+          preferDatabase: true,
+          enableTelemetry: true
+        });
+      } catch (error) {
+        console.error('Enhanced RAG failed, falling back to JSON:', error);
+        suggestion = await classifyWithRAG(sku, productName);
+      }
+    } else {
+      suggestion = await classifyWithRAG(sku, productName);
+    }
 
     return NextResponse.json({
       success: true,
@@ -70,7 +87,10 @@ export async function POST(request: NextRequest) {
       vessel_stowage: (suggestion as any).vessel_stowage,
       special_provisions: (suggestion as any).special_provisions,
       sku,
-      productName
+      productName,
+      // Include telemetry if available
+      searchMethod: (suggestion as any).searchMethod,
+      searchTimeMs: (suggestion as any).searchTimeMs
     });
 
   } catch (error) {

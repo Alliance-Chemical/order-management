@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     if (!shortCode) {
       return NextResponse.json(
-        { message: 'Short code is required' },
+        { code: 'INVALID_FORMAT', message: 'Short code is required' },
         { status: 400 }
       );
     }
@@ -31,15 +31,17 @@ export async function POST(request: NextRequest) {
       conditions.push(eq(qrCodes.orderId, Number(orderId)));
     }
 
-    const qrRecord = await db
+    const qrRecord = await withEdgeRetry(() => db
       .select()
       .from(qrCodes)
       .where(and(...conditions))
-      .limit(1);
+      .limit(1)
+    );
 
     if (!qrRecord || qrRecord.length === 0) {
       return NextResponse.json(
         { 
+          code: 'NOT_FOUND',
           message: orderId 
             ? `Code ${normalizedCode} not found for this order` 
             : `Code ${normalizedCode} not found`
@@ -48,21 +50,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const record = qrRecord[0];
+
+    // Environment mismatch check (staging vs prod)
+    try {
+      const requestHost = new URL(request.url).host;
+      if (record.qrUrl) {
+        const qrHost = new URL(record.qrUrl).host;
+        const localHosts = ['localhost:3000', '127.0.0.1:3000'];
+        if (qrHost && requestHost && qrHost !== requestHost && !localHosts.includes(qrHost) && !localHosts.includes(requestHost)) {
+          return NextResponse.json(
+            { code: 'WRONG_ENV', message: `This code was issued for ${qrHost}, but you are validating on ${requestHost}.` },
+            { status: 409 }
+          );
+        }
+      }
+    } catch {}
+
+    // Duplicate/consumed check
+    if ((record.scanCount ?? 0) > 0) {
+      return NextResponse.json(
+        { code: 'ALREADY_CONSUMED', message: 'This code has already been used' },
+        { status: 409 }
+      );
+    }
+
     // Update scan count
-    await db
+    await withEdgeRetry(() => db
       .update(qrCodes)
       .set({
-        scanCount: (qrRecord[0].scanCount || 0) + 1,
+        scanCount: (record.scanCount || 0) + 1,
         lastScannedAt: new Date(),
         lastScannedBy: 'manual_entry'
       })
-      .where(eq(qrCodes.id, qrRecord[0].id));
+      .where(eq(qrCodes.id, record.id))
+    );
 
-    return NextResponse.json(qrRecord[0]);
+    return NextResponse.json(record);
   } catch (error) {
     console.error('Error validating short code:', error);
     return NextResponse.json(
-      { message: 'Failed to validate code' },
+      { code: 'SERVER_ERROR', message: 'Failed to validate code' },
       { status: 500 }
     );
   }

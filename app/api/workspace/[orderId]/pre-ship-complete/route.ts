@@ -45,7 +45,8 @@ export async function POST(
     }, []);
 
     // Upload photos to S3 if they exist
-    const uploadedPhotos = [];
+    const uploadedPhotos = [] as any[];
+    const failedUploads: Array<{ name?: string; reason: string }> = [];
     for (const photo of photos) {
       if (photo.base64) {
         try {
@@ -76,10 +77,18 @@ export async function POST(
             lotNumbers: photo.lotNumbers || [],
             capturedAt: new Date().toISOString()
           });
-        } catch (uploadError) {
+        } catch (uploadError: any) {
           console.error('Failed to upload photo:', uploadError);
+          failedUploads.push({ name: photo.name, reason: uploadError?.message || 'Upload failed' });
         }
       }
+    }
+
+    if (failedUploads.length > 0) {
+      return NextResponse.json(
+        { code: 'UPLOAD_FAILED', message: 'One or more photos failed to upload', failed: failedUploads },
+        { status: 502 }
+      );
     }
 
     // Update workspace with pre-ship inspection data

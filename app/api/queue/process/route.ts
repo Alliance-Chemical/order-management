@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { kvQueue, withLock } from '@/lib/queue/kv-queue';
 import { JobSchemas } from '@/lib/queue/schemas';
 import { WorkspaceService } from '@/lib/services/workspace/service';
-import { QRGenerator } from '@/lib/services/qr/generator';
+import { QRGenerator } from '@/src/services/qr/qrGenerator';
 
 export const runtime = 'nodejs'; // Required for database access
 

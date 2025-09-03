@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces, qrCodes } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
+import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 
 export async function POST(
   request: NextRequest,
@@ -60,12 +61,7 @@ export async function POST(
 
     // Process items from shipstationData
     if (shipstationData?.items && Array.isArray(shipstationData.items)) {
-      const items = shipstationData.items.filter((item: any) => {
-        const hasNoSku = !item.sku || item.sku === '';
-        const isDiscount = item.name?.toLowerCase().includes('discount') || 
-                         item.unitPrice < 0;
-        return !(hasNoSku && isDiscount);
-      });
+      const items = filterOutDiscounts(shipstationData.items);
 
       for (const item of items) {
         const itemId = item.orderItemId || item.sku || `item-${items.indexOf(item)}`;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import IssueModal from './IssueModal';
-import { QRScanner } from '@/components/qr/QRScanner';
+import { QRScanner } from '@/components/qr/QRScannerAdapter';
 import MultiContainerInspection from './MultiContainerInspection';
 import { InspectionScreenProps, InspectionItem } from '@/lib/types/agent-view';
 import { warehouseFeedback, visualFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
@@ -22,11 +22,13 @@ export default function InspectionScreen({
   const [results, setResults] = useState<Record<string, 'pass' | 'fail'>>({});
   const [issueModalOpen, setIssueModalOpen] = useState(false);
   const [currentFailedItem, setCurrentFailedItem] = useState<InspectionItem | null>(null);
+  const [isHoldMode, setIsHoldMode] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [showScanner, setShowScanner] = useState(false);
   const [scannedQRs, setScannedQRs] = useState<Record<string, string>>({});
   const [useMultiContainerFlow, setUseMultiContainerFlow] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const currentItem = items[currentIndex];
   const progress = ((currentIndex + 1) / items.length) * 100;
@@ -121,8 +123,18 @@ export default function InspectionScreen({
     if (currentIndex < items.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
+      // Before completing, enforce notes for any Fail/Hold
+      const missingNoteFor: string[] = [];
+      Object.entries(newResults).forEach(([k, v]) => {
+        if ((v === 'fail' as const) && !notes[k]) missingNoteFor.push(k);
+      });
+      if (missingNoteFor.length > 0) {
+        setSubmitError('Note required');
+        return;
+      }
       // Complete the inspection with celebration
       warehouseFeedback.complete();
+      setSubmitError(null);
       onComplete({
         checklist: newResults,
         notes: Object.values(notes).join('\n'),
@@ -135,12 +147,21 @@ export default function InspectionScreen({
   const handleFail = () => {
     warehouseFeedback.error();
     setCurrentFailedItem(currentItem);
+    setIsHoldMode(false);
+    setIssueModalOpen(true);
+  };
+
+  const handleHold = () => {
+    warehouseFeedback.warning();
+    setCurrentFailedItem(currentItem);
+    setIsHoldMode(true);
     setIssueModalOpen(true);
   };
 
   const handleIssueReported = (reason: string) => {
     const newResults = { ...results, [currentItem.id]: 'fail' as const };
-    const newNotes = { ...notes, [currentItem.id]: reason };
+    const noteText = isHoldMode ? `HOLD: ${reason}` : reason;
+    const newNotes = { ...notes, [currentItem.id]: noteText };
     
     setResults(newResults);
     setNotes(newNotes);
@@ -595,6 +616,23 @@ export default function InspectionScreen({
                   <span className="text-warehouse-2xl">{formatWarehouseText('FAIL', 'action')}</span>
                   <span className="text-warehouse-base opacity-90">FOUND ISSUE</span>
                 </button>
+                
+                <button
+                  onClick={handleHold}
+                  className="min-h-touch-lg flex flex-col items-center justify-center gap-4 bg-yellow-500 text-black rounded-warehouse shadow-warehouse hover:bg-yellow-600"
+                >
+                  <div className="warehouse-icon-xl bg-white bg-opacity-30 rounded-full p-4">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={4}>
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        d="M12 8v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" 
+                      />
+                    </svg>
+                  </div>
+                  <span className="text-warehouse-2xl">{formatWarehouseText('HOLD', 'action')}</span>
+                  <span className="text-warehouse-base opacity-90">REQUIRES REVIEW</span>
+                </button>
               </div>
             );
           })()}
@@ -621,6 +659,11 @@ export default function InspectionScreen({
                   })}
                 </div>
               </div>
+            </div>
+          )}
+          {submitError && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-lg text-center font-semibold">
+              {submitError}
             </div>
           )}
         </div>

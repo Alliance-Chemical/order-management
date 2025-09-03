@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { QRGenerator } from '@/lib/services/qr/generator';
+import { QRGenerator } from '@/src/services/qr/qrGenerator';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 
 const qrGenerator = new QRGenerator();
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       
       console.log(`[PRINT API] Updating print count for QR: ${qrRecord.id}`);
       // Update print count
-      await repository.updateQRPrintCount(qrRecord.id, 'system');
+      await repository.updateQRPrintCount(qrRecord.id, 'system', { labelSize });
     }
 
     // Generate HTML page for printing with full data and fulfillment method
@@ -136,11 +136,20 @@ export async function POST(request: NextRequest) {
     console.log(`[PRINT API] PDF generated successfully. Size: ${pdfBuffer.length} bytes`);
     
     // Return PDF response
+    // Derive a meaningful file name using order number if available
+    let fileOrderNumber: string | undefined;
+    if (labelsData.length > 0) {
+      const first = labelsData[0].record;
+      fileOrderNumber = first?.orderNumber || first?.encodedData?.orderNumber;
+    }
+
+    const filename = `labels-${fileOrderNumber || Date.now()}.pdf`;
+
     return new NextResponse(pdfBuffer as any, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="qr-labels-${Date.now()}.pdf"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
   } catch (error) {

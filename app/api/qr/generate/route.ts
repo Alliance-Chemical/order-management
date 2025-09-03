@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { QRGenerator } from '@/lib/services/qr/generator';
+import { QRGenerator } from '@/src/services/qr/qrGenerator';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 
 const qrGenerator = new QRGenerator();

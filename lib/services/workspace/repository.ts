@@ -76,13 +76,14 @@ export class WorkspaceRepository {
     return await db.query.qrCodes.findFirst({ where: eq(qrCodes.shortCode, shortCode) });
   }
 
-  async updateQRPrintCount(id: string, userId: string) {
+  async updateQRPrintCount(id: string, userId: string, opts?: { labelSize?: string }) {
     const [updated] = await db
       .update(qrCodes)
       .set({
         printCount: sql`${qrCodes.printCount} + 1`,
         printedAt: new Date(),
         printedBy: userId,
+        ...(opts?.labelSize ? { labelSize: opts.labelSize } : {}),
       })
       .where(eq(qrCodes.id, id))
       .returning();

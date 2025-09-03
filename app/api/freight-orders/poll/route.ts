@@ -40,7 +40,17 @@ export async function GET(request: NextRequest) {
       );
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`ShipStation API error: ${response.status} - ${errorText}`);
         throw new Error(`ShipStation API error: ${response.statusText}`);
+      }
+      
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('ShipStation returned non-JSON response:', text);
+        throw new Error('ShipStation API returned non-JSON response');
       }
       
       const data = await response.json();

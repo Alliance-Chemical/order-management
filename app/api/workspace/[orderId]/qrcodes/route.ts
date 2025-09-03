@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { workspaces, qrCodes } from '@/lib/db/schema/qr-workspace';
 import { freightOrders } from '@/lib/db/schema/freight';
 import { eq, sql } from 'drizzle-orm';
+import { filterOutDiscounts } from '@/lib/services/orders/normalize';
+import { detectContainer } from '@/lib/services/qr/container-detect';
 
 export async function GET(
   request: NextRequest,
@@ -207,19 +209,8 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
       console.log(`[QR] Item ${index + 1}: SKU="${item.sku || 'N/A'}", Name="${item.name}", Price=${item.unitPrice}, Qty=${item.quantity}`);
     });
     
-    // Filter out discount items
-    items = shipstationData.items.filter((item: any) => {
-      const hasNoSku = !item.sku || item.sku === '';
-      const isDiscount = item.name?.toLowerCase().includes('discount') || 
-                       item.unitPrice < 0 || 
-                       item.lineItemKey?.includes('discount');
-      if (hasNoSku && isDiscount) {
-        console.log(`[QR] ✗ Filtering out discount item: ${item.name} (no SKU + discount indicator)`);
-        return false;
-      }
-      console.log(`[QR] ✓ Including physical item: ${item.name} (SKU: ${item.sku || 'N/A'})`);
-      return true;
-    });
+    // Filter out discount items (centralized)
+    items = filterOutDiscounts(shipstationData.items);
     console.log(`[QR] Result: ${items.length} physical items from workspace (after filtering ${shipstationData.items.length - items.length} discounts)`);
   } else {
     // If no items in workspace, fetch from ShipStation
@@ -246,19 +237,8 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
           console.log(`[QR] Item ${index + 1}: SKU="${item.sku || 'N/A'}", Name="${item.name}", Price=${item.unitPrice}, Qty=${item.quantity}`);
         });
         
-        // Filter out discount items
-        items = (orderData.items || []).filter((item: any) => {
-          const hasNoSku = !item.sku || item.sku === '';
-          const isDiscount = item.name?.toLowerCase().includes('discount') || 
-                           item.unitPrice < 0 || 
-                           item.lineItemKey?.includes('discount');
-          if (hasNoSku && isDiscount) {
-            console.log(`[QR] ✗ Filtering out discount item: ${item.name} (no SKU + discount indicator)`);
-            return false;
-          }
-          console.log(`[QR] ✓ Including physical item: ${item.name} (SKU: ${item.sku || 'N/A'})`);
-          return true;
-        });
+        // Filter out discount items (centralized)
+        items = filterOutDiscounts(orderData.items || []);
         console.log(`[QR] Result: ${items.length} physical items from API (after filtering ${orderData.items.length - items.length} discounts)`);
         
         // Update workspace with the fetched data
@@ -300,52 +280,10 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
       continue;
     }
     
-    // Determine container count and type for this specific item
-    let totalContainersForThisItem = 1; // Default to 1 label for freight items
-    let containerType = 'freight'; // Default type
-    const name = itemName.toLowerCase();
-    const sku = (item.sku || '').toLowerCase();
-    
-    // LARGE CONTAINERS: 1 label per container (qty = label amount)
-    // Check these FIRST to avoid false matches (e.g., "55 gallon drum" should match drum, not gallon)
-    if (name.includes('drum') || sku.includes('drum')) {
-      totalContainersForThisItem = quantity; // 1 label per drum
-      containerType = 'drum';
-    } else if (name.includes('tote') || sku.includes('tote')) {
-      totalContainersForThisItem = quantity; // 1 label per tote
-      containerType = 'tote';
-    } else if (name.includes('carboy') || sku.includes('carboy')) {
-      totalContainersForThisItem = quantity; // 1 label per carboy
-      containerType = 'carboy';
-    } else if (name.includes('ibc') || name.includes('intermediate bulk')) {
-      totalContainersForThisItem = quantity; // 1 label per IBC
-      containerType = 'ibc';
-    }
-    // FREIGHT ITEMS: Default to 1 label (warehouse can print more if needed)
-    else if (name.includes('case') || name.includes('pack') || name.includes('kit')) {
-      totalContainersForThisItem = 1; // 1 label for all cases
-      containerType = 'freight-case';
-    } else if (name.includes('pail') && !name.includes('drum')) {
-      // Check pail but exclude "55 gallon drum pail" type descriptions
-      totalContainersForThisItem = 1; // 1 label for all pails
-      containerType = 'freight-pail';
-    } else if (name.includes('box') || sku.includes('box')) {
-      totalContainersForThisItem = 1; // 1 label for all boxes
-      containerType = 'freight-box';
-    } else if ((name.includes('gallon') || name.includes('gal')) && 
-               !name.includes('drum') && !name.includes('tote') && !name.includes('carboy')) {
-      // Only treat as small gallons if NOT part of a large container description
-      totalContainersForThisItem = 1; // 1 label for all gallons
-      containerType = 'freight-gallon';
-    } else if (quantity > 10) {
-      // Bulk quantities likely freight - default to 1 label
-      totalContainersForThisItem = 1;
-      containerType = 'freight-bulk';
-    } else {
-      // Small quantities - might be individual items
-      totalContainersForThisItem = quantity;
-      containerType = 'container';
-    }
+    // Determine container count and type using strict ordered matcher
+    const match = detectContainer(itemName, item.sku, quantity);
+    let totalContainersForThisItem = match.labels;
+    let containerType = match.type;
     
     // Ensure we always create at least 1 label
     if (totalContainersForThisItem < 1) {

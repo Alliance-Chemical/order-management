@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import { QRValidationService, QRType, QRValidationResult } from '@/lib/services/qr/validation';
 
 interface ValidatedQRScannerProps {
@@ -122,6 +123,8 @@ export function ValidatedQRScanner({
       });
 
       if (result.valid) {
+        // Haptics + tone for a successful scan
+        try { warehouseFeedback.scan(); } catch {}
         // Haptic feedback
         if (navigator.vibrate) {
           navigator.vibrate(100);
@@ -156,6 +159,7 @@ export function ValidatedQRScanner({
   };
 
   const handleManualSubmit = async () => {
+    try { warehouseFeedback.buttonPress(); } catch {}
     if (manualCode.trim()) {
       await handleCodeValidation(manualCode.trim());
     }

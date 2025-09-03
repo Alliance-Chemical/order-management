@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import { CheckIcon, XMarkIcon, CameraIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 
 interface PreShipInspectionWorkerProps {
@@ -23,6 +24,9 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
   const [capturedPhotos, setCapturedPhotos] = useState<Array<{ url: string; lotNumbers: string[] }>>([]);
   const [showCamera, setShowCamera] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [idempotencyKey] = useState<string>(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2,9)}`));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -62,13 +66,17 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
     const item = inspectionItems[currentStep];
     setCheckedItems(prev => ({ ...prev, [item.id]: 'failed' }));
     // Show quick note input
-    const note = prompt('What\'s wrong? (optional)');
-    if (note) {
-      setFailureNotes(prev => ({ ...prev, [item.id]: note }));
+    const note = prompt("What's wrong? (required)");
+    if (note && note.trim()) {
+      setFailureNotes(prev => ({ ...prev, [item.id]: note.trim() }));
+      setNoteError(null);
+      setTimeout(() => {
+        setCurrentStep(prev => prev + 1);
+      }, 300);
+    } else {
+      setNoteError('Note required');
+      // Do not advance until user provides a note
     }
-    setTimeout(() => {
-      setCurrentStep(prev => prev + 1);
-    }, 300);
   };
 
   const startCamera = async () => {
@@ -155,9 +163,11 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
   };
 
   const handleComplete = async () => {
+    try { warehouseFeedback.buttonPress(); } catch {}
     const hasFailures = Object.values(checkedItems).some(v => v === 'failed');
     
     try {
+      setIsFinishing(true);
       await fetch(`/api/workspace/${orderId}/pre-ship-complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -166,13 +176,17 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
           failureNotes,
           photos: capturedPhotos,
           completedAt: new Date().toISOString(),
-          passed: !hasFailures
+          passed: !hasFailures,
+          idempotencyKey
         }),
       });
+      try { warehouseFeedback.complete(); } catch {}
       onComplete();
     } catch (error) {
       console.error('Error completing inspection:', error);
       alert('Failed to save inspection. Please try again.');
+    } finally {
+      setIsFinishing(false);
     }
   };
 
@@ -212,9 +226,10 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
           
           <button
             onClick={handleComplete}
-            className="px-12 py-6 bg-white text-black text-2xl font-bold rounded-xl"
+            disabled={isFinishing}
+            className={`px-12 py-6 text-2xl font-bold rounded-xl ${isFinishing ? 'bg-gray-400 text-gray-700' : 'bg-white text-black'}`}
           >
-            FINISH
+            {isFinishing ? 'UPLOADING…' : 'FINISH'}
           </button>
         </div>
       </div>
@@ -330,6 +345,9 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
           <span className="text-2xl font-bold">PASS</span>
         </button>
       </div>
+      {noteError && (
+        <div className="p-4 text-center text-yellow-300">{noteError}</div>
+      )}
     </div>
   );
 }
