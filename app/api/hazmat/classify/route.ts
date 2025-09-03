@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     
     try {
       // Check if product already has a classification  
-      const existingLinks = await sql`
+      const result = await sql`
         SELECT 
            p.sku, p.name, p.is_hazardous, p.un_number,
            fc.description as classification_description,
@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
          JOIN freight_classifications fc ON pfl.classification_id = fc.id
          WHERE p.sku = ${sku} AND pfl.is_approved = true
       `;
+      
+      // Fix the type error - handle both array and FullQueryResults
+      const existingLinks = Array.isArray(result) ? result : (result as any).rows || [];
 
       if (existingLinks.length > 0) {
         const existing = existingLinks[0];

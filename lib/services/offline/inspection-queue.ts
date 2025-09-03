@@ -7,6 +7,7 @@ interface QueuedOperation {
   id: string;
   type: 'inspection_result' | 'qr_scan' | 'activity_log';
   orderId: string;
+  phase?: string; // Added for inspection operations
   data: any;
   timestamp: string;
   retryCount: number;
@@ -144,7 +145,9 @@ class InspectionQueue {
   private getEndpoint(operation: QueuedOperation): string {
     switch (operation.type) {
       case 'inspection_result':
-        return `/api/workspace/${operation.orderId}/inspection`;
+        // Use the phase from data or default to 'warehouse'
+        const phase = operation.phase || operation.data?.phase || 'warehouse';
+        return `/api/workspaces/${operation.orderId}/inspection/${phase}`;
       case 'qr_scan':
         return `/api/qr/scan`;
       case 'activity_log':

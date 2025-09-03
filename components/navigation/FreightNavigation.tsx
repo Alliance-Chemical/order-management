@@ -6,7 +6,9 @@ import {
   BeakerIcon, 
   LinkIcon,
   CubeIcon,
-  HomeIcon 
+  HomeIcon,
+  ChatBubbleLeftRightIcon,
+  ClipboardDocumentCheckIcon 
 } from '@heroicons/react/24/solid';
 
 const navigationItems = [
@@ -45,6 +47,22 @@ const navigationItems = [
     color: 'text-orange-600 hover:text-orange-700',
     bgColor: 'hover:bg-orange-50',
     description: 'Critical for DOT compliance'
+  },
+  {
+    name: 'Hazmat Chat',
+    href: '/hazmat-chat',
+    icon: ChatBubbleLeftRightIcon,
+    color: 'text-indigo-600 hover:text-indigo-700',
+    bgColor: 'hover:bg-indigo-50',
+    description: 'AI-powered hazmat assistant'
+  },
+  {
+    name: 'Warehouse Guide',
+    href: '/warehouse-guide',
+    icon: ClipboardDocumentCheckIcon,
+    color: 'text-red-600 hover:text-red-700',
+    bgColor: 'hover:bg-red-50',
+    description: 'Quick reference for workers'
   }
 ];
 

@@ -167,8 +167,7 @@ export async function POST(request: NextRequest) {
             is_approved = ${approve},
             approved_by = ${approve ? 'api/products/freight-link' : null},
             approved_at = ${approve ? sql`NOW()` : null},
-            updated_at = NOW(),
-            updated_by = 'api/products/freight-link'
+            updated_at = NOW()
           WHERE id = ${existingLinkRows[0].id}
         `;
       });
@@ -180,20 +179,19 @@ export async function POST(request: NextRequest) {
             INSERT INTO product_freight_links (
               id, product_id, classification_id,
               link_source, is_approved, approved_by, approved_at,
-              created_at, created_by, updated_at, updated_by
+              created_at, created_by, updated_at
             ) VALUES (
               gen_random_uuid(),
               ${product.id}, ${classificationId},
               'manual', ${approve}, ${approve ? 'api/products/freight-link' : null}, ${approve ? sql`NOW()` : null},
-              NOW(), 'api/products/freight-link', NOW(), 'api/products/freight-link'
+              NOW(), 'api/products/freight-link', NOW()
             )
             ON CONFLICT (product_id, classification_id) DO UPDATE SET
               link_source = EXCLUDED.link_source,
               is_approved = EXCLUDED.is_approved,
               approved_by = EXCLUDED.approved_by,
               approved_at = EXCLUDED.approved_at,
-              updated_at = NOW(),
-              updated_by = 'api/products/freight-link'
+              updated_at = NOW()
           `;
         });
       } catch (e) {
@@ -203,12 +201,12 @@ export async function POST(request: NextRequest) {
             INSERT INTO product_freight_links (
               id, product_id, classification_id,
               link_source, is_approved, approved_by, approved_at,
-              created_at, created_by, updated_at, updated_by
+              created_at, created_by, updated_at
             ) VALUES (
               gen_random_uuid(),
               ${product.id}, ${classificationId},
               'manual', ${approve}, ${approve ? 'api/products/freight-link' : null}, ${approve ? sql`NOW()` : null},
-              NOW(), 'api/products/freight-link', NOW(), 'api/products/freight-link'
+              NOW(), 'api/products/freight-link', NOW()
             )
           `;
         });

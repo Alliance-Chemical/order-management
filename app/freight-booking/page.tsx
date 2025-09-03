@@ -734,6 +734,17 @@ export default function FreightBookingPage() {
                                   </span>
                                 )}
                               </div>
+                              {/* Display hazmat data if present */}
+                              {manualInputs[item.sku]?.hazmatData && manualInputs[item.sku]?.hazmatData?.unNumber && (
+                                <div className="bg-orange-50 border border-orange-200 rounded-md p-2 mb-3 text-xs">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div><span className="font-semibold">UN:</span> {manualInputs[item.sku]?.hazmatData?.unNumber}</div>
+                                    <div><span className="font-semibold">Class:</span> {manualInputs[item.sku]?.hazmatData?.hazardClass}</div>
+                                    <div><span className="font-semibold">PG:</span> {manualInputs[item.sku]?.hazmatData?.packingGroup || 'N/A'}</div>
+                                    <div className="col-span-2"><span className="font-semibold">Name:</span> {manualInputs[item.sku]?.hazmatData?.properShippingName}</div>
+                                  </div>
+                                </div>
+                              )}
                               <div className="grid grid-cols-2 gap-3 mb-3">
                                 <div>
                                   <label className="block text-xs text-gray-600 mb-1">Freight Class</label>
@@ -901,72 +912,161 @@ export default function FreightBookingPage() {
                   onSuggestionAccepted={async (sku: string, suggestion: RAGSuggestion) => {
                     // Auto-populate the manual classification form with hazmat data
                     const hazmatClass = suggestion.hazard_class;
-                    const freightClass = hazmatClass ? '85' : '50'; // Default to class 85 for hazmat, 50 for non-hazmat
                     const description = suggestion.proper_shipping_name || 
                                        bookingData.selectedOrder?.items.find(i => i.sku === sku)?.name || 
                                        'Chemical Product';
                     
-                    // Auto-map NMFC codes based on hazard class
+                    // Get the item details for density calculation (non-hazmat only)
+                    const item = bookingData.selectedOrder?.items.find(i => i.sku === sku);
+                    
+                    // Query REAL classifications from database
                     let nmfcCode = '';
                     let nmfcSub = '';
-                    if (hazmatClass) {
-                      // Common NMFC mappings for hazmat classes
-                      const hazmatNmfcMap: Record<string, { code: string; sub?: string }> = {
-                        '3': { code: '49040' },        // Flammable liquids
-                        '4.1': { code: '49080' },      // Flammable solids
-                        '5.1': { code: '48575' },      // Oxidizers
-                        '6.1': { code: '49120' },      // Toxic substances
-                        '8': { code: '48960' },        // Corrosives
-                        '9': { code: '49140' },        // Miscellaneous dangerous goods
-                      };
-                      const mapping = hazmatNmfcMap[hazmatClass || ''];
-                      if (mapping) {
-                        nmfcCode = mapping.code;
-                        nmfcSub = mapping.sub || '';
+                    let freightClass = hazmatClass ? '85' : '50'; // Defaults only if search fails
+                    
+                    try {
+                      const searchResponse = await fetch('/api/freight-classifications/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          sku: sku,
+                          productName: description,
+                          unNumber: suggestion.un_number,
+                          hazardClass: hazmatClass,
+                          packingGroup: suggestion.packing_group,
+                          isHazmat: !!suggestion.un_number,
+                          description: description,
+                          // Include weight/dimensions if available (for non-hazmat density calc)
+                          weight: item?.weight?.value,
+                          quantity: item?.quantity
+                        })
+                      });
+                      
+                      const searchResult = await searchResponse.json();
+                      
+                      if (searchResult.success && searchResult.bestMatch) {
+                        // Use REAL classification data from database!
+                        const match = searchResult.bestMatch;
+                        nmfcCode = match.nmfcCode || '';
+                        nmfcSub = match.nmfcSub || '';
+                        freightClass = match.freightClass;
+                        
+                        console.log(`Found REAL classification for ${sku}:`, {
+                          nmfc: `${nmfcCode}${nmfcSub ? '-' + nmfcSub : ''}`,
+                          class: freightClass,
+                          reason: match.matchReason,
+                          confidence: match.confidence
+                        });
+                      } else {
+                        console.warn(`No classification found for ${sku}, using defaults`);
                       }
+                    } catch (error) {
+                      console.error('Failed to search classifications:', error);
+                      // Keep default values if search fails
                     }
                     
-                    // Auto-populate the manual form with RAG data
+                    // Prepare classification data with REAL NMFC codes
+                    const classificationData = {
+                      freightClass: freightClass,
+                      nmfcCode: nmfcCode,
+                      nmfcSub: nmfcSub,
+                      description: description,
+                      hazmatData: {
+                        unNumber: suggestion.un_number,
+                        hazardClass: suggestion.hazard_class,
+                        packingGroup: suggestion.packing_group,
+                        properShippingName: suggestion.proper_shipping_name,
+                        isHazmat: !!suggestion.un_number
+                      }
+                    };
+                    
+                    // Auto-populate the manual form first
                     setManualInputs(prev => ({
                       ...prev,
                       [sku]: {
-                        freightClass: freightClass,
-                        nmfcCode: nmfcCode,
-                        nmfcSub: nmfcSub,
-                        description: description,
-                        // Store hazmat data in the form state
-                        hazmatData: {
-                          unNumber: suggestion.un_number,
-                          hazardClass: suggestion.hazard_class,
-                          packingGroup: suggestion.packing_group,
-                          properShippingName: suggestion.proper_shipping_name,
-                          isHazmat: !!suggestion.un_number
-                        }
+                        ...classificationData,
+                        saving: true,
+                        successMessage: '⏳ Applying classification...'
                       }
                     }));
                     
-                    // Show visual feedback
-                    warehouseFeedback.success();
-                    
-                    // Add a temporary success message
-                    setManualInputs(prev => ({
-                      ...prev,
-                      [sku]: {
-                        ...prev[sku],
-                        successMessage: '✅ RAG data loaded - review and save'
+                    // Auto-save the classification
+                    try {
+                      const res = await fetch('/api/products/freight-link', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          sku: sku,
+                          freightClass: freightClass,
+                          nmfcCode: nmfcCode || undefined,
+                          nmfcSub: nmfcSub || undefined,  // Now includes REAL sub-code from database!
+                          description: description || undefined,
+                          approve: true,
+                          hazmatData: classificationData.hazmatData
+                        })
+                      });
+                      
+                      const data = await res.json();
+                      if (!res.ok || !data.success) {
+                        throw new Error(data.error || 'Failed to save classification');
                       }
-                    }));
-                    
-                    // Clear success message after 3 seconds
-                    setTimeout(() => {
+                      
+                      // Update local state so this item is now classified
+                      setBookingData(prev => ({
+                        ...prev,
+                        classifiedItems: prev.classifiedItems.map(ci =>
+                          ci.sku === sku ? {
+                            ...ci,
+                            classification: {
+                              nmfcCode: data.classification.nmfcCode,
+                              nmfcSub: data.classification.nmfcSub,
+                              freightClass: data.classification.freightClass,
+                              description: data.classification.description,
+                              isHazmat: data.classification.isHazmat || classificationData.hazmatData?.isHazmat || false,
+                              hazmatClass: data.classification.hazmatClass || classificationData.hazmatData?.hazardClass,
+                              unNumber: data.product?.unNumber || classificationData.hazmatData?.unNumber,
+                              packingGroup: data.classification.packingGroup || classificationData.hazmatData?.packingGroup,
+                              properShippingName: data.classification.description || classificationData.hazmatData?.properShippingName,
+                            }
+                          } : ci
+                        )
+                      }));
+                      
+                      // Show success feedback
+                      warehouseFeedback.success();
                       setManualInputs(prev => ({
                         ...prev,
                         [sku]: {
                           ...prev[sku],
+                          saving: false,
+                          successMessage: '✅ Classification applied and saved!'
+                        }
+                      }));
+                      
+                      // Clear success message after 3 seconds
+                      setTimeout(() => {
+                        setManualInputs(prev => ({
+                          ...prev,
+                          [sku]: {
+                            ...prev[sku],
+                            successMessage: undefined
+                          }
+                        }));
+                      }, 3000);
+                      
+                    } catch (err: any) {
+                      // On error, keep the form populated but show error
+                      setManualInputs(prev => ({
+                        ...prev,
+                        [sku]: {
+                          ...prev[sku],
+                          saving: false,
+                          error: err?.message || 'Failed to save classification',
                           successMessage: undefined
                         }
                       }));
-                    }, 3000);
+                      warehouseFeedback.error();
+                    }
                     
                     console.log('Applied hazmat classification for SKU:', sku, suggestion);
                   }}

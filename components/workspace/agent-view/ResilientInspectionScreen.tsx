@@ -159,10 +159,12 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
       inspectionQueue.enqueue({
         type: 'inspection_result',
         orderId,
+        phase: workflowPhase,
         data: {
           stepId: currentItem.id,
           result: 'pass',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          phase: workflowPhase
         }
       });
       
@@ -179,10 +181,12 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
       inspectionQueue.enqueue({
         type: 'inspection_result',
         orderId,
+        phase: workflowPhase,
         data: {
           stepId: currentFailedItem.id,
           result: 'fail',
           issue,
+          phase: workflowPhase,
           timestamp: new Date().toISOString()
         }
       });

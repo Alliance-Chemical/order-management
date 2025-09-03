@@ -89,10 +89,22 @@ export function ValidatedQRScanner({
           setError('No cameras found');
           setShowManualEntry(true);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Scanner error:', err);
         if (mounted) {
-          setError('Camera access denied. Please allow camera access or enter code manually.');
+          // Handle different types of permission errors
+          if (err?.name === 'NotAllowedError' || err?.message?.includes('Permission denied')) {
+            setError('Camera access denied. Please allow camera access in your browser settings.');
+          } else if (err?.name === 'NotReadableError') {
+            setError('Camera is already in use by another application.');
+          } else if (err?.name === 'NotFoundError') {
+            setError('No camera found on this device.');
+          } else if (err?.name === 'AbortError' || err?.message?.includes('Permission dismissed')) {
+            // User dismissed the permission dialog without making a choice
+            setError('Camera permission was dismissed. Please reload and allow camera access.');
+          } else {
+            setError('Unable to access camera. Please check permissions or enter code manually.');
+          }
           setShowManualEntry(true);
         }
       }

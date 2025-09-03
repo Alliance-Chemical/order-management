@@ -1,100 +1,107 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { classifyWithDatabaseRAG } from '@/lib/services/rag/database-rag';
+import { getRawSql } from '@/lib/db/neon';
 
-// Use Node.js runtime for file access
-export const runtime = 'nodejs';
+// Use Edge runtime for better performance
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
-// Load RAG index (cached in memory)
-let ragIndex: any = null;
-
-async function loadIndex() {
-  if (ragIndex) return ragIndex;
-  
-  const indexPath = path.join(process.cwd(), 'data', 'rag-index-comprehensive.json');
-  
-  if (!fs.existsSync(indexPath)) {
-    throw new Error('RAG index not found. Please run: npm run rag:pipeline');
-  }
-  
-  const indexData = fs.readFileSync(indexPath, 'utf8');
-  ragIndex = JSON.parse(indexData);
-  
-  console.log(`Loaded RAG index: ${ragIndex.documents.length} documents`);
-  return ragIndex;
-}
-
-// Calculate cosine similarity
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  
-  if (normA === 0 || normB === 0) return 0;
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-// Generate embedding for query using OpenAI
-async function generateQueryEmbedding(query: string): Promise<number[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  
-  if (!apiKey) {
-    // Fallback to hash-based embedding
-    const { hashingVector } = require('../../../../lib/rag/embeddings');
-    return hashingVector(query, 512);
-  }
+// Search the database RAG for general queries
+async function searchDatabaseRAG(query: string, limit: number = 5) {
+  const sql = getRawSql();
   
   try {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+    // First, try to generate embedding for the query
+    const apiKey = process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      // Fallback to text search if no API key
+      const result = await sql`
+        SELECT 
+          id,
+          source,
+          text,
+          metadata,
+          1.0 as score
+        FROM rag.documents
+        WHERE 
+          text ILIKE ${'%' + query + '%'} OR
+          search_vector @@ plainto_tsquery('english', ${query})
+        ORDER BY 
+          CASE 
+            WHEN text ILIKE ${'%' + query + '%'} THEN 0
+            ELSE 1
+          END,
+          ts_rank(search_vector, plainto_tsquery('english', ${query})) DESC
+        LIMIT ${limit}
+      `;
+      
+      return (result as any).rows || result;
+    }
+    
+    // Generate embedding
+    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        input: query,
+        input: query.toLowerCase(),
         model: 'text-embedding-3-small'
       })
     });
     
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+    if (!embeddingResponse.ok) {
+      throw new Error(`OpenAI API error: ${embeddingResponse.status}`);
     }
     
-    const data = await response.json();
-    return data.data[0].embedding;
+    const embeddingData = await embeddingResponse.json();
+    const embedding = embeddingData.data[0].embedding;
+    
+    // Search using vector similarity
+    const result = await sql`
+      SELECT 
+        id,
+        source,
+        text,
+        metadata,
+        1 - (embedding <=> ${'[' + embedding.join(',') + ']'}::vector) as score
+      FROM rag.documents
+      WHERE embedding IS NOT NULL
+      ORDER BY embedding <=> ${'[' + embedding.join(',') + ']'}::vector
+      LIMIT ${limit}
+    `;
+    
+    const rows = (result as any).rows || result;
+    return rows.filter((r: any) => r.score > 0.4); // Use our proven threshold
+    
   } catch (error) {
-    console.error('OpenAI embedding failed, using fallback:', error);
-    const { hashingVector } = require('../../../../lib/rag/embeddings');
-    return hashingVector(query, 512);
+    console.error('Database RAG search error:', error);
+    
+    // Fallback to text search
+    const result = await sql`
+      SELECT 
+        id,
+        source,
+        text,
+        metadata,
+        1.0 as score
+      FROM rag.documents
+      WHERE 
+        text ILIKE ${'%' + query + '%'} OR
+        search_vector @@ plainto_tsquery('english', ${query})
+      ORDER BY 
+        CASE 
+          WHEN text ILIKE ${'%' + query + '%'} THEN 0
+          ELSE 1
+        END,
+        ts_rank(search_vector, plainto_tsquery('english', ${query})) DESC
+      LIMIT ${limit}
+    `;
+    
+    return (result as any).rows || result;
   }
-}
-
-// Search the RAG index
-async function searchRAG(query: string, limit: number = 5) {
-  const index = await loadIndex();
-  const queryEmbedding = await generateQueryEmbedding(query);
-  
-  // Find most relevant documents
-  const results = index.documents
-    .map((doc: any) => ({
-      ...doc,
-      score: cosineSimilarity(queryEmbedding, doc.embedding)
-    }))
-    .filter((doc: any) => doc.score > 0.2)
-    .sort((a: any, b: any) => b.score - a.score)
-    .slice(0, limit);
-  
-  return results;
 }
 
 // Generate chat response using GPT-5 nano with RAG context
@@ -148,8 +155,7 @@ Important guidelines:
       body: JSON.stringify({
         model: 'gpt-5-nano', // Ultra fast and only $0.05 per 1M input tokens!
         messages,
-        temperature: 0.3, // Lower temperature for factual responses
-        max_tokens: 2000, // GPT-5 nano supports up to 128K output tokens
+        max_completion_tokens: 2000, // GPT-5 nano supports up to 128K output tokens
         stream: false
       })
     });
@@ -193,11 +199,53 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // Search RAG for relevant context
-    console.log(`Searching RAG for: "${message}"`);
-    const ragResults = await searchRAG(message, ragLimit);
+    // First, check if this is a specific chemical classification query
+    const chemicalMatch = message.match(/(?:classify|what is|un number for|hazmat for)\s+(.+?)(?:\?|$)/i);
     
-    if (ragResults.length === 0) {
+    if (chemicalMatch) {
+      // Use our high-accuracy classification for specific chemicals
+      const productName = chemicalMatch[1].trim();
+      console.log(`Classifying chemical: "${productName}"`);
+      
+      try {
+        const classification = await classifyWithDatabaseRAG('QUERY', productName);
+        
+        // Format as chat response
+        const response = classification.un_number
+          ? `${productName} is classified as:\n\n` +
+            `**${classification.un_number}** - ${classification.proper_shipping_name || productName}\n\n` +
+            `• **Hazard Class:** ${classification.hazard_class}\n` +
+            (classification.packing_group ? `• **Packing Group:** ${classification.packing_group}\n` : '') +
+            (classification.labels ? `• **Labels Required:** ${classification.labels}\n` : '') +
+            (classification.erg_guide ? `• **ERG Guide:** ${classification.erg_guide}\n` : '') +
+            `\n*Classification confidence: ${Math.round((classification.confidence || 0) * 100)}%*`
+          : `${productName} appears to be a non-regulated material. ${classification.exemption_reason || 'It is not classified as dangerous goods for transportation.'}`;
+        
+        return NextResponse.json({
+          success: true,
+          message,
+          response,
+          sources: classification.source ? [{
+            source: classification.source,
+            score: classification.confidence?.toFixed(3),
+            metadata: { 
+              unNumber: classification.un_number,
+              hazardClass: classification.hazard_class 
+            }
+          }] : [],
+          model: 'database-rag',
+          usage: { totalTokens: 0, estimatedCost: '$0.000000' }
+        });
+      } catch (error) {
+        console.error('Classification failed, falling back to general search:', error);
+      }
+    }
+    
+    // For general queries, search the RAG database
+    console.log(`Searching database RAG for: "${message}"`);
+    const ragResults = await searchDatabaseRAG(message, ragLimit);
+    
+    if (!ragResults || ragResults.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'No relevant context found in knowledge base',
@@ -247,18 +295,24 @@ export async function POST(request: NextRequest) {
 // GET endpoint for health check
 export async function GET() {
   try {
-    const index = await loadIndex();
+    const sql = getRawSql();
     const hasApiKey = !!process.env.OPENAI_API_KEY;
+    
+    // Get document count from database
+    const countResult = await sql`
+      SELECT COUNT(*) as count FROM rag.documents
+    `;
+    const documentCount = ((countResult as any).rows || countResult)[0]?.count || 0;
     
     return NextResponse.json({
       success: true,
       message: 'RAG Chat API is operational',
-      version: '1.0',
-      model: 'gpt-5-nano',
-      ragIndex: {
-        loaded: true,
-        documents: index.documents.length,
-        embeddingModel: index.model
+      version: '2.0',
+      model: 'database-rag + gpt-5-nano',
+      database: {
+        connected: true,
+        documents: documentCount,
+        embeddingModel: 'text-embedding-3-small (1536 dimensions)'
       },
       openai: {
         configured: hasApiKey,
@@ -286,7 +340,8 @@ export async function GET() {
     return NextResponse.json({
       success: false,
       message: 'RAG Chat API not ready',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: 'Database connection may be unavailable'
     }, { status: 503 });
   }
 }

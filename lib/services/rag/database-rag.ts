@@ -4,7 +4,6 @@
  */
 
 import { getRawSql } from '@/lib/db/neon';
-import crypto from 'crypto';
 
 export interface RAGSearchOptions {
   k?: number;
@@ -135,7 +134,12 @@ function generateHashingEmbedding(text: string, dim = 1536): number[] {
  */
 async function getCachedEmbedding(text: string): Promise<number[] | null> {
   const sql = getRawSql();
-  const textHash = crypto.createHash('sha256').update(text).digest('hex');
+  // Use Web Crypto API for edge runtime compatibility
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const textHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   
   try {
     const result = await sql`
@@ -170,7 +174,12 @@ async function getCachedEmbedding(text: string): Promise<number[] | null> {
  */
 async function cacheEmbedding(text: string, embedding: number[]): Promise<void> {
   const sql = getRawSql();
-  const textHash = crypto.createHash('sha256').update(text).digest('hex');
+  // Use Web Crypto API for edge runtime compatibility
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const textHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   
   try {
     // Format vector properly for pgvector
@@ -235,38 +244,73 @@ export async function searchSimilarDocuments(
     
     // Build query with filters
     if (source || Object.keys(filters).length > 0) {
-      // Build WHERE conditions dynamically
-      const whereClauses = ['embedding IS NOT NULL'];
-      
-      if (source) {
-        whereClauses.push(`source = '${source}'`);
+      // Build query with proper parameterization to avoid sql.raw
+      if (source && filters.unNumber) {
+        results = await sql`
+          SELECT 
+            id,
+            source,
+            text,
+            metadata,
+            1 - (embedding <=> ${vectorString}::vector) as similarity,
+            base_relevance,
+            click_count
+          FROM rag.documents
+          WHERE embedding IS NOT NULL
+            AND source = ${source}
+            AND metadata->>'unNumber' = ${filters.unNumber}
+          ORDER BY embedding <=> ${vectorString}::vector
+          LIMIT ${k}
+        `;
+      } else if (source) {
+        results = await sql`
+          SELECT 
+            id,
+            source,
+            text,
+            metadata,
+            1 - (embedding <=> ${vectorString}::vector) as similarity,
+            base_relevance,
+            click_count
+          FROM rag.documents
+          WHERE embedding IS NOT NULL
+            AND source = ${source}
+          ORDER BY embedding <=> ${vectorString}::vector
+          LIMIT ${k}
+        `;
+      } else if (filters.unNumber) {
+        results = await sql`
+          SELECT 
+            id,
+            source,
+            text,
+            metadata,
+            1 - (embedding <=> ${vectorString}::vector) as similarity,
+            base_relevance,
+            click_count
+          FROM rag.documents
+          WHERE embedding IS NOT NULL
+            AND metadata->>'unNumber' = ${filters.unNumber}
+          ORDER BY embedding <=> ${vectorString}::vector
+          LIMIT ${k}
+        `;
+      } else {
+        // General filter case
+        results = await sql`
+          SELECT 
+            id,
+            source,
+            text,
+            metadata,
+            1 - (embedding <=> ${vectorString}::vector) as similarity,
+            base_relevance,
+            click_count
+          FROM rag.documents
+          WHERE embedding IS NOT NULL
+          ORDER BY embedding <=> ${vectorString}::vector
+          LIMIT ${k}
+        `;
       }
-      if (filters.unNumber) {
-        whereClauses.push(`metadata->>'unNumber' = '${filters.unNumber}'`);
-      }
-      if (filters.hazardClass) {
-        whereClauses.push(`metadata->>'hazardClass' = '${filters.hazardClass}'`);
-      }
-      if (filters.isHazardous !== undefined) {
-        whereClauses.push(`metadata->>'isHazardous' = '${filters.isHazardous}'`);
-      }
-      
-      const whereString = whereClauses.join(' AND ');
-      
-      results = await sql`
-        SELECT 
-          id,
-          source,
-          text,
-          metadata,
-          1 - (embedding <=> ${vectorString}::vector) as similarity,
-          base_relevance,
-          click_count
-        FROM rag.documents
-        WHERE ${sql.raw(whereString)}
-        ORDER BY embedding <=> ${vectorString}::vector
-        LIMIT ${k}
-      `;
     } else {
       results = await sql`
         SELECT 
@@ -328,25 +372,56 @@ function expandQuery(query: string): string[] {
   const normalized = normalizeQuery(query);
   const variations = [normalized];
   
-  // Add chemical formula variations
-  if (normalized.includes('sulfuric') && !normalized.includes('h2so4')) {
-    variations.push(`${normalized} h2so4`);
+  // Strip container size from query for chemical matching
+  const chemicalOnly = normalized
+    .replace(/\d+\s*(gallon|gal|lb|pound|drum|container|bottle|jug|quart|liter|ml|kg|oz)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  if (chemicalOnly !== normalized && chemicalOnly.length > 2) {
+    variations.unshift(chemicalOnly); // Prioritize chemical name without size
   }
-  if (normalized.includes('hydrochloric') && !normalized.includes('hcl')) {
-    variations.push(`${normalized} hcl`);
-  }
-  if (normalized.includes('nitric') && !normalized.includes('hno3')) {
-    variations.push(`${normalized} hno3`);
-  }
-  if (normalized.includes('sodium hydroxide') && !normalized.includes('naoh')) {
-    variations.push(`${normalized} naoh caustic`);
+  
+  // Chemical-specific expansions
+  const chemicalExpansions: Record<string, string[]> = {
+    'kerosene': ['kerosene', 'k1 fuel', 'k-1 fuel', 'kerosine'],
+    'acetone': ['acetone', '2-propanone', 'dimethyl ketone'],
+    'isopropanol': ['isopropanol', 'isopropyl alcohol', 'ipa', '2-propanol'],
+    'petroleum ether': ['petroleum ether', 'petroleum spirits', 'ligroin'],
+    'mineral spirits': ['mineral spirits', 'white spirit', 'petroleum spirits'],
+    'sulfuric acid': ['sulfuric acid', 'h2so4', 'battery acid', 'drain cleaner'],
+    'hydrochloric acid': ['hydrochloric acid', 'hcl', 'muriatic acid'],
+    'nitric acid': ['nitric acid', 'hno3', 'aqua fortis'],
+    'sodium hydroxide': ['sodium hydroxide', 'naoh', 'caustic soda', 'lye'],
+    'ammonia': ['ammonia', 'ammonium hydroxide', 'ammonia solution'],
+    'methanol': ['methanol', 'methyl alcohol', 'wood alcohol'],
+    'ethanol': ['ethanol', 'ethyl alcohol', 'denatured alcohol'],
+    'toluene': ['toluene', 'methylbenzene', 'toluol'],
+    'xylene': ['xylene', 'xylol', 'dimethylbenzene']
+  };
+  
+  // Apply chemical expansions
+  for (const [key, expansions] of Object.entries(chemicalExpansions)) {
+    if (normalized.includes(key) || chemicalOnly.includes(key)) {
+      // Add expanded variations
+      expansions.forEach(expansion => {
+        // Replace the key with each expansion
+        if (chemicalOnly.includes(key)) {
+          variations.push(chemicalOnly.replace(key, expansion));
+        }
+        // Also add just the expansion term for broader matching
+        variations.push(expansion);
+      });
+    }
   }
   
   // Add percentage variations
-  variations.push(normalized.replace('98%', '98'));
-  variations.push(normalized.replace('32%', '32'));
-  variations.push(normalized.replace('70%', '70'));
-  variations.push(normalized.replace('50%', '50'));
+  const percentages = normalized.match(/\d+\s*%?/g);
+  if (percentages) {
+    percentages.forEach(pct => {
+      variations.push(normalized.replace(pct, pct.replace('%', '')));
+    });
+  }
   
   return [...new Set(variations)];
 }
@@ -433,22 +508,87 @@ export async function hybridSearch(
 /**
  * Classify a product using database RAG
  */
-// Known patterns for common chemicals
+// Known patterns for common chemicals - comprehensive list for Alliance Chemical products
 const KNOWN_PATTERNS = [
-  { pattern: /sulfuric\s+acid\s+(drain|98)/i, un: 'UN1830', class: '8', pg: 'II', name: 'Sulfuric acid' },
-  { pattern: /sulfuric\s+acid.*51/i, un: 'UN2796', class: '8', pg: 'II', name: 'Sulfuric acid' },
-  { pattern: /hydrochloric\s+acid\s+(32|37)/i, un: 'UN1789', class: '8', pg: 'II', name: 'Hydrochloric acid' },
-  { pattern: /nitric\s+acid.*70/i, un: 'UN2031', class: '8', pg: 'I', name: 'Nitric acid' },
-  { pattern: /nitric\s+acid.*([56][0-9])/i, un: 'UN2031', class: '8', pg: 'II', name: 'Nitric acid' },
-  { pattern: /sodium\s+hydroxide.*50/i, un: 'UN1824', class: '8', pg: 'II', name: 'Sodium hydroxide solution' },
-  { pattern: /potassium\s+hydroxide.*45/i, un: 'UN1814', class: '8', pg: 'II', name: 'Potassium hydroxide solution' },
+  // Flammable Liquids - Class 3
+  { pattern: /kerosene|k-?1\s+fuel/i, un: 'UN1223', class: '3', pg: 'III', name: 'Kerosene' },
+  { pattern: /acetone/i, un: 'UN1090', class: '3', pg: 'II', name: 'Acetone' },
+  { pattern: /toluene/i, un: 'UN1294', class: '3', pg: 'II', name: 'Toluene' },
+  { pattern: /xylene|xylol/i, un: 'UN1307', class: '3', pg: 'III', name: 'Xylenes' },
+  { pattern: /methanol|methyl\s+alcohol/i, un: 'UN1230', class: '3', pg: 'II', name: 'Methanol' },
+  { pattern: /ethanol.*190\s+proof|denatured.*190/i, un: 'UN1170', class: '3', pg: 'II', name: 'Ethanol' },
+  { pattern: /denatured.*200|alcohol.*200\s+proof/i, un: 'UN1987', class: '3', pg: 'II', name: 'Alcohols, n.o.s.' },
+  { pattern: /isopropyl\s+alcohol|isopropanol|ipa\s+(70|91|99)/i, un: 'UN1219', class: '3', pg: 'II', name: 'Isopropanol' },
+  { pattern: /petroleum\s+ether/i, un: 'UN1268', class: '3', pg: 'I', name: 'Petroleum distillates, n.o.s.' },
+  { pattern: /mineral\s+spirits?|white\s+spirits?/i, un: 'UN1268', class: '3', pg: 'III', name: 'Petroleum distillates, n.o.s.' },
+  { pattern: /vm.?p\s+naphtha/i, un: 'UN1268', class: '3', pg: 'II', name: 'Petroleum distillates, n.o.s.' },
+  { pattern: /hexane|n-?hexane/i, un: 'UN1208', class: '3', pg: 'II', name: 'Hexanes' },
+  { pattern: /heptane|n-?heptane/i, un: 'UN1206', class: '3', pg: 'II', name: 'Heptanes' },
+  { pattern: /cyclohexanone/i, un: 'UN1915', class: '3', pg: 'III', name: 'Cyclohexanone' },
+  { pattern: /mek|methyl\s+ethyl\s+ketone/i, un: 'UN1193', class: '3', pg: 'II', name: 'Ethyl methyl ketone' },
+  { pattern: /mibk|methyl\s+isobutyl\s+ketone/i, un: 'UN1245', class: '3', pg: 'II', name: 'Methyl isobutyl ketone' },
+  { pattern: /mnak|methyl\s+n-?amyl\s+ketone/i, un: 'UN1110', class: '3', pg: 'III', name: 'n-Amyl methyl ketone' },
+  { pattern: /mpk|methyl\s+n-?propyl\s+ketone/i, un: 'UN1249', class: '3', pg: 'II', name: 'Methyl propyl ketone' },
   { pattern: /ethyl\s+acetate/i, un: 'UN1173', class: '3', pg: 'II', name: 'Ethyl acetate' },
-  { pattern: /isopropyl\s+alcohol|ipa\s+99/i, un: 'UN1219', class: '3', pg: 'II', name: 'Isopropanol' },
-  { pattern: /ethanol.*190\s+proof/i, un: 'UN1170', class: '3', pg: 'II', name: 'Ethanol' },
-  { pattern: /n-?hexane/i, un: 'UN1208', class: '3', pg: 'II', name: 'Hexanes' },
-  { pattern: /hydrogen\s+peroxide.*35/i, un: 'UN2014', class: '5.1', pg: 'II', name: 'Hydrogen peroxide' },
+  { pattern: /n-?butyl\s+acetate/i, un: 'UN1123', class: '3', pg: 'III', name: 'Butyl acetates' },
+  { pattern: /isopropyl\s+acetate/i, un: 'UN1220', class: '3', pg: 'II', name: 'Isopropyl acetate' },
+  { pattern: /amyl\s+acetate/i, un: 'UN1104', class: '3', pg: 'III', name: 'Amyl acetates' },
+  { pattern: /tert-?butyl\s+acetate|tba/i, un: 'UN1123', class: '3', pg: 'II', name: 'Butyl acetates' },
+  { pattern: /d-?limonene/i, un: 'UN2052', class: '3', pg: 'III', name: 'Dipentene' },
+  { pattern: /glycol\s+ether\s+ee/i, un: 'UN1171', class: '3', pg: 'III', name: 'Ethylene glycol monoethyl ether' },
+  { pattern: /isobutyl\s+alcohol/i, un: 'UN1212', class: '3', pg: 'III', name: 'Isobutanol' },
+  { pattern: /n-?propyl\s+alcohol/i, un: 'UN1274', class: '3', pg: 'II', name: 'n-Propanol' },
+  { pattern: /n-?butyl\s+alcohol|n-?butanol/i, un: 'UN1120', class: '3', pg: 'III', name: 'Butanols' },
+  
+  // Acids - Class 8
+  { pattern: /sulfuric\s+acid.*9[38]|drain\s+hammer/i, un: 'UN1830', class: '8', pg: 'II', name: 'Sulfuric acid' },
+  { pattern: /sulfuric\s+acid.*(37|50|51|70)/i, un: 'UN2796', class: '8', pg: 'II', name: 'Sulfuric acid' },
+  { pattern: /sulfuric\s+acid.*30/i, un: 'UN2796', class: '8', pg: 'II', name: 'Sulfuric acid' },
+  { pattern: /battery\s+acid|sulfuric.*37/i, un: 'UN2796', class: '8', pg: 'II', name: 'Battery fluid, acid' },
+  { pattern: /hydrochloric\s+acid.*(31|32|37)/i, un: 'UN1789', class: '8', pg: 'II', name: 'Hydrochloric acid' },
+  { pattern: /hydrochloric\s+acid.*(15|20)/i, un: 'UN1789', class: '8', pg: 'III', name: 'Hydrochloric acid' },
+  { pattern: /hydrochloric\s+acid.*5/i, un: 'UN1789', class: '8', pg: 'III', name: 'Hydrochloric acid' },
+  { pattern: /nitric\s+acid.*70/i, un: 'UN2031', class: '8', pg: 'I', name: 'Nitric acid' },
+  { pattern: /nitric\s+acid.*(6[0-9]|5[0-9])/i, un: 'UN2031', class: '8', pg: 'II', name: 'Nitric acid' },
+  { pattern: /nitric\s+acid.*(40|25|20)/i, un: 'UN2031', class: '8', pg: 'II', name: 'Nitric acid' },
+  { pattern: /nitric\s+acid.*5(?!\d)/i, un: 'UN2031', class: '8', pg: 'II', name: 'Nitric acid' },
+  { pattern: /phosphoric\s+acid.*(75|85)/i, un: 'UN1805', class: '8', pg: 'III', name: 'Phosphoric acid' },
+  { pattern: /phosphoric\s+acid.*30/i, un: 'UN1805', class: '8', pg: 'III', name: 'Phosphoric acid' },
+  { pattern: /acetic\s+acid.*glacial|glacial\s+acetic/i, un: 'UN2789', class: '8', pg: 'II', name: 'Acetic acid, glacial' },
+  { pattern: /acetic\s+acid.*(50|75)/i, un: 'UN2790', class: '8', pg: 'II', name: 'Acetic acid solution' },
+  { pattern: /acetic\s+acid.*30/i, un: 'UN2790', class: '8', pg: 'III', name: 'Acetic acid solution' },
+  { pattern: /vinegar.*(30|50|75)/i, un: 'UN2790', class: '8', pg: 'II', name: 'Acetic acid solution' },
+  { pattern: /hydrofluorosilicic\s+acid|hfs/i, un: 'UN1778', class: '8', pg: 'II', name: 'Fluorosilicic acid' },
+  
+  // Bases - Class 8
+  { pattern: /sodium\s+hydroxide.*50|caustic.*50/i, un: 'UN1824', class: '8', pg: 'II', name: 'Sodium hydroxide solution' },
+  { pattern: /sodium\s+hydroxide.*25|caustic.*25/i, un: 'UN1824', class: '8', pg: 'III', name: 'Sodium hydroxide solution' },
+  { pattern: /sodium\s+hydroxide\s+flakes?|lye\s+flakes?|caustic\s+soda\s+flakes?/i, un: 'UN1823', class: '8', pg: 'II', name: 'Sodium hydroxide, solid' },
+  { pattern: /potassium\s+hydroxide.*45|koh.*solution/i, un: 'UN1814', class: '8', pg: 'II', name: 'Potassium hydroxide solution' },
+  { pattern: /potassium\s+hydroxide\s+flakes?|koh\s+flakes?/i, un: 'UN1813', class: '8', pg: 'II', name: 'Potassium hydroxide, solid' },
+  { pattern: /ammonium\s+hydroxide|ammonia.*solution.*29/i, un: 'UN2672', class: '8', pg: 'III', name: 'Ammonia solution' },
+  
+  // Oxidizers - Class 5.1
+  { pattern: /hydrogen\s+peroxide.*(30|35)/i, un: 'UN2014', class: '5.1', pg: 'II', name: 'Hydrogen peroxide' },
+  { pattern: /hydrogen\s+peroxide.*(25|20)/i, un: 'UN2984', class: '5.1', pg: 'III', name: 'Hydrogen peroxide' },
+  { pattern: /hydrogen\s+peroxide.*(10|12|15)/i, un: 'UN2984', class: '5.1', pg: 'III', name: 'Hydrogen peroxide' },
   { pattern: /sodium\s+hypochlorite.*12/i, un: 'UN1791', class: '8', pg: 'III', name: 'Hypochlorite solution' },
+  { pattern: /sodium\s+hypochlorite.*5/i, un: 'UN1791', class: '8', pg: 'III', name: 'Hypochlorite solution' },
+  
+  // Other corrosives - Class 8
   { pattern: /ferric\s+chloride.*40/i, un: 'UN2582', class: '8', pg: 'III', name: 'Ferric chloride solution' },
+  { pattern: /monoethanolamine|mea\s/i, un: 'UN2491', class: '8', pg: 'III', name: 'Ethanolamine' },
+  { pattern: /aluminum\s+sulfate.*50/i, un: 'UN3264', class: '8', pg: 'III', name: 'Corrosive liquid, acidic, inorganic, n.o.s.' },
+  
+  // Toxic - Class 6.1
+  { pattern: /perchloroethylene|perc|pce/i, un: 'UN1897', class: '6.1', pg: 'III', name: 'Tetrachloroethylene' },
+  { pattern: /trichloroethylene|tce/i, un: 'UN1710', class: '6.1', pg: 'III', name: 'Trichloroethylene' },
+  { pattern: /oxalic\s+acid/i, un: 'UN3261', class: '8', pg: 'III', name: 'Corrosive solid, acidic, organic, n.o.s.' },
+  
+  // Environmentally hazardous
+  { pattern: /sodium\s+dichromate/i, un: 'UN3288', class: '6.1', pg: 'II', name: 'Toxic solid, inorganic, n.o.s.' },
+  { pattern: /cadmium\s+oxide/i, un: 'UN2570', class: '6.1', pg: 'I', name: 'Cadmium compound' },
+  { pattern: /ammonium\s+bifluoride/i, un: 'UN1727', class: '8', pg: 'II', name: 'Ammonium hydrogendifluoride, solid' },
 ];
 
 export async function classifyWithDatabaseRAG(
@@ -670,20 +810,52 @@ function normalizePG(pg: string | null): 'I' | 'II' | 'III' | 'NONE' | null {
 function rerankResults(query: string, results: RAGDocument[]): RAGDocument[] {
   const ql = query.toLowerCase();
   
-  // Boost exact matches
+  // Extract chemical name without size/container info
+  const chemicalName = ql
+    .replace(/\d+\s*(gallon|gal|lb|pound|drum|container|bottle|jug|quart|liter|ml|kg|oz)/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
   return results.sort((a, b) => {
-    let scoreA = a.score || 0;
-    let scoreB = b.score || 0;
+    let scoreA = a.score || a.similarity || 0;
+    let scoreB = b.score || b.similarity || 0;
     
-    // Boost exact product name matches
-    if (a.metadata?.name?.toLowerCase() === ql) scoreA += 0.5;
-    if (b.metadata?.name?.toLowerCase() === ql) scoreB += 0.5;
+    // MASSIVE boost for exact chemical name match
+    const aName = (a.metadata?.name || a.metadata?.baseName || a.text || '').toLowerCase();
+    const bName = (b.metadata?.name || b.metadata?.baseName || b.text || '').toLowerCase();
+    
+    // Check for chemical name match (without container size)
+    if (chemicalName && chemicalName.length > 2) {
+      if (aName.includes(chemicalName)) scoreA += 0.8;
+      if (bName.includes(chemicalName)) scoreB += 0.8;
+      
+      // Extra boost for exact match
+      if (aName === chemicalName) scoreA += 0.3;
+      if (bName === chemicalName) scoreB += 0.3;
+    }
+    
+    // Penalize wrong chemicals based on context
+    if (chemicalName.includes('kerosene')) {
+      // Penalize petroleum products that aren't kerosene
+      if (aName.includes('petroleum ether')) scoreA -= 0.5;
+      if (bName.includes('petroleum ether')) scoreB -= 0.5;
+      if (aName.includes('mineral spirits')) scoreA -= 0.3;
+      if (bName.includes('mineral spirits')) scoreB -= 0.3;
+    }
+    
+    // Boost exact full query match
+    if (aName === ql) scoreA += 0.5;
+    if (bName === ql) scoreB += 0.5;
     
     // Boost verified products
     if (a.source === 'products') scoreA += 0.2;
     if (b.source === 'products') scoreB += 0.2;
     
-    // Boost historical matches
+    // Boost CFR/HMT sources for regulatory data
+    if (a.source === 'cfr' || a.source === 'hmt') scoreA += 0.15;
+    if (b.source === 'cfr' || b.source === 'hmt') scoreB += 0.15;
+    
+    // Boost historical matches slightly
     if (a.source === 'historical') scoreA += 0.1;
     if (b.source === 'historical') scoreB += 0.1;
     
