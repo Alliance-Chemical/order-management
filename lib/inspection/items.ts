@@ -26,16 +26,6 @@ export function buildInspectionItems(workspace: WorkspaceLike, selectedItem?: Or
   inspectionItems = [];
 
   if (workspace.workflowPhase === 'pre_mix') {
-    if (itemWorkflowType !== 'direct_resell') {
-      const hasPumpAndFillItems = sourceAssignments.some((a: any) => a.workflowType === 'pump_and_fill');
-      if (hasPumpAndFillItems || !selectedItem) {
-        inspectionItems.push(
-          { id: 'scan_source_qr', label: 'Scan Source QR', description: 'Scan QR code on SOURCE container (bulk container to pump from)' },
-          { id: 'verify_source_chemical', label: 'Verify Source Chemical', description: 'Confirm SOURCE container matches expected chemical (pump & fill only)' }
-        );
-      }
-    }
-
     inspectionItems.push(
       { id: 'container_condition', label: 'Check Destination Containers', description: 'Inspect DESTINATION containers for damage, leaks, or contamination (containers going to customer)' },
       { id: 'label_verification', label: 'Verify Destination Labels', description: 'Verify labels on DESTINATION containers match order specifications' },

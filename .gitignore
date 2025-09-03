@@ -75,3 +75,4 @@ set-vercel-env.sh
 # AWS credentials
 .aws/
 .env*.local
+data/archived/

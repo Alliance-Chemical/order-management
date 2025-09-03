@@ -9,9 +9,7 @@ import {
   DocumentCheckIcon,
   BeakerIcon,
   ArrowRightIcon,
-  ExclamationTriangleIcon,
-  HandRaisedIcon,
-  MicrophoneIcon
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/solid';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import AIHazmatFreightSuggestion from '@/components/freight-booking/AIHazmatFreightSuggestion';
@@ -223,6 +221,7 @@ export default function FreightBookingPage() {
       /* ignore */
     }
   }
+
   const [manualInputs, setManualInputs] = useState<Record<string, {
     freightClass: string;
     nmfcCode: string;
@@ -697,40 +696,6 @@ export default function FreightBookingPage() {
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-warehouse-2xl font-black text-gray-900 uppercase mb-4">⚡ Classification Status</h2>
               
-              {/* Manual Entry Options */}
-              <div className="mb-6 p-4 bg-amber-50 border-2 border-warehouse-caution rounded-warehouse">
-                <div className="flex items-center mb-2">
-                  <HandRaisedIcon className="h-6 w-6 text-warehouse-caution mr-2" />
-                  <span className="text-warehouse-xl font-black text-gray-900 uppercase">Manual Override Available</span>
-                </div>
-                <p className="text-gray-700 mb-3">Scanner not working? Use manual entry or voice input.</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      warehouseFeedback.buttonPress();
-                      // Manual entry logic would go here
-                      alert('Manual entry feature coming soon');
-                    }}
-                    className="px-6 py-4 bg-warehouse-caution text-white rounded-warehouse text-warehouse-lg font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95"
-                    style={{ minHeight: '60px' }}
-                  >
-                    ⌨️ MANUAL ENTRY
-                  </button>
-                  <button
-                    onClick={() => {
-                      warehouseFeedback.buttonPress();
-                      // Voice input logic would go here
-                      alert('Voice input feature coming soon');
-                    }}
-                    className="px-6 py-4 bg-warehouse-info text-white rounded-warehouse text-warehouse-lg font-black hover:bg-blue-700 transition-colors shadow-warehouse border-b-4 border-blue-800 active:scale-95"
-                    style={{ minHeight: '60px' }}
-                  >
-                    <MicrophoneIcon className="h-5 w-5 inline mr-2" />
-                    VOICE INPUT
-                  </button>
-                </div>
-              </div>
-              
               <div className="grid gap-4">
                 {bookingData.selectedOrder.items.map((item, index) => {
                   const classification = bookingData.classifiedItems.find(c => c.sku === item.sku);
@@ -762,7 +727,7 @@ export default function FreightBookingPage() {
                           ) : (
                             <div className="bg-gray-50 p-4 rounded-md border border-gray-200 w-[380px]">
                               <div className="font-bold text-gray-800 mb-2">
-                                Set Classification
+                                Manual Classification
                                 {manualInputs[item.sku]?.hazmatData?.isHazmat && (
                                   <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
                                     ⚠️ HAZMAT DATA LOADED
@@ -778,6 +743,7 @@ export default function FreightBookingPage() {
                                     onChange={(e) => setManualInputs(prev => ({
                                       ...prev,
                                       [item.sku]: {
+                                        ...prev[item.sku],
                                         freightClass: e.target.value,
                                         nmfcCode: prev[item.sku]?.nmfcCode ?? '',
                                         nmfcSub: prev[item.sku]?.nmfcSub ?? '',
@@ -796,6 +762,7 @@ export default function FreightBookingPage() {
                                     onChange={(e) => setManualInputs(prev => ({
                                       ...prev,
                                       [item.sku]: {
+                                        ...prev[item.sku],
                                         freightClass: prev[item.sku]?.freightClass ?? '',
                                         nmfcCode: e.target.value,
                                         nmfcSub: prev[item.sku]?.nmfcSub ?? '',
@@ -814,6 +781,7 @@ export default function FreightBookingPage() {
                                     onChange={(e) => setManualInputs(prev => ({
                                       ...prev,
                                       [item.sku]: {
+                                        ...prev[item.sku],
                                         freightClass: prev[item.sku]?.freightClass ?? '',
                                         nmfcCode: prev[item.sku]?.nmfcCode ?? '',
                                         nmfcSub: e.target.value,
@@ -832,13 +800,14 @@ export default function FreightBookingPage() {
                                     onChange={(e) => setManualInputs(prev => ({
                                       ...prev,
                                       [item.sku]: {
+                                        ...prev[item.sku],
                                         freightClass: prev[item.sku]?.freightClass ?? '',
                                         nmfcCode: prev[item.sku]?.nmfcCode ?? '',
                                         nmfcSub: prev[item.sku]?.nmfcSub ?? '',
                                         description: e.target.value,
                                       }
                                     }))}
-                                    placeholder="Label for this classification"
+                                    placeholder="Proper shipping name"
                                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                                   />
                                 </div>
@@ -957,7 +926,7 @@ export default function FreightBookingPage() {
                       }
                     }
                     
-                    // Update manual inputs with RAG data
+                    // Auto-populate the manual form with RAG data
                     setManualInputs(prev => ({
                       ...prev,
                       [sku]: {
@@ -965,7 +934,7 @@ export default function FreightBookingPage() {
                         nmfcCode: nmfcCode,
                         nmfcSub: nmfcSub,
                         description: description,
-                        // Store hazmat data in the form state (we'll pass this to the API)
+                        // Store hazmat data in the form state
                         hazmatData: {
                           unNumber: suggestion.un_number,
                           hazardClass: suggestion.hazard_class,
@@ -976,15 +945,15 @@ export default function FreightBookingPage() {
                       }
                     }));
                     
-                    // Show visual feedback that RAG data was applied
+                    // Show visual feedback
                     warehouseFeedback.success();
                     
-                    // Add a temporary success message in the form
+                    // Add a temporary success message
                     setManualInputs(prev => ({
                       ...prev,
                       [sku]: {
                         ...prev[sku],
-                        successMessage: '✅ Hazmat data auto-populated from RAG'
+                        successMessage: '✅ RAG data loaded - review and save'
                       }
                     }));
                     

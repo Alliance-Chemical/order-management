@@ -249,7 +249,7 @@ async function migrateProductClassifications() {
     SELECT 
       p.id, p.sku, p.name, p.is_hazardous, p.un_number, p.cas_number,
       fc.nmfc_code, fc.freight_class, fc.is_hazmat, fc.hazmat_class, fc.packing_group,
-      fc.proper_shipping_name, fc.description
+      fc.description
     FROM products p
     LEFT JOIN product_freight_links pfl ON p.id = pfl.product_id
     LEFT JOIN freight_classifications fc ON pfl.classification_id = fc.id
@@ -278,7 +278,7 @@ async function migrateProductClassifications() {
         nmfcCode: product.nmfc_code,
         freightClass: product.freight_class,
         isHazardous: product.is_hazardous || product.is_hazmat,
-        properShippingName: product.proper_shipping_name,
+        properShippingName: product.description || product.name, // Use description or product name
       };
 
       await db`

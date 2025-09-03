@@ -253,10 +253,17 @@ async function processDocuments() {
     for (let j = 0; j < batch.length; j++) {
       if (j < embeddings.length) {
         try {
+          // Format vector properly for pgvector - needs to be [x,y,z] format
+          // Handle both array and string formats (from cache)
+          const embedding = embeddings[j];
+          const vectorString = typeof embedding === 'string' 
+            ? embedding 
+            : `[${embedding.join(',')}]`;
+          
           await db`
             UPDATE rag.documents
             SET 
-              embedding = ${JSON.stringify(embeddings[j])}::vector,
+              embedding = ${vectorString}::vector,
               embedding_model = ${EMBEDDING_MODEL},
               indexed_at = NOW()
             WHERE id = ${batch[j].id}

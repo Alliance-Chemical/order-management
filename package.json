@@ -57,7 +57,8 @@
     "test:advanced-rag": "node scripts/test-advanced-rag.js",
     "rag:db:setup": "npx tsx scripts/setup-rag-database.ts",
     "rag:db:migrate": "npx tsx scripts/migrate-rag-to-db.ts",
-    "rag:db:test": "npx tsx scripts/test-rag-db.ts"
+    "rag:db:test": "npx tsx scripts/test-rag-db.ts",
+    "test:physical": "playwright test tests/e2e/physical-smoke.spec.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.864.0",
@@ -139,7 +140,6 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.3",
     "typescript": "^5",
-    "vitest": "^3.2.4",
-    "test:physical": "playwright test tests/e2e/physical-smoke.spec.ts"
+    "vitest": "^3.2.4"
   }
 }

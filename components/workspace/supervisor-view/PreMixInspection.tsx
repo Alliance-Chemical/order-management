@@ -10,8 +10,6 @@ interface PreMixInspectionProps {
 }
 
 const inspectionItems = [
-  { id: 'scan_source_qr', label: 'Scan Source QR', description: 'Scan QR code on source container' },
-  { id: 'verify_source_chemical', label: 'Verify Source Chemical', description: 'Confirm source container matches expected chemical' },
   { id: 'container_condition', label: 'Container Condition', description: 'Check for damage, leaks, or contamination' },
   { id: 'label_verification', label: 'Label Verification', description: 'Verify product labels match order' },
   { id: 'quantity_check', label: 'Quantity Check', description: 'Confirm correct quantity of containers' },

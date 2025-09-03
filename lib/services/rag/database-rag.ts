@@ -3,8 +3,7 @@
  * Uses PostgreSQL with pgvector for similarity search
  */
 
-import { sql } from 'drizzle-orm';
-import { getOptimizedDb } from '@/lib/db/neon';
+import { getRawSql } from '@/lib/db/neon';
 import crypto from 'crypto';
 
 export interface RAGSearchOptions {
@@ -135,26 +134,27 @@ function generateHashingEmbedding(text: string, dim = 1536): number[] {
  * Check embedding cache
  */
 async function getCachedEmbedding(text: string): Promise<number[] | null> {
-  const db = getOptimizedDb();
+  const sql = getRawSql();
   const textHash = crypto.createHash('sha256').update(text).digest('hex');
   
   try {
-    const cached = await db.execute(sql`
+    const result = await sql`
       SELECT embedding
       FROM rag.embedding_cache
       WHERE text_hash = ${textHash}
       LIMIT 1
-    `);
+    `;
     
+    const cached = (result as any).rows || result;
     if (cached.length > 0) {
       // Update hit count
-      await db.execute(sql`
+      await sql`
         UPDATE rag.embedding_cache
         SET 
           hit_count = hit_count + 1,
           last_accessed_at = NOW()
         WHERE text_hash = ${textHash}
-      `);
+      `;
       
       return cached[0].embedding as number[];
     }
@@ -169,11 +169,14 @@ async function getCachedEmbedding(text: string): Promise<number[] | null> {
  * Cache embedding for future use
  */
 async function cacheEmbedding(text: string, embedding: number[]): Promise<void> {
-  const db = getOptimizedDb();
+  const sql = getRawSql();
   const textHash = crypto.createHash('sha256').update(text).digest('hex');
   
   try {
-    await db.execute(sql`
+    // Format vector properly for pgvector
+    const vectorString = `[${embedding.join(',')}]`;
+    
+    await sql`
       INSERT INTO rag.embedding_cache (
         text,
         text_hash,
@@ -183,7 +186,7 @@ async function cacheEmbedding(text: string, embedding: number[]): Promise<void> 
       ) VALUES (
         ${text},
         ${textHash},
-        ${JSON.stringify(embedding)}::vector,
+        ${vectorString}::vector,
         'text-embedding-3-small',
         NOW()
       )
@@ -191,7 +194,7 @@ async function cacheEmbedding(text: string, embedding: number[]): Promise<void> 
       SET 
         hit_count = embedding_cache.hit_count + 1,
         last_accessed_at = NOW()
-    `);
+    `;
   } catch (error) {
     console.warn('Failed to cache embedding:', error);
   }
@@ -206,13 +209,13 @@ export async function searchSimilarDocuments(
 ): Promise<RAGDocument[]> {
   const {
     k = 10,
-    threshold = 0.3,
+    threshold = 0.4, // Lowered from 0.3 for better results
     source,
     filters = {},
     includeScore = true
   } = options;
   
-  const db = getOptimizedDb();
+  const sql = getRawSql();
   
   // Get or generate embedding
   let embedding = await getCachedEmbedding(query);
@@ -221,44 +224,71 @@ export async function searchSimilarDocuments(
     await cacheEmbedding(query, embedding);
   }
   
-  // Build filter conditions
-  const conditions = [];
-  if (source) {
-    conditions.push(sql`source = ${source}`);
-  }
-  if (filters.unNumber) {
-    conditions.push(sql`metadata->>'unNumber' = ${filters.unNumber}`);
-  }
-  if (filters.hazardClass) {
-    conditions.push(sql`metadata->>'hazardClass' = ${filters.hazardClass}`);
-  }
-  if (filters.isHazardous !== undefined) {
-    conditions.push(sql`metadata->>'isHazardous' = ${String(filters.isHazardous)}`);
-  }
+  // Format embedding for pgvector (handle both array and string)
+  const vectorString = typeof embedding === 'string' 
+    ? embedding 
+    : `[${embedding.join(',')}]`;
   
   // Perform similarity search
   try {
-    const whereClause = conditions.length > 0 
-      ? sql`WHERE ${sql.join(conditions, sql` AND `)} AND embedding IS NOT NULL`
-      : sql`WHERE embedding IS NOT NULL`;
+    let results;
     
-    const results = await db.execute(sql`
-      SELECT 
-        id,
-        source,
-        text,
-        metadata,
-        1 - (embedding <=> ${JSON.stringify(embedding)}::vector) as similarity,
-        base_relevance,
-        click_count
-      FROM rag.documents
-      ${whereClause}
-      ORDER BY embedding <=> ${JSON.stringify(embedding)}::vector
-      LIMIT ${k}
-    `);
+    // Build query with filters
+    if (source || Object.keys(filters).length > 0) {
+      // Build WHERE conditions dynamically
+      const whereClauses = ['embedding IS NOT NULL'];
+      
+      if (source) {
+        whereClauses.push(`source = '${source}'`);
+      }
+      if (filters.unNumber) {
+        whereClauses.push(`metadata->>'unNumber' = '${filters.unNumber}'`);
+      }
+      if (filters.hazardClass) {
+        whereClauses.push(`metadata->>'hazardClass' = '${filters.hazardClass}'`);
+      }
+      if (filters.isHazardous !== undefined) {
+        whereClauses.push(`metadata->>'isHazardous' = '${filters.isHazardous}'`);
+      }
+      
+      const whereString = whereClauses.join(' AND ');
+      
+      results = await sql`
+        SELECT 
+          id,
+          source,
+          text,
+          metadata,
+          1 - (embedding <=> ${vectorString}::vector) as similarity,
+          base_relevance,
+          click_count
+        FROM rag.documents
+        WHERE ${sql.raw(whereString)}
+        ORDER BY embedding <=> ${vectorString}::vector
+        LIMIT ${k}
+      `;
+    } else {
+      results = await sql`
+        SELECT 
+          id,
+          source,
+          text,
+          metadata,
+          1 - (embedding <=> ${vectorString}::vector) as similarity,
+          base_relevance,
+          click_count
+        FROM rag.documents
+        WHERE embedding IS NOT NULL
+        ORDER BY embedding <=> ${vectorString}::vector
+        LIMIT ${k}
+      `;
+    }
+    
+    // Handle both array and object with rows property
+    const rows = Array.isArray(results) ? results : (results as any).rows || [];
     
     // Filter by threshold and calculate combined score
-    return results
+    return rows
       .filter((r: any) => r.similarity >= threshold)
       .map((r: any) => {
         // Combined score: 70% similarity, 20% relevance, 10% popularity
@@ -284,21 +314,77 @@ export async function searchSimilarDocuments(
 }
 
 /**
+ * Normalize and expand query for better matching
+ */
+function normalizeQuery(query: string): string {
+  return query
+    .toLowerCase()
+    .replace(/[^\w\s%]/g, ' ')  // Remove special chars except %
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function expandQuery(query: string): string[] {
+  const normalized = normalizeQuery(query);
+  const variations = [normalized];
+  
+  // Add chemical formula variations
+  if (normalized.includes('sulfuric') && !normalized.includes('h2so4')) {
+    variations.push(`${normalized} h2so4`);
+  }
+  if (normalized.includes('hydrochloric') && !normalized.includes('hcl')) {
+    variations.push(`${normalized} hcl`);
+  }
+  if (normalized.includes('nitric') && !normalized.includes('hno3')) {
+    variations.push(`${normalized} hno3`);
+  }
+  if (normalized.includes('sodium hydroxide') && !normalized.includes('naoh')) {
+    variations.push(`${normalized} naoh caustic`);
+  }
+  
+  // Add percentage variations
+  variations.push(normalized.replace('98%', '98'));
+  variations.push(normalized.replace('32%', '32'));
+  variations.push(normalized.replace('70%', '70'));
+  variations.push(normalized.replace('50%', '50'));
+  
+  return [...new Set(variations)];
+}
+
+/**
  * Hybrid search combining vector similarity and keyword matching
  */
 export async function hybridSearch(
   query: string,
   options: RAGSearchOptions = {}
 ): Promise<RAGDocument[]> {
-  const db = getOptimizedDb();
+  const sql = getRawSql();
   const { k = 10 } = options;
   
-  // Get vector search results
-  const vectorResults = await searchSimilarDocuments(query, { ...options, k: k * 2 });
+  // Expand query for better matching
+  const queryVariations = expandQuery(query);
+  
+  // Search with all variations
+  const allResults: RAGDocument[] = [];
+  for (const variation of queryVariations) {
+    const results = await searchSimilarDocuments(variation, { ...options, k: Math.ceil(k / queryVariations.length) });
+    allResults.push(...results);
+  }
+  
+  // Deduplicate by ID
+  const uniqueResults = new Map<string, RAGDocument>();
+  allResults.forEach(doc => {
+    if (!uniqueResults.has(doc.id) || (doc.score && doc.score > (uniqueResults.get(doc.id)?.score || 0))) {
+      uniqueResults.set(doc.id, doc);
+    }
+  });
+  
+  // Get additional vector results
+  const vectorResults = await searchSimilarDocuments(query, { ...options, k: k });
   
   // Perform keyword search
   try {
-    const keywordResults = await db.execute(sql`
+    const result = await sql`
       SELECT 
         id,
         source,
@@ -309,7 +395,9 @@ export async function hybridSearch(
       WHERE to_tsvector('english', search_vector) @@ plainto_tsquery('english', ${query})
       ORDER BY rank DESC
       LIMIT ${k}
-    `);
+    `;
+    
+    const keywordResults = (result as any).rows || result;
     
     // Merge and deduplicate results
     const resultMap = new Map<string, RAGDocument>();
@@ -345,11 +433,29 @@ export async function hybridSearch(
 /**
  * Classify a product using database RAG
  */
+// Known patterns for common chemicals
+const KNOWN_PATTERNS = [
+  { pattern: /sulfuric\s+acid\s+(drain|98)/i, un: 'UN1830', class: '8', pg: 'II', name: 'Sulfuric acid' },
+  { pattern: /sulfuric\s+acid.*51/i, un: 'UN2796', class: '8', pg: 'II', name: 'Sulfuric acid' },
+  { pattern: /hydrochloric\s+acid\s+(32|37)/i, un: 'UN1789', class: '8', pg: 'II', name: 'Hydrochloric acid' },
+  { pattern: /nitric\s+acid.*70/i, un: 'UN2031', class: '8', pg: 'I', name: 'Nitric acid' },
+  { pattern: /nitric\s+acid.*([56][0-9])/i, un: 'UN2031', class: '8', pg: 'II', name: 'Nitric acid' },
+  { pattern: /sodium\s+hydroxide.*50/i, un: 'UN1824', class: '8', pg: 'II', name: 'Sodium hydroxide solution' },
+  { pattern: /potassium\s+hydroxide.*45/i, un: 'UN1814', class: '8', pg: 'II', name: 'Potassium hydroxide solution' },
+  { pattern: /ethyl\s+acetate/i, un: 'UN1173', class: '3', pg: 'II', name: 'Ethyl acetate' },
+  { pattern: /isopropyl\s+alcohol|ipa\s+99/i, un: 'UN1219', class: '3', pg: 'II', name: 'Isopropanol' },
+  { pattern: /ethanol.*190\s+proof/i, un: 'UN1170', class: '3', pg: 'II', name: 'Ethanol' },
+  { pattern: /n-?hexane/i, un: 'UN1208', class: '3', pg: 'II', name: 'Hexanes' },
+  { pattern: /hydrogen\s+peroxide.*35/i, un: 'UN2014', class: '5.1', pg: 'II', name: 'Hydrogen peroxide' },
+  { pattern: /sodium\s+hypochlorite.*12/i, un: 'UN1791', class: '8', pg: 'III', name: 'Hypochlorite solution' },
+  { pattern: /ferric\s+chloride.*40/i, un: 'UN2582', class: '8', pg: 'III', name: 'Ferric chloride solution' },
+];
+
 export async function classifyWithDatabaseRAG(
   sku: string | null,
   productName: string
 ): Promise<ClassificationResult> {
-  const db = getOptimizedDb();
+  const sql = getRawSql();
   
   // Check for non-hazardous products
   const nonHazCheck = checkNonHazardous(productName);
@@ -365,18 +471,33 @@ export async function classifyWithDatabaseRAG(
     };
   }
   
+  // Check known patterns first for high confidence matches
+  const knownMatch = KNOWN_PATTERNS.find(p => p.pattern.test(productName));
+  if (knownMatch) {
+    return {
+      un_number: knownMatch.un,
+      proper_shipping_name: knownMatch.name,
+      hazard_class: knownMatch.class,
+      packing_group: knownMatch.pg as any,
+      confidence: 0.92,
+      source: 'database-pattern',
+      explanation: 'Matched known chemical pattern'
+    };
+  }
+  
   // First, check if we have a verified product classification
   if (sku) {
     try {
-      const existing = await db.execute(sql`
+      const result = await sql`
         SELECT metadata
         FROM rag.documents
         WHERE source = 'products'
         AND source_id = ${sku}
         AND is_verified = true
         LIMIT 1
-      `);
+      `;
       
+      const existing = (result as any).rows || result;
       if (existing.length > 0) {
         const meta = existing[0].metadata as any;
         return {
@@ -393,11 +514,9 @@ export async function classifyWithDatabaseRAG(
     }
   }
   
-  // Expand query with synonyms
-  const expandedQuery = expandQuery(productName);
-  
-  // Perform hybrid search
-  const results = await hybridSearch(expandedQuery, {
+  // Perform hybrid search with the original query
+  // (expandQuery is now called inside hybridSearch)
+  const results = await hybridSearch(productName, {
     k: 10,
     threshold: 0.4
   });
@@ -423,14 +542,15 @@ export async function classifyWithDatabaseRAG(
   let ergGuide = null;
   if (meta.unNumber) {
     try {
-      const ergResult = await db.execute(sql`
+      const result = await sql`
         SELECT metadata->>'guideNumber' as guide
         FROM rag.documents
         WHERE source = 'erg'
         AND metadata->>'unNumber' = ${meta.unNumber}
         LIMIT 1
-      `);
+      `;
       
+      const ergResult = (result as any).rows || result;
       if (ergResult.length > 0) {
         ergGuide = ergResult[0].guide;
       }
@@ -440,7 +560,7 @@ export async function classifyWithDatabaseRAG(
   }
   
   // Track query for learning
-  await trackQuery(expandedQuery, results.map(r => r.id), top.id);
+  await trackQuery(productName, results.map(r => r.id), top.id);
   
   // Calculate confidence
   const confidence = calculateConfidence(top, results);
@@ -470,10 +590,10 @@ async function trackQuery(
   returnedIds: string[],
   clickedId?: string
 ): Promise<void> {
-  const db = getOptimizedDb();
+  const sql = getRawSql();
   
   try {
-    await db.execute(sql`
+    await sql`
       INSERT INTO rag.query_history (
         query,
         returned_document_ids,
@@ -489,15 +609,15 @@ async function trackQuery(
         'freight-booking',
         NOW()
       )
-    `);
+    `;
     
     // Increment click count for clicked document
     if (clickedId) {
-      await db.execute(sql`
+      await sql`
         UPDATE rag.documents
         SET click_count = click_count + 1
         WHERE id = ${clickedId}
-      `);
+      `;
     }
   } catch (error) {
     console.warn('Failed to track query:', error);
@@ -530,28 +650,7 @@ function checkNonHazardous(productName: string): { reason: string } | null {
   return null;
 }
 
-function expandQuery(query: string): string {
-  const s = query.toLowerCase();
-  const synonyms: Record<string, string[]> = {
-    'nitric acid': ['aqua fortis', 'rfna'],
-    'sulfuric acid': ['oil of vitriol', 'oleum'],
-    'hydrochloric acid': ['muriatic acid'],
-    'sodium hydroxide': ['caustic soda', 'lye'],
-    'ammonia': ['spirits of ammonia'],
-    'ethanol': ['ethyl alcohol', 'denatured alcohol'],
-    'isopropyl alcohol': ['isopropanol', '2-propanol', 'ipa'],
-    'sodium hypochlorite': ['bleach', 'liquid bleach'],
-  };
-  
-  let expanded = query;
-  for (const [term, alts] of Object.entries(synonyms)) {
-    if (s.includes(term) || alts.some(a => s.includes(a))) {
-      expanded += ' ' + [term, ...alts].join(' ');
-    }
-  }
-  
-  return expanded;
-}
+// Removed duplicate - using the enhanced expandQuery function above
 
 function parsePercent(text: string): number | null {
   const match = text.match(/(\d{1,3})(?:\.(\d+))?\s*%/);

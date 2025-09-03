@@ -112,7 +112,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const getExpectedQRType = (): QRType | undefined => {
     if (!currentItem) return undefined;
     
-    if (currentItem.id === 'scan_source_qr') return 'source';
     if (currentItem.id === 'scan_destination_qr') return 'destination';
     if (currentItem.id === 'scan_master_label') return 'order_master';
     
@@ -229,7 +228,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
   // Check if current item requires QR scanning
   const requiresQRScan = currentItem && (
-    currentItem.id === 'scan_source_qr' || 
     currentItem.id === 'scan_destination_qr' ||
     currentItem.id === 'scan_master_label'
   );
