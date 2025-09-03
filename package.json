@@ -38,11 +38,19 @@
     "test:all": "npm run test:run && npm run test:e2e",
     "rag:extract": "node scripts/extract-hmt-from-cfr.js",
     "rag:build": "node scripts/build-hmt-index.js",
+    "cfr:extract-all": "node scripts/extract-full-cfr.js",
+    "erg:extract": "node scripts/extract-erg-guide.js",
+    "db:export-products": "node scripts/export-product-data.js",
+    "rag:build-comprehensive": "node scripts/build-comprehensive-index.js",
+    "rag:pipeline": "npm run cfr:extract-all && npm run erg:extract && npm run db:export-products && npm run rag:build-comprehensive",
     "ingest:history": "node scripts/ingest-historical.js",
     "ingest:erg": "node scripts/ingest-erg.js",
     "hazmat:search": "node scripts/search-hazmat.js",
     "classify:shopify": "node scripts/classify-shopify-products.js",
-    "reclassify:products": "node scripts/reclassify-products.js"
+    "reclassify:products": "node scripts/reclassify-products.js",
+    "rag:search-test": "node scripts/test-rag-search.js",
+    "rag:test": "node scripts/test-rag-search.js",
+    "test:advanced-rag": "node scripts/test-advanced-rag.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.864.0",
@@ -124,6 +132,7 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.3",
     "typescript": "^5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "test:physical": "playwright test tests/e2e/physical-smoke.spec.ts"
   }
 }

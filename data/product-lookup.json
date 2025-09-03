@@ -1,0 +1,23 @@
+{
+  "SA-98-T": {
+    "id": "1",
+    "name": "Sulfuric Acid 98% Technical Grade",
+    "isHazardous": true,
+    "casNumber": "7664-93-9",
+    "unNumber": "UN1830"
+  },
+  "HCL-37-ACS": {
+    "id": "2",
+    "name": "Hydrochloric Acid 37% ACS Grade",
+    "isHazardous": true,
+    "casNumber": "7647-01-0",
+    "unNumber": "UN1789"
+  },
+  "NA-50-LIQ": {
+    "id": "3",
+    "name": "Sodium Hydroxide 50% Solution",
+    "isHazardous": true,
+    "casNumber": "1310-73-2",
+    "unNumber": "UN1824"
+  }
+}

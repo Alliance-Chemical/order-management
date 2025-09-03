@@ -40,6 +40,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# RAG data files (too large for git)
+data/rag-index-comprehensive.json
+data/cfr-full-extract.json
+data/erg-full-extract.json
+
 # Environment files
 .env
 .env.local
@@ -69,3 +74,4 @@ set-vercel-env.sh
 
 # AWS credentials
 .aws/
+.env*.local

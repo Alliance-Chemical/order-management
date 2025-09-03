@@ -1,0 +1,168 @@
+{
+  "metadata": {
+    "source": "Alliance Chemical Database",
+    "exportedAt": "2025-09-03T01:18:00.280Z",
+    "stats": {
+      "products": 3,
+      "classifications": 2,
+      "freightOrders": 0,
+      "ragEntries": 5
+    }
+  },
+  "products": [
+    {
+      "id": "1",
+      "sku": "SA-98-T",
+      "name": "Sulfuric Acid 98% Technical Grade",
+      "isHazardous": true,
+      "casNumber": "7664-93-9",
+      "unNumber": "UN1830",
+      "weight": 600,
+      "dimensions": {
+        "length": 24,
+        "width": 20,
+        "height": 30
+      },
+      "classifications": []
+    },
+    {
+      "id": "2",
+      "sku": "HCL-37-ACS",
+      "name": "Hydrochloric Acid 37% ACS Grade",
+      "isHazardous": true,
+      "casNumber": "7647-01-0",
+      "unNumber": "UN1789",
+      "weight": 550,
+      "dimensions": {
+        "length": 24,
+        "width": 20,
+        "height": 30
+      },
+      "classifications": []
+    },
+    {
+      "id": "3",
+      "sku": "NA-50-LIQ",
+      "name": "Sodium Hydroxide 50% Solution",
+      "isHazardous": true,
+      "casNumber": "1310-73-2",
+      "unNumber": "UN1824",
+      "weight": 650,
+      "dimensions": {
+        "length": 24,
+        "width": 20,
+        "height": 30
+      },
+      "classifications": []
+    }
+  ],
+  "classifications": [
+    {
+      "id": "1",
+      "description": "Corrosive Liquids, N.O.S.",
+      "nmfcCode": "48580",
+      "freightClass": "60",
+      "isHazmat": true,
+      "hazmatClass": "8",
+      "packingGroup": "II",
+      "properShippingName": "CORROSIVE LIQUID, ACIDIC, INORGANIC, N.O.S."
+    },
+    {
+      "id": "2",
+      "description": "Caustic Soda Solution",
+      "nmfcCode": "48590",
+      "freightClass": "60",
+      "isHazmat": true,
+      "hazmatClass": "8",
+      "packingGroup": "II",
+      "properShippingName": "SODIUM HYDROXIDE SOLUTION"
+    }
+  ],
+  "orderPatterns": {
+    "carrierUsage": {},
+    "routePatterns": {},
+    "hazmatShipments": 0,
+    "averageTransitTime": 0,
+    "commonAccessorials": {},
+    "topCarriers": [],
+    "topRoutes": [],
+    "topAccessorials": []
+  },
+  "ragEntries": [
+    {
+      "id": "product-1",
+      "type": "product",
+      "text": "Product: Sulfuric Acid 98% Technical Grade | SKU: SA-98-T | CAS Number: 7664-93-9 | UN Number: UN1830 | HAZARDOUS MATERIAL | Weight: 600 lbs | Dimensions: 24x20x30 inches",
+      "metadata": {
+        "source": "database",
+        "type": "product",
+        "sku": "SA-98-T",
+        "name": "Sulfuric Acid 98% Technical Grade",
+        "isHazardous": true,
+        "casNumber": "7664-93-9",
+        "unNumber": "UN1830",
+        "classifications": []
+      }
+    },
+    {
+      "id": "product-2",
+      "type": "product",
+      "text": "Product: Hydrochloric Acid 37% ACS Grade | SKU: HCL-37-ACS | CAS Number: 7647-01-0 | UN Number: UN1789 | HAZARDOUS MATERIAL | Weight: 550 lbs | Dimensions: 24x20x30 inches",
+      "metadata": {
+        "source": "database",
+        "type": "product",
+        "sku": "HCL-37-ACS",
+        "name": "Hydrochloric Acid 37% ACS Grade",
+        "isHazardous": true,
+        "casNumber": "7647-01-0",
+        "unNumber": "UN1789",
+        "classifications": []
+      }
+    },
+    {
+      "id": "product-3",
+      "type": "product",
+      "text": "Product: Sodium Hydroxide 50% Solution | SKU: NA-50-LIQ | CAS Number: 1310-73-2 | UN Number: UN1824 | HAZARDOUS MATERIAL | Weight: 650 lbs | Dimensions: 24x20x30 inches",
+      "metadata": {
+        "source": "database",
+        "type": "product",
+        "sku": "NA-50-LIQ",
+        "name": "Sodium Hydroxide 50% Solution",
+        "isHazardous": true,
+        "casNumber": "1310-73-2",
+        "unNumber": "UN1824",
+        "classifications": []
+      }
+    },
+    {
+      "id": "classification-1",
+      "type": "freight_classification",
+      "text": "Freight Classification: Corrosive Liquids, N.O.S. | NMFC Code: 48580 | Freight Class: 60 | HAZMAT CLASSIFICATION | Hazard Class: 8 | Packing Group: II | Proper Shipping Name: CORROSIVE LIQUID, ACIDIC, INORGANIC, N.O.S.",
+      "metadata": {
+        "source": "database",
+        "type": "freight_classification",
+        "id": "1",
+        "nmfcCode": "48580",
+        "freightClass": "60",
+        "isHazmat": true,
+        "hazmatClass": "8",
+        "packingGroup": "II"
+      }
+    },
+    {
+      "id": "classification-2",
+      "type": "freight_classification",
+      "text": "Freight Classification: Caustic Soda Solution | NMFC Code: 48590 | Freight Class: 60 | HAZMAT CLASSIFICATION | Hazard Class: 8 | Packing Group: II | Proper Shipping Name: SODIUM HYDROXIDE SOLUTION",
+      "metadata": {
+        "source": "database",
+        "type": "freight_classification",
+        "id": "2",
+        "nmfcCode": "48590",
+        "freightClass": "60",
+        "isHazmat": true,
+        "hazmatClass": "8",
+        "packingGroup": "II"
+      }
+    }
+  ]
+}
