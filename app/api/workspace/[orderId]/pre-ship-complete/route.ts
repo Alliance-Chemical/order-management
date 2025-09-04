@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { workspaces, activityLog } from '@/lib/db/schema/qr-workspace';
+import { workspaces, activityLog, documents } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -44,10 +44,10 @@ export async function POST(
       return [...acc, ...(photo.lotNumbers || [])];
     }, []);
 
-    // Upload photos to S3 if they exist
+    // Upload photos to S3 and store in documents table
     const uploadedPhotos = [] as any[];
     const failedUploads: Array<{ name?: string; reason: string }> = [];
-    for (const photo of photos) {
+    for (const [index, photo] of photos.entries()) {
       if (photo.base64) {
         try {
           // Remove data URL prefix if present
@@ -57,29 +57,45 @@ export async function POST(
           // Generate unique filename
           const photoId = uuidv4();
           const key = `workspaces/${orderId}/pre-ship/${photoId}.jpg`;
+          const bucketName = process.env.S3_DOCUMENTS_BUCKET || 'alliance-chemical-documents';
           
           // Upload to S3
           await s3Client.send(new PutObjectCommand({
-            Bucket: process.env.S3_DOCUMENTS_BUCKET || 'alliance-chemical-documents',
+            Bucket: bucketName,
             Key: key,
             Body: buffer,
             ContentType: 'image/jpeg',
             Metadata: {
               orderId: orderId.toString(),
-              capturedAt: new Date().toISOString(),
+              capturedAt: photo.timestamp || new Date().toISOString(),
               lotNumbers: JSON.stringify(photo.lotNumbers || [])
             }
           }));
           
-          uploadedPhotos.push({
+          // Store document record in database
+          const documentRecord = await db.insert(documents).values({
+            workspaceId: workspace.id,
+            documentType: 'pre_ship_photo',
+            documentName: `Pre-ship Photo ${index + 1} - Order ${orderId}`,
+            s3Bucket: bucketName,
             s3Key: key,
-            s3Url: `https://${process.env.S3_DOCUMENTS_BUCKET}.s3.amazonaws.com/${key}`,
+            s3Url: `https://${bucketName}.s3.amazonaws.com/${key}`,
+            fileSize: buffer.length,
+            mimeType: 'image/jpeg',
+            uploadedBy: 'warehouse_worker'
+          }).returning();
+          
+          uploadedPhotos.push({
+            id: documentRecord[0].id,
+            s3Key: key,
+            s3Url: `https://${bucketName}.s3.amazonaws.com/${key}`,
             lotNumbers: photo.lotNumbers || [],
-            capturedAt: new Date().toISOString()
+            capturedAt: photo.timestamp || new Date().toISOString(),
+            documentId: documentRecord[0].id
           });
         } catch (uploadError: any) {
           console.error('Failed to upload photo:', uploadError);
-          failedUploads.push({ name: photo.name, reason: uploadError?.message || 'Upload failed' });
+          failedUploads.push({ name: `Photo ${index + 1}`, reason: uploadError?.message || 'Upload failed' });
         }
       }
     }

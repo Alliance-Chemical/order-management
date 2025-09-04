@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CheckCircleIcon, TruckIcon, DocumentTextIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import FinalMeasurements from '@/components/workspace/FinalMeasurements';
+import PhotoGallery from '@/components/workspace/PhotoGallery';
 
 interface PreShipInspectionProps {
   orderId: string;
@@ -302,31 +303,8 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
         onSave={handleMeasurementsSave}
       />
 
-      {/* Loading Photos */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Loading Photos</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {state.loadingPhotos.map((photo: any, index: number) => (
-            <div key={index} className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
-              <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
-            </div>
-          ))}
-          {!isShipped && (
-            <label className="relative aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer flex items-center justify-center">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])}
-                className="sr-only"
-              />
-              <div className="text-center">
-                <DocumentTextIcon className="mx-auto w-6 h-6 text-gray-400" />
-                <span className="mt-2 block text-xs text-gray-500">Add Photo</span>
-              </div>
-            </label>
-          )}
-        </div>
-      </div>
+      {/* Inspection Photos */}
+      <PhotoGallery orderId={orderId} moduleState={initialState} />
 
       {/* Notes */}
       <div className="bg-white rounded-lg shadow p-6">
