@@ -212,6 +212,14 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     // Filter out discount items (centralized)
     items = filterOutDiscounts(shipstationData.items);
     console.log(`[QR] Result: ${items.length} physical items from workspace (after filtering ${shipstationData.items.length - items.length} discounts)`);
+    
+    // ADDITIONAL DEBUG: Log what was filtered out
+    if (shipstationData.items.length > items.length) {
+      console.log(`[QR] FILTERED OUT ITEMS:`);
+      shipstationData.items.filter((item: any) => !items.includes(item)).forEach((filteredItem: any, index: number) => {
+        console.log(`[QR] Filtered Item ${index + 1}: SKU="${filteredItem.sku || 'N/A'}", Name="${filteredItem.name}", Price=${filteredItem.unitPrice}, Qty=${filteredItem.quantity}`);
+      });
+    }
   } else {
     // If no items in workspace, fetch from ShipStation
     console.log('[QR] No items in workspace, fetching from ShipStation API...');
@@ -341,7 +349,13 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   
   // If no items were found and no container QRs exist, create a default one
   if (items.length === 0 && !existingQRCodes.some(qr => qr.qrType === 'container')) {
-    console.log('[QR] No items found, creating 1 default container QR');
+    console.log(`[QR] ⚠️  NO ITEMS FOUND - Creating 1 default container QR. Debug info:`);
+    console.log(`[QR] - Workspace has shipstationData: ${!!shipstationData}`);
+    console.log(`[QR] - shipstationData has items: ${!!(shipstationData?.items)}`);
+    console.log(`[QR] - items is array: ${Array.isArray(shipstationData?.items)}`);
+    console.log(`[QR] - Raw items count: ${shipstationData?.items?.length || 0}`);
+    console.log(`[QR] - Existing QR codes: ${existingQRCodes.length}`);
+    console.log(`[QR] - Container QRs exist: ${existingQRCodes.some(qr => qr.qrType === 'container')}`);
     records.push({
       workspaceId,
       qrType: 'container',

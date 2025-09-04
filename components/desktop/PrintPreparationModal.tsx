@@ -73,6 +73,11 @@ export default function PrintPreparationModal({
   };
 
   const calculateLabelSummary = (codes: QRCode[]) => {
+    console.log(`[PrintModal] Calculating label summary for ${codes.length} QR codes`);
+    codes.forEach((qr, index) => {
+      console.log(`[PrintModal] QR ${index + 1}: type=${qr.qrType}, containerType=${qr.encodedData?.containerType || qr.metadata?.containerType || 'none'}`);
+    });
+
     const summary = {
       drums: 0,
       totes: 0,
@@ -93,20 +98,26 @@ export default function PrintPreparationModal({
       }
     });
 
+    console.log(`[PrintModal] Label summary:`, summary);
     setLabelSummary(summary);
     
     // Initialize label quantities based on existing QR codes
     if (order.items) {
+      console.log(`[PrintModal] Processing ${order.items.length} order items`);
+      const filteredItems = filterOutDiscounts(order.items);
+      console.log(`[PrintModal] After filtering discounts: ${filteredItems.length} items`);
+      
       const quantities: Record<string, number> = {};
-      filterOutDiscounts(order.items)
-        .forEach(item => {
-          // Count how many QR codes exist for this item
-          const itemQRs = codes.filter(qr => 
-            qr.encodedData?.sku === item.sku || 
-            qr.encodedData?.itemId === item.sku
-          );
-          quantities[item.sku] = itemQRs.length || 1;
-        });
+      filteredItems.forEach(item => {
+        // Count how many QR codes exist for this item
+        const itemQRs = codes.filter(qr => 
+          qr.encodedData?.sku === item.sku || 
+          qr.encodedData?.itemId === item.sku
+        );
+        console.log(`[PrintModal] Item ${item.sku} (${item.name}): found ${itemQRs.length} QRs`);
+        quantities[item.sku] = itemQRs.length || 1;
+      });
+      console.log(`[PrintModal] Final label quantities:`, quantities);
       setLabelQuantities(quantities);
     }
   };
