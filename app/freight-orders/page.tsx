@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { TruckIcon } from '@heroicons/react/24/solid';
 import { warehouseFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
@@ -23,6 +23,12 @@ export default function FreightOrdersPage() {
   const [polling, setPolling] = useState(false);
   const [stats, setStats] = useState<any>({});
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams?.get('tab') === 'ready') ? 'ready' : 'orders';
+  const [activeTab, setActiveTab] = useState<'orders' | 'ready'>(initialTab as any);
+  const [readyOrders, setReadyOrders] = useState<any[]>([]);
+  const [readyLoading, setReadyLoading] = useState(false);
+  const [readyError, setReadyError] = useState<string | null>(null);
 
   const pollFreightOrders = async () => {
     setPolling(true);
@@ -49,6 +55,22 @@ export default function FreightOrdersPage() {
       alert('Failed to fetch freight orders');
     } finally {
       setPolling(false);
+    }
+  };
+
+  const loadBookingReady = async () => {
+    setReadyLoading(true);
+    setReadyError(null);
+    try {
+      const res = await fetch('/api/booking-ready', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load');
+      setReadyOrders(data.orders || []);
+    } catch (e: any) {
+      console.error('Error loading booking-ready:', e);
+      setReadyError(e?.message || 'Failed to load');
+    } finally {
+      setReadyLoading(false);
     }
   };
 
@@ -96,6 +118,9 @@ export default function FreightOrdersPage() {
 
   useEffect(() => {
     pollFreightOrders();
+    if (initialTab === 'ready') {
+      loadBookingReady();
+    }
   }, []);
 
   return (
@@ -143,104 +168,179 @@ export default function FreightOrdersPage() {
         </div>
 
         <div className="bg-white rounded-lg shadow">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">
-              Freight Orders
-            </h2>
+          {/* Tabs */}
+          <div className="px-6 pt-4 border-b border-gray-200 flex gap-2">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`px-3 py-2 text-sm rounded-md ${activeTab === 'orders' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              All Freight Orders
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('ready');
+                if (readyOrders.length === 0 && !readyLoading) loadBookingReady();
+              }}
+              className={`px-3 py-2 text-sm rounded-md ${activeTab === 'ready' ? 'bg-green-50 text-green-700 border border-green-200' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Booking Ready
+            </button>
           </div>
-          
+
           <div className="p-6">
-            {polling ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-4 text-gray-600">Searching for freight orders...</p>
-              </div>
-            ) : orders.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No freight orders found. Click "Poll Freight Orders" to search.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Order Number
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Order ID
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {orders.map((order) => (
-                      <tr key={order.orderId}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {order.orderNumber}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {order.orderId}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {order.workspaceId ? (
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                              Workspace Exists
-                            </span>
-                          ) : (
-                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                              No Workspace
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex gap-2">
+            {activeTab === 'orders' && (
+              polling ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Searching for freight orders...</p>
+                </div>
+              ) : orders.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No freight orders found. Click "Poll Freight Orders" to search.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Order Number
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Order ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {orders.map((order) => (
+                        <tr key={order.orderId}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {order.orderNumber}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {order.orderId}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             {order.workspaceId ? (
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                Workspace Exists
+                              </span>
+                            ) : (
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                No Workspace
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex gap-2">
+                              {order.workspaceId ? (
+                                <button
+                                  onClick={() => {
+                                    warehouseFeedback.buttonPress();
+                                    router.push(`/workspace/${order.orderId}`);
+                                  }}
+                                  className="px-6 py-4 bg-warehouse-info text-white rounded-warehouse text-warehouse-lg font-black hover:bg-blue-700 transition-colors shadow-warehouse border-b-4 border-blue-800 active:scale-95"
+                                  style={{ minHeight: '60px' }}
+                                >
+                                  📂 OPEN WORKSPACE
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    warehouseFeedback.success();
+                                    createWorkspace(order.orderId, order.orderNumber);
+                                  }}
+                                  className="px-6 py-4 bg-warehouse-go text-white rounded-warehouse text-warehouse-lg font-black hover:bg-green-700 transition-colors shadow-warehouse border-b-4 border-green-800 active:scale-95"
+                                  style={{ minHeight: '60px' }}
+                                >
+                                  ➕ CREATE WORKSPACE
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   warehouseFeedback.buttonPress();
-                                  router.push(`/workspace/${order.orderId}`);
+                                  router.push(`/freight-booking?orderId=${order.orderId}`);
                                 }}
-                                className="px-6 py-4 bg-warehouse-info text-white rounded-warehouse text-warehouse-lg font-black hover:bg-blue-700 transition-colors shadow-warehouse border-b-4 border-blue-800 active:scale-95"
+                                className="px-6 py-4 bg-warehouse-caution text-white rounded-warehouse text-warehouse-lg font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95 animate-pulse"
                                 style={{ minHeight: '60px' }}
                               >
-                                📂 OPEN WORKSPACE
+                                <TruckIcon className="h-5 w-5 inline mr-2" />
+                                BOOK FREIGHT
                               </button>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  warehouseFeedback.success();
-                                  createWorkspace(order.orderId, order.orderNumber);
-                                }}
-                                className="px-6 py-4 bg-warehouse-go text-white rounded-warehouse text-warehouse-lg font-black hover:bg-green-700 transition-colors shadow-warehouse border-b-4 border-green-800 active:scale-95"
-                                style={{ minHeight: '60px' }}
-                              >
-                                ➕ CREATE WORKSPACE
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                warehouseFeedback.buttonPress();
-                                router.push(`/freight-booking?orderId=${order.orderId}`);
-                              }}
-                              className="px-6 py-4 bg-warehouse-caution text-white rounded-warehouse text-warehouse-lg font-black hover:bg-amber-600 transition-colors shadow-warehouse border-b-4 border-amber-700 active:scale-95 animate-pulse"
-                              style={{ minHeight: '60px' }}
-                            >
-                              <TruckIcon className="h-5 w-5 inline mr-2" />
-                              BOOK FREIGHT
-                            </button>
-                          </div>
-                        </td>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+
+            {activeTab === 'ready' && (
+              readyLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading booking-ready orders…</p>
+                </div>
+              ) : readyError ? (
+                <div className="text-center py-8 text-red-600">{readyError}</div>
+              ) : readyOrders.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No orders are ready right now.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dimensions</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight</th>
+                        <th className="px-6 py-3" />
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {readyOrders.map((o: any) => {
+                        const d = o.finalMeasurements?.dimensions;
+                        const w = o.finalMeasurements?.weight;
+                        return (
+                          <tr key={o.orderId}>
+                            <td className="px-6 py-4">
+                              <div className="font-semibold text-gray-900">#{o.orderNumber}</div>
+                              <div className="text-xs text-gray-500">ID: {o.orderId}</div>
+                            </td>
+                            <td className="px-6 py-4 text-gray-800">{o.customerName || '—'}</td>
+                            <td className="px-6 py-4 text-gray-800">{d ? `${d.length} × ${d.width} × ${d.height} ${d.units}` : '—'}</td>
+                            <td className="px-6 py-4 text-gray-800">{w ? `${w.value} ${w.units}` : '—'}</td>
+                            <td className="px-6 py-4">
+                              <div className="flex gap-2">
+                                <button
+                                  className="px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                  onClick={() => router.push(`/freight-booking?orderId=${o.orderId}`)}
+                                >
+                                  Open in Booking
+                                </button>
+                                <button
+                                  className="px-3 py-2 text-sm bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
+                                  onClick={() => router.push(`/workspace/${o.orderId}`)}
+                                >
+                                  Open Workspace
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
           </div>
         </div>
