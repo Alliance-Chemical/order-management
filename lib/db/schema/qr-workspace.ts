@@ -7,6 +7,7 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
   orderId: bigint('order_id', { mode: 'number' }).notNull().unique(),
   orderNumber: varchar('order_number', { length: 100 }).notNull(),
+  customerName: varchar('customer_name', { length: 255 }),
   
   // QR Management (simplified - QR codes are in separate table)
   qrPrintCount: integer('qr_print_count').default(0),

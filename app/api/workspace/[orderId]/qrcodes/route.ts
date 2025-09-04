@@ -38,7 +38,6 @@ export async function GET(
       // Fetch order data from ShipStation FIRST
       let shipstationData = null;
       let orderNumber = String(orderId);
-      let customerName = null;
       
       try {
         const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
@@ -56,7 +55,6 @@ export async function GET(
         if (response.ok) {
           shipstationData = await response.json();
           orderNumber = shipstationData.orderNumber || String(orderId);
-          customerName = shipstationData.shipTo?.name || null;
           console.log(`[QR] Successfully fetched ShipStation order ${orderNumber} with ${shipstationData.items?.length || 0} items`);
         } else {
           console.error(`[QR] Failed to fetch from ShipStation: ${response.status} ${response.statusText}`);
@@ -70,7 +68,6 @@ export async function GET(
         .values({
           orderId,
           orderNumber,
-          customerName,
           workspaceUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/workspace/${orderId}`,
           status: 'pending',
           shipstationData,
