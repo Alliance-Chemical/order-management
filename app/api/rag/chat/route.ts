@@ -10,6 +10,44 @@ export const dynamic = 'force-dynamic';
 async function searchDatabaseRAG(query: string, limit: number = 5) {
   const sql = getRawSql();
   
+  // Check if this is a UN number query
+  const unMatch = query.match(/(?:UN\s?)?([0-9]{4})\b/i);
+  if (unMatch) {
+    const unNumber = `UN${unMatch[1]}`;
+    console.log(`Searching for UN number: ${unNumber}`);
+    
+    try {
+      // Search for UN number in metadata
+      const result = await sql`
+        SELECT 
+          id,
+          source,
+          text,
+          metadata,
+          1.0 as score
+        FROM rag.documents
+        WHERE 
+          metadata->>'unNumber' = ${unNumber} OR
+          text ILIKE ${'%' + unNumber + '%'} OR
+          text ILIKE ${'%' + unMatch[1] + '%'}
+        ORDER BY 
+          CASE 
+            WHEN metadata->>'unNumber' = ${unNumber} THEN 0
+            WHEN text ILIKE ${'%' + unNumber + '%'} THEN 1
+            ELSE 2
+          END
+        LIMIT ${limit}
+      `;
+      
+      const rows = (result as any).rows || result;
+      if (rows.length > 0) {
+        return rows;
+      }
+    } catch (error) {
+      console.error('UN number search failed:', error);
+    }
+  }
+  
   try {
     // First, try to generate embedding for the query
     const apiKey = process.env.OPENAI_API_KEY;
@@ -199,8 +237,75 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
+    // Check if this is a UN number lookup query (e.g., "what un is 1219", "UN1219", "1219")
+    const unLookupMatch = message.match(/(?:what\s+(?:un|UN)\s+is\s+)?(?:UN\s?)?(\d{4})\b/i);
+    if (unLookupMatch && !message.toLowerCase().includes('class')) {
+      const unNumber = `UN${unLookupMatch[1]}`;
+      console.log(`Looking up UN number: ${unNumber}`);
+      
+      // First try database search
+      const ragResults = await searchDatabaseRAG(unNumber, 3);
+      
+      if (ragResults && ragResults.length > 0) {
+        const topResult = ragResults[0];
+        const metadata = topResult.metadata || {};
+        
+        // Format response based on found data
+        const response = `${unNumber} is:\n\n` +
+          `**${metadata.baseName || metadata.name || topResult.text}**\n\n` +
+          (metadata.hazardClass ? `• **Hazard Class:** ${metadata.hazardClass}\n` : '') +
+          (metadata.packingGroup ? `• **Packing Group:** ${metadata.packingGroup}\n` : '') +
+          (metadata.labels ? `• **Labels:** ${metadata.labels}\n` : '') +
+          (metadata.ergGuide ? `• **ERG Guide:** ${metadata.ergGuide}\n` : '');
+        
+        return NextResponse.json({
+          success: true,
+          message,
+          response,
+          sources: [{
+            source: topResult.source,
+            score: topResult.score?.toFixed(3) || '1.000',
+            snippet: topResult.text.substring(0, 100) + '...',
+            metadata
+          }],
+          model: 'database-rag',
+          usage: { totalTokens: 0, estimatedCost: '$0.000000' }
+        });
+      }
+      
+      // Always fallback to known patterns when no DB results
+      console.log(`No DB results for ${unNumber}, trying pattern match...`);
+      const { KNOWN_PATTERNS } = await import('@/lib/services/rag/database-rag');
+      const pattern = KNOWN_PATTERNS.find(p => p.un === unNumber);
+      if (pattern) {
+        console.log(`Found pattern match for ${unNumber}: ${pattern.name}`);
+        const response = `${unNumber} is:\n\n` +
+          `**${pattern.name}**\n\n` +
+          `• **Hazard Class:** ${pattern.class}\n` +
+          `• **Packing Group:** ${pattern.pg}\n`;
+        
+        return NextResponse.json({
+          success: true,
+          message,
+          response,
+          sources: [{
+            source: 'pattern-match',
+            score: '0.900',
+            snippet: `Known pattern for ${pattern.name}`,
+            metadata: {
+              unNumber: pattern.un,
+              hazardClass: pattern.class,
+              packingGroup: pattern.pg
+            }
+          }],
+          model: 'database-pattern',
+          usage: { totalTokens: 0, estimatedCost: '$0.000000' }
+        });
+      }
+    }
+    
     // First, check if this is a specific chemical classification query
-    const chemicalMatch = message.match(/(?:classify|what is|un number for|hazmat for)\s+(.+?)(?:\?|$)/i);
+    const chemicalMatch = message.match(/(?:classify|what is|what un is|un number for|hazmat for)\s+(.+?)(?:\?|$)/i);
     
     if (chemicalMatch) {
       // Use our high-accuracy classification for specific chemicals

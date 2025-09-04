@@ -509,7 +509,7 @@ export async function hybridSearch(
  * Classify a product using database RAG
  */
 // Known patterns for common chemicals - comprehensive list for Alliance Chemical products
-const KNOWN_PATTERNS = [
+export const KNOWN_PATTERNS = [
   // Flammable Liquids - Class 3
   { pattern: /kerosene|k-?1\s+fuel/i, un: 'UN1223', class: '3', pg: 'III', name: 'Kerosene' },
   { pattern: /acetone/i, un: 'UN1090', class: '3', pg: 'II', name: 'Acetone' },
@@ -596,6 +596,25 @@ export async function classifyWithDatabaseRAG(
   productName: string
 ): Promise<ClassificationResult> {
   const sql = getRawSql();
+  
+  // Check if this is a direct UN number query
+  const unMatch = productName.match(/^UN\s?(\d{4})$/i);
+  if (unMatch) {
+    const unNumber = `UN${unMatch[1]}`;
+    // Find in patterns
+    const pattern = KNOWN_PATTERNS.find(p => p.un === unNumber);
+    if (pattern) {
+      return {
+        un_number: pattern.un,
+        proper_shipping_name: pattern.name,
+        hazard_class: pattern.class,
+        packing_group: pattern.pg as any,
+        confidence: 0.95,
+        source: 'pattern-un-lookup',
+        explanation: `Direct UN number lookup: ${pattern.name}`
+      };
+    }
+  }
   
   // Check for non-hazardous products
   const nonHazCheck = checkNonHazardous(productName);

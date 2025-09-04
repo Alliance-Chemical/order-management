@@ -120,15 +120,11 @@ export class WorkspaceService {
     await this.logActivity(workspace.id, `module_${module}_updated`, userId, { state });
 
     // Check for status triggers
-    await this.checkStatusTriggers(workspace.id, module, state);
+    await this.checkStatusTriggers(workspace.id, workspace.orderId, module, state);
   }
 
-  private async checkStatusTriggers(workspaceId: string, module: string, state: any) {
-    // Get workspace to access orderId
-    const workspace = await this.repository.findByOrderId(parseInt(workspaceId));
-    if (!workspace) return;
-    
-    const orderId = workspace.orderId;
+  private async checkStatusTriggers(workspaceId: string, orderId: number, module: string, state: any) {
+    // We already have both workspaceId (UUID) and orderId (number)
     
     // Check if we need to send alerts based on module state changes
     if (module === 'pre_mix' && state.completed) {

@@ -81,4 +81,20 @@ export class ShipStationClient {
     }
     return order;
   }
+
+  /**
+   * Append text to internalNotes for an order (with timestamp)
+   */
+  async appendInternalNotes(orderId: number, note: string): Promise<any> {
+    const order = await this.getOrder(orderId);
+    const ts = new Date().toISOString();
+    const existing: string = order.internalNotes || '';
+    const separator = existing ? '\n' : '';
+    const newNotes = `${existing}${separator}[${ts}] ${note}`.slice(0, 4000); // ShipStation limits
+
+    return this.makeRequest(`/orders/${orderId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ internalNotes: newNotes }),
+    });
+  }
 }

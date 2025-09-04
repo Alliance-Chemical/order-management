@@ -1,6 +1,5 @@
 'use client';
-
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   TruckIcon, 
@@ -12,9 +11,8 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/solid';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
-import AIHazmatFreightSuggestion from '@/components/freight-booking/AIHazmatFreightSuggestion';
 import { HazmatRAGPanel, type RAGSuggestion } from '@/components/freight-booking/HazmatRAGPanel';
-import { warehouseFeedback, visualFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
+import { warehouseFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
 
 interface ShipStationOrder {
   orderId: number;
@@ -116,9 +114,13 @@ export default function FreightBookingPage() {
   }>>({});
   const [nmfcSuggestionBySku, setNmfcSuggestionBySku] = useState<Record<string, {
     label: string; // e.g., rationale
-    nmfcCode: string;
-    nmfcSub: string;
-    freightClass: string;
+    nmfcCode?: string;
+    nmfcSub?: string;
+    freightClass?: string;
+    confidence?: number;
+    source?: string;
+    error?: boolean;
+    loading?: boolean;
   }>>({});
 
   function isValidHazardClass(value: string): boolean {
@@ -179,46 +181,92 @@ export default function FreightBookingPage() {
     setNmfcBySku(prev => ({ ...prev, [sku]: { ...(prev[sku] || {}), ...patch } }));
   }
 
-  function suggestNmfcForSku(sku: string, isHaz: boolean, packingGroup?: string | null, unitWeightLbs?: number, qty?: number) {
+  async function suggestNmfcForSku(sku: string, isHaz: boolean, packingGroup?: string | null, unitWeightLbs?: number, qty?: number) {
+    // Show loading state
+    setNmfcSuggestionBySku(prev => ({ 
+      ...prev, 
+      [sku]: { label: 'Fetching suggestion...', loading: true } 
+    }));
+    
     const dims = nmfcBySku[sku] || {};
-    // Only suggest for non-haz right now (density-based 43940) or PG-based 44155 if haz
+    
     try {
-      if (!isHaz) {
-        // Density-based suggestion for 43940 if dimensions and weight available
-        const L = Number(dims.lengthIn || 0);
-        const W = Number(dims.widthIn || 0);
-        const H = Number(dims.heightIn || 0);
-        if (L > 0 && W > 0 && H > 0 && (unitWeightLbs || 0) > 0 && (qty || 0) > 0) {
-          const cubicFeet = (L * W * H) / 1728 * (qty || 1);
-          const totalWeight = (unitWeightLbs || 0) * (qty || 1);
-          // inline calculation to avoid importing on client; mirror of lib helper
-          const d = totalWeight / cubicFeet;
-          let nmfcSub = '';
-          let freightClass = '';
-          if (d < 10) { nmfcSub = '1'; freightClass = '125'; }
-          else if (d < 15) { nmfcSub = '2'; freightClass = '85'; }
-          else if (d < 30) { nmfcSub = '3'; freightClass = '70'; }
-          else { nmfcSub = '4'; freightClass = '55'; }
-          const label = `Density ${(d).toFixed(2)} lb/ft³ → 43940-${nmfcSub} (Class ${freightClass})`;
-          setNmfcSuggestionBySku(prev => ({ ...prev, [sku]: { label, nmfcCode: '43940', nmfcSub, freightClass } }));
-          return;
+      // Get hazmat data if available
+      const hazmatData = hazmatBySku[sku];
+      const item = bookingData.selectedOrder?.items.find(i => i.sku === sku);
+      
+      const response = await fetch('/api/freight-booking/suggest-nmfc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku,
+          productName: item?.name,
+          weight: unitWeightLbs,
+          length: dims.lengthIn ? parseFloat(String(dims.lengthIn)) : null,
+          width: dims.widthIn ? parseFloat(String(dims.widthIn)) : null,
+          height: dims.heightIn ? parseFloat(String(dims.heightIn)) : null,
+          quantity: qty || 1,
+          isHazmat: isHaz,
+          hazardClass: hazmatData?.hazardClass,
+          packingGroup: packingGroup || hazmatData?.packingGroup,
+          unNumber: hazmatData?.unNumber
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success && result.suggestion) {
+        const { suggestion } = result;
+        
+        // Auto-populate dimensions if they came from database
+        if ((result.source === 'saved-classification' || result.productDimensions) && !dims.lengthIn) {
+          // Update dimension fields if empty
+          if (result.productDimensions?.length) {
+            updateNmfcForSku(sku, { 
+              lengthIn: result.productDimensions.length,
+              widthIn: result.productDimensions.width,
+              heightIn: result.productDimensions.height
+            });
+          }
         }
+        
+        setNmfcSuggestionBySku(prev => ({ 
+          ...prev, 
+          [sku]: { 
+            label: suggestion.label,
+            nmfcCode: suggestion.nmfcCode,
+            nmfcSub: suggestion.nmfcSub,
+            freightClass: suggestion.freightClass,
+            confidence: suggestion.confidence,
+            source: result.source,
+            loading: false
+          } 
+        }));
       } else {
-        // Hazmat PG-based suggestion for 44155 if user chose code 44155
-        const code = (nmfcBySku[sku]?.nmfcCode || '').trim();
-        const pgU = (packingGroup || '').toUpperCase();
-        if (code === '44155' && (pgU === 'I' || pgU === 'II' || pgU === 'III')) {
-          const sub = pgU === 'I' ? '1' : pgU === 'II' ? '2' : '3';
-          const cls = pgU === 'I' ? '92.5' : pgU === 'II' ? '85' : '70';
-          const label = `PG ${pgU} → 44155-${sub} (Class ${cls})`;
-          setNmfcSuggestionBySku(prev => ({ ...prev, [sku]: { label, nmfcCode: '44155', nmfcSub: sub, freightClass: cls } }));
-          return;
-        }
+        // Show helpful error message
+        const errorMsg = result.missingFields?.forDensity?.length > 0 
+          ? `Enter dimensions: ${result.missingFields.forDensity.join(', ')}`
+          : result.message || 'No suggestion available';
+          
+        setNmfcSuggestionBySku(prev => ({ 
+          ...prev, 
+          [sku]: { 
+            label: errorMsg,
+            error: true,
+            loading: false
+          } 
+        }));
       }
-      // No suggestion
-      setNmfcSuggestionBySku(prev => ({ ...prev, [sku]: undefined as any }));
-    } catch {
-      /* ignore */
+    } catch (error) {
+      console.error('Failed to get NMFC suggestion:', error);
+      setNmfcSuggestionBySku(prev => ({ 
+        ...prev, 
+        [sku]: { 
+          label: 'Error getting suggestion',
+          error: true,
+          loading: false
+        } 
+      }));
     }
   }
 
@@ -250,6 +298,27 @@ export default function FreightBookingPage() {
       fetchSpecificOrder(parseInt(orderIdParam));
     }
   }, []);
+
+  // Auto-fetch product dimensions and suggestions when classified items change
+  useEffect(() => {
+    if (bookingData.classifiedItems?.length > 0 && currentStep === 'hazmat-analysis') {
+      // Auto-trigger NMFC suggestions for all items
+      bookingData.classifiedItems.forEach(classifiedItem => {
+        const item = bookingData.selectedOrder?.items.find(i => i.sku === classifiedItem.sku);
+        if (item && !nmfcSuggestionBySku[item.sku]?.label) {
+          // Only fetch if we don't already have a suggestion
+          const hazmatData = hazmatBySku[item.sku];
+          suggestNmfcForSku(
+            item.sku,
+            Boolean(hazmatData?.isHazmat || classifiedItem.classification?.isHazmat),
+            hazmatData?.packingGroup || classifiedItem.classification?.packingGroup,
+            item.weight?.value,
+            item.quantity
+          );
+        }
+      });
+    }
+  }, [bookingData.classifiedItems, currentStep]);
 
   const fetchAvailableOrders = async () => {
     try {
@@ -419,10 +488,6 @@ export default function FreightBookingPage() {
     }
   };
 
-  const handleHazmatAnalysisComplete = (analysis: any) => {
-    setBookingData(prev => ({ ...prev, hazmatAnalysis: analysis }));
-    setCurrentStep('confirmation');
-  };
 
   const handleFinalBooking = async () => {
     if (!bookingData.selectedOrder) return;
@@ -697,7 +762,7 @@ export default function FreightBookingPage() {
               <h2 className="text-warehouse-2xl font-black text-gray-900 uppercase mb-4">⚡ Classification Status</h2>
               
               <div className="grid gap-4">
-                {bookingData.selectedOrder.items.map((item, index) => {
+                {bookingData.selectedOrder.items.map((item) => {
                   const classification = bookingData.classifiedItems.find(c => c.sku === item.sku);
                   const hasClassification = classification?.classification;
                   
@@ -1261,16 +1326,34 @@ export default function FreightBookingPage() {
                               Suggest NMFC
                             </button>
                             {suggest?.label && (
-                              <>
-                                <span className="text-sm text-gray-700">{suggest.label}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => updateNmfcForSku(item.sku, { nmfcCode: suggest.nmfcCode, nmfcSub: suggest.nmfcSub, freightClass: suggest.freightClass })}
-                                  className="px-3 py-1 bg-warehouse-go text-white rounded-md text-xs font-bold hover:bg-green-700"
-                                >
-                                  Apply
-                                </button>
-                              </>
+                              <div className="flex items-center gap-3">
+                                <span className={`text-sm ${suggest.error ? 'text-red-600' : suggest.loading ? 'text-blue-600' : 'text-gray-700'}`}>
+                                  {suggest.label}
+                                </span>
+                                {suggest.confidence && !suggest.error && !suggest.loading && (
+                                  <span className="text-xs text-gray-500">
+                                    {(suggest.confidence * 100).toFixed(0)}% confidence
+                                  </span>
+                                )}
+                                {suggest.source && !suggest.error && !suggest.loading && (
+                                  <span className="text-xs text-blue-600">
+                                    ({suggest.source.replace('-', ' ')})
+                                  </span>
+                                )}
+                                {!suggest.error && !suggest.loading && suggest.nmfcCode && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateNmfcForSku(item.sku, { 
+                                      nmfcCode: suggest.nmfcCode, 
+                                      nmfcSub: suggest.nmfcSub, 
+                                      freightClass: suggest.freightClass 
+                                    })}
+                                    className="px-3 py-1 bg-warehouse-go text-white rounded-md text-xs font-bold hover:bg-green-700"
+                                  >
+                                    Apply
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1281,38 +1364,16 @@ export default function FreightBookingPage() {
               </div>
             </div>
 
-            <AIHazmatFreightSuggestion
-              orderNumber={bookingData.selectedOrder.orderNumber}
-              orderData={{
-                items: bookingData.selectedOrder.items.map(item => ({
-                  sku: item.sku,
-                  name: item.name,
-                  quantity: item.quantity,
-                  weight: item.weight?.value || 0,
-                  classification: bookingData.classifiedItems.find(c => c.sku === item.sku)?.classification
-                })),
-                customer: {
-                  name: bookingData.selectedOrder.billTo.name,
-                  company: bookingData.selectedOrder.billTo.company
-                },
-                destination: bookingData.selectedOrder.shipTo,
-                origin: bookingData.selectedOrder.billTo
-              }}
-              classificationInfo={{
-                hasHazmat: bookingData.classifiedItems.some(item => item.classification?.isHazmat),
-                hazmatItems: bookingData.classifiedItems
-                  .filter(item => item.classification?.isHazmat)
-                  .map(item => ({
-                    sku: item.sku,
-                    hazardClass: item.classification?.hazmatClass,
-                    unNumber: item.classification?.unNumber,
-                    packingGroup: item.classification?.packingGroup,
-                    properShippingName: item.classification?.properShippingName
-                  }))
-              }}
-              onAccept={handleHazmatAnalysisComplete}
-              onReject={() => setCurrentStep('classification')}
-            />
+            {/* Hazmat analysis completed - ready for booking through TMS API */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center">
+                <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2" />
+                <span className="text-green-800 font-medium">Ready for freight booking</span>
+              </div>
+              <p className="text-green-700 text-sm mt-1">
+                All items classified. Use your TMS system to book freight with appropriate carriers.
+              </p>
+            </div>
           </div>
         )}
 

@@ -63,6 +63,9 @@ export function FreightAlertProvider({ children }: { children: React.ReactNode }
   // Check for new freight orders
   const checkForNewOrders = useCallback(async () => {
     try {
+      // Skip if not in browser environment
+      if (typeof window === 'undefined') return;
+      
       const response = await fetch('/api/freight-orders/poll');
       if (!response.ok) return;
       
@@ -158,8 +161,13 @@ export function FreightAlertProvider({ children }: { children: React.ReactNode }
 
   // Set up polling
   useEffect(() => {
-    // Initial check
-    checkForNewOrders();
+    // Only start polling in browser environment
+    if (typeof window === 'undefined') return;
+    
+    // Delay initial check to ensure component is mounted
+    const initialTimeout = setTimeout(() => {
+      checkForNewOrders();
+    }, 1000);
     
     // Set up interval
     const interval = setInterval(checkForNewOrders, POLL_INTERVAL);
@@ -171,6 +179,7 @@ export function FreightAlertProvider({ children }: { children: React.ReactNode }
     window.addEventListener('focus', handleFocus);
     
     return () => {
+      clearTimeout(initialTimeout);
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };

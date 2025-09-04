@@ -35,6 +35,8 @@ export function ValidatedQRScanner({
   const [showSuccess, setShowSuccess] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const validationService = useRef(new QRValidationService());
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -44,29 +46,32 @@ export function ValidatedQRScanner({
         const html5QrCode = new Html5Qrcode('qr-reader');
         scannerRef.current = html5QrCode;
         
-        const cameras = await Html5Qrcode.getCameras();
+        const available = await Html5Qrcode.getCameras();
         
-        if (cameras && cameras.length > 0) {
+        if (available && available.length > 0) {
+          setCameras(available as any);
           // Prefer back camera
-          const backCamera = cameras.find(camera => 
+          const backCamera = available.find(camera => 
             camera.label.toLowerCase().includes('back') || 
             camera.label.toLowerCase().includes('rear') ||
             camera.label.toLowerCase().includes('environment')
           );
           
-          const cameraId = backCamera ? backCamera.id : cameras[0].id;
+          const cameraId = selectedCameraId || (backCamera ? backCamera.id : available[0].id);
           
           const config = {
-            fps: 10,
+            fps: 5,
             qrbox: { 
               width: Math.min(250, window.innerWidth - 100), 
               height: Math.min(250, window.innerWidth - 100) 
             },
-            aspectRatio: window.innerHeight / window.innerWidth,
+            // Avoid strict aspect ratio for broader device support
+            // aspectRatio: window.innerHeight / window.innerWidth,
             videoConstraints: {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
+              // Use flexible constraints for older devices
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
             }
           };
           
@@ -110,7 +115,7 @@ export function ValidatedQRScanner({
       }
     };
     
-    const timer = setTimeout(startScanner, 100);
+    const timer = setTimeout(startScanner, 150);
     
     return () => {
       mounted = false;
@@ -119,7 +124,7 @@ export function ValidatedQRScanner({
         scannerRef.current.stop().catch(() => {});
       }
     };
-  }, []);
+  }, [selectedCameraId]);
 
   const handleCodeValidation = async (code: string) => {
     setIsValidating(true);
@@ -276,6 +281,22 @@ export function ValidatedQRScanner({
           {/* Scanner View */}
           {!showManualEntry && (
             <div className="mb-4">
+              {/* Camera selector for compatibility */}
+              {cameras.length > 1 && (
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-gray-700">Camera</label>
+                  <select
+                    value={selectedCameraId || ''}
+                    onChange={(e) => setSelectedCameraId(e.target.value || null)}
+                    className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  >
+                    <option value="">Auto (best)</option>
+                    {cameras.map((c) => (
+                      <option key={c.id} value={c.id}>{c.label || c.id}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div id="qr-reader" className="w-full rounded-lg overflow-hidden" />
               {isScanning && (
                 <p className="text-center text-gray-600 mt-2">

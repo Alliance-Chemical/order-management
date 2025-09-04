@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
 
 const withPWA = require('next-pwa')({
   dest: 'public',
@@ -70,25 +69,5 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Wrap with PWA and Sentry configuration
-export default withSentryConfig(withPWA(nextConfig), {
-  // Sentry webpack plugin options
-  silent: true, // Suppresses source map uploading logs during build
-  org: "qr-workspace", // Your Sentry org name
-  project: "order-management", // Your Sentry project name
-  
-  // Upload options
-  widenClientFileUpload: true,
-  
-  // Transpiles SDK to be compatible with IE11
-  transpileClientSDK: true,
-  
-  // Hides source maps from generated client bundles
-  hideSourceMaps: true,
-  
-  // Disables automatic instrumentation
-  disableLogger: true,
-  
-  // Enables automatic instrumentation of Vercel Cron Monitors
-  automaticVercelMonitors: true,
-});
+// Export with PWA configuration only (Sentry now handled by instrumentation.ts)
+export default withPWA(nextConfig);

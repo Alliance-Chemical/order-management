@@ -133,7 +133,8 @@ export default function WorkspacePage() {
 
   const handleModuleStateChange = async (module: string, state: Record<string, any>) => {
     try {
-      const response = await fetch(`/api/workspace/${orderId}/module`, {
+      // Use existing module update endpoint
+      const response = await fetch(`/api/workspace/${orderId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

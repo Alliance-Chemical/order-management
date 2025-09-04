@@ -77,7 +77,8 @@ export const POST = withErrorHandler(async (
   
   if (result === 'pass') {
     // Only transition phase on PASS results
-    if (phase === 'pre_ship_inspection') {
+    // Align with workspace phases which use 'pre_ship'
+    if (phase === 'pre_ship' || phase === 'pre_ship_inspection') {
       // Pre-ship pass -> mark as ready to ship
       ensureResult = await tagSyncService.ensurePhase(
         orderId,
@@ -110,14 +111,11 @@ export const POST = withErrorHandler(async (
     });
   }
 
-  return NextResponse.json(
-    jsonStringifyWithBigInt({
-      success: true,
-      workspaceId: workspace.id,
-      phase: ensureResult.finalPhase,
-      tags: ensureResult.finalTags,
-      result
-    }),
-    { headers: { 'Content-Type': 'application/json' } }
-  );
+  return NextResponse.json({
+    success: true,
+    workspaceId: workspace.id,
+    phase: ensureResult.finalPhase,
+    tags: ensureResult.finalTags,
+    result,
+  });
 });

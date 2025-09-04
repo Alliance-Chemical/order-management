@@ -55,7 +55,11 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     orderId,
     workflowPhase,
     items,
-    onComplete,
+    onComplete: (r, n) => {
+      // Intercept completion to collect final dims/weight
+      setPendingCompletion({ results: r, notes: n });
+      setShowMeasurementsModal(true);
+    },
     enablePersistence: true
   });
 
@@ -67,6 +71,11 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [activeOverrideId, setActiveOverrideId] = useState<string | null>(null);
+  const [showMeasurementsModal, setShowMeasurementsModal] = useState(false);
+  const [pendingCompletion, setPendingCompletion] = useState<{ results: Record<string, 'pass' | 'fail'>; notes: Record<string, string>; } | null>(null);
+  const [dims, setDims] = useState({ length: '', width: '', height: '', units: 'in' });
+  const [wgt, setWgt] = useState({ value: '', units: 'lbs' });
+  const [savingMeasurements, setSavingMeasurements] = useState(false);
 
   // Monitor network status
   useEffect(() => {
@@ -430,6 +439,87 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               
               <button
                 onClick={() => setShowOverrideDialog(false)}
+                className="flex-1 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMeasurementsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-lg w-full p-6">
+            <h3 className="text-xl font-bold mb-4">Record Final Dimensions & Weight</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dimensions</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" inputMode="decimal" value={dims.length} onChange={(e) => setDims({ ...dims, length: e.target.value })} placeholder="L" className="w-20 px-3 py-2 border rounded" />
+                  <span>x</span>
+                  <input type="number" inputMode="decimal" value={dims.width} onChange={(e) => setDims({ ...dims, width: e.target.value })} placeholder="W" className="w-20 px-3 py-2 border rounded" />
+                  <span>x</span>
+                  <input type="number" inputMode="decimal" value={dims.height} onChange={(e) => setDims({ ...dims, height: e.target.value })} placeholder="H" className="w-20 px-3 py-2 border rounded" />
+                  <select value={dims.units} onChange={(e) => setDims({ ...dims, units: e.target.value })} className="px-2 py-2 border rounded">
+                    <option value="in">in</option>
+                    <option value="cm">cm</option>
+                  </select>
+                </div>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" inputMode="decimal" value={wgt.value} onChange={(e) => setWgt({ ...wgt, value: e.target.value })} placeholder="Weight" className="w-32 px-3 py-2 border rounded" />
+                  <select value={wgt.units} onChange={(e) => setWgt({ ...wgt, units: e.target.value })} className="px-2 py-2 border rounded">
+                    <option value="lbs">lbs</option>
+                    <option value="kg">kg</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button
+                disabled={savingMeasurements}
+                onClick={async () => {
+                  if (!pendingCompletion) return;
+                  if (!dims.length || !dims.width || !dims.height || !wgt.value) {
+                    alert('Please enter all dimensions and weight.');
+                    return;
+                  }
+                  try {
+                    setSavingMeasurements(true);
+                    await fetch(`/api/workspaces/${orderId}/final-measurements`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        dimensions: {
+                          length: Number(dims.length),
+                          width: Number(dims.width),
+                          height: Number(dims.height),
+                          units: dims.units,
+                        },
+                        weight: {
+                          value: Number(wgt.value),
+                          units: wgt.units,
+                        },
+                      }),
+                    });
+                  } catch (e) {
+                    console.error('Failed to save measurements', e);
+                  } finally {
+                    setSavingMeasurements(false);
+                  }
+                  onComplete(pendingCompletion.results, pendingCompletion.notes);
+                  setShowMeasurementsModal(false);
+                }}
+                className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                {savingMeasurements ? 'Saving…' : 'Save & Complete'}
+              </button>
+              <button
+                disabled={savingMeasurements}
+                onClick={() => setShowMeasurementsModal(false)}
                 className="flex-1 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
               >
                 Cancel
