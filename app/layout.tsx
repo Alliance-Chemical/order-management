@@ -8,6 +8,8 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Toaster } from '@/components/ui/toaster';
 import { FreightAlertProvider } from '@/providers/FreightAlertProvider';
 import { FreightAlertBadge } from '@/components/ui/freight-alert-badge';
+import { GloveModeProvider, GloveModeToggle } from '@/contexts/GloveModeProvider';
+import { WarehouseErrorBoundary } from '@/components/ui/WarehouseErrorBoundary';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -37,14 +39,19 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <QueryProvider>
-          <FreightAlertProvider>
-            {children}
-            <MonitoringStatus />
-            <FreightAlertBadge />
-            <Toaster />
-          </FreightAlertProvider>
-        </QueryProvider>
+        <GloveModeProvider>
+          <QueryProvider>
+            <FreightAlertProvider>
+              <WarehouseErrorBoundary level="page">
+                {children}
+                <MonitoringStatus />
+                <FreightAlertBadge />
+                <GloveModeToggle position="bottom-right" />
+                <Toaster />
+              </WarehouseErrorBoundary>
+            </FreightAlertProvider>
+          </QueryProvider>
+        </GloveModeProvider>
         <Analytics />
         <SpeedInsights />
       </body>

@@ -13,14 +13,20 @@ module.exports = {
           // Primary action colors - like physical buttons/lights
           'go': '#00873E', // Darker green for better contrast (7:1 ratio)
           'stop': '#CC0000', // Darker red for better contrast
-          'caution': '#F5A623', // Amber warning color
+          'caution': '#B87514', // Darkened amber for WCAG AAA (7:1)
           'info': '#0052CC', // Darker blue for information
           
           // Status colors - match warehouse safety standards
           'safe': '#00873E',
-          'warning': '#F5A623', 
+          'warning': '#B87514', // Darkened to match caution
           'danger': '#CC0000',
           'neutral': '#5E6C84',
+          
+          // Light backgrounds for callouts
+          'go-light': '#E6F7ED',
+          'stop-light': '#FFEBE6',
+          'caution-light': '#FFF4E6',
+          'info-light': '#E6F0FF',
           
           // Text and backgrounds
           'text-primary': '#091E42', // Almost black for maximum readability

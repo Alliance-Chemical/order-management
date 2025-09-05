@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Dynamic touch sizes for glove mode */
+    --touch-size: 80px;
+    --touch-size-sm: 60px;
+    --touch-size-lg: 100px;
+    --touch-size-xl: 120px;
+  }
+  
   * {
     @apply border-slate-200;
   }
