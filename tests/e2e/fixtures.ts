@@ -62,8 +62,7 @@ export async function createTestWorkspace(page: Page, orderId: string, options: 
       qr: true,
       inspections: true,
       sync: true,
-      presence: true,
-      overrides: true
+      presence: true
     }
   };
 

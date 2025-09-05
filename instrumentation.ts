@@ -5,6 +5,19 @@ export async function register() {
   // Only initialize Sentry if we have a DSN configured
   const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
   
+  // Optionally ensure DB schema at cold start (safe, idempotent)
+  try {
+    if (process.env.AUTO_ENSURE_DB === '1' || process.env.AUTO_ENSURE_DB === 'true') {
+      const { ensureCoreFreightSchema } = await import('@/lib/db/ensure-schema');
+      await ensureCoreFreightSchema();
+    }
+  } catch (e) {
+    // Don’t block boot if DB isn’t reachable yet
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('AUTO_ENSURE_DB failed (non-fatal):', e);
+    }
+  }
+
   if (!sentryDsn) {
     return; // Skip Sentry initialization if no DSN is provided
   }

@@ -3,9 +3,13 @@
 import { useState, useEffect, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { PrinterIcon, ClipboardDocumentCheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ArrowRightIcon } from '@heroicons/react/24/solid';
-import PrintPreparationModal from '@/components/desktop/PrintPreparationModal';
+import PrintPreparationModalSimplified from '@/components/desktop/PrintPreparationModalSimplified';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
+import WarehouseButton from '@/components/ui/WarehouseButton';
+import StatusLight from '@/components/ui/StatusLight';
+import ProgressBar from '@/components/ui/ProgressBar';
+import HazmatCallout from '@/components/ui/HazmatCallout';
 
 interface OrderItem {
   name: string;
@@ -158,9 +162,16 @@ export default function WorkQueueDashboard() {
           </div>
 
           {loading ? (
-            <div className="p-12 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" data-testid="loading-spinner"></div>
-              <p className="mt-4 text-gray-600">Loading available orders...</p>
+            <div className="p-12">
+              <ProgressBar
+                value={33}
+                label="Loading orders"
+                showPercentage={false}
+                variant="default"
+                animated={true}
+                className="max-w-md mx-auto"
+              />
+              <p className="mt-4 text-gray-600 text-center">Loading available orders...</p>
             </div>
           ) : orders.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
@@ -265,43 +276,47 @@ export default function WorkQueueDashboard() {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex flex-wrap items-center justify-center gap-2">
-                            <button
+                            <WarehouseButton
                               onClick={(e) => {
                                 e.stopPropagation();
                                 navigateToWorkspace(order.orderId);
                               }}
-                              className="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition-colors"
+                              variant="info"
+                              size="base"
                               title="Open Workspace"
+                              icon={<ArrowRightIcon className="h-4 w-4" />}
                             >
-                              <ArrowRightIcon className="h-4 w-4 mr-1" />
                               Workspace
-                            </button>
+                            </WarehouseButton>
                             {!order.freightStatus ? (
-                              <button
+                              <WarehouseButton
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   router.push(`/freight-booking?orderId=${order.orderId}`);
                                 }}
-                                className="inline-flex items-center px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg shadow-sm transition-colors"
+                                variant="caution"
+                                size="base"
                                 title="Book freight shipping for this order"
+                                icon={<span className="text-lg">🚛</span>}
                               >
-                                🚛 Book Freight
-                              </button>
+                                Book Freight
+                              </WarehouseButton>
                             ) : (
                               <div className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg">
                                 <span className="text-xs">Freight Booked</span>
                               </div>
                             )}
-                            <button
+                            <WarehouseButton
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handlePrepareAndPrint(order);
                               }}
-                              className="inline-flex items-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-sm transition-colors"
+                              variant="go"
+                              size="base"
+                              icon={<PrinterIcon className="h-4 w-4" />}
                             >
-                              <PrinterIcon className="h-4 w-4 mr-1" />
                               Print Labels
-                            </button>
+                            </WarehouseButton>
                           </div>
                         </td>
                       </tr>
@@ -434,7 +449,7 @@ export default function WorkQueueDashboard() {
 
       {/* Print Preparation Modal */}
       {showPrintModal && selectedOrder && (
-        <PrintPreparationModal
+        <PrintPreparationModalSimplified
           order={selectedOrder}
           onClose={() => setShowPrintModal(false)}
           onPrintComplete={handlePrintComplete}

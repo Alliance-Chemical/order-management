@@ -2,6 +2,8 @@
 
 import { useState, useRef } from 'react';
 import { MicrophoneIcon, CameraIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import WarehouseButton from '@/components/ui/WarehouseButton';
+import ProgressBar from '@/components/ui/ProgressBar';
 
 interface AIIssueReporterProps {
   orderId: string;
@@ -120,13 +122,12 @@ export default function AIIssueReporter({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Report Issue with AI</h2>
-          <button 
+          <h2 className="text-2xl font-bold">Report Issue with AI</h2>          <WarehouseButton
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-          >
-            <XMarkIcon className="h-6 w-6" />
-          </button>
+            variant="neutral"
+            size="base"
+            icon={<XMarkIcon className="h-6 w-6" />}
+          />
         </div>
 
         <div className="p-6 space-y-6">
@@ -134,18 +135,15 @@ export default function AIIssueReporter({
           <div className="border-2 border-gray-200 rounded-lg p-4">
             <h3 className="text-lg font-semibold mb-3">Voice Description</h3>
             <div className="flex items-center space-x-4">
-              <button
+              <WarehouseButton
                 onClick={isRecording ? stopRecording : startRecording}
-                className={`
-                  flex items-center space-x-2 px-6 py-3 rounded-lg text-white font-semibold
-                  ${isRecording 
-                    ? 'bg-red-500 hover:bg-red-600' 
-                    : 'bg-blue-500 hover:bg-blue-600'}
-                `}
+                variant={isRecording ? "stop" : "info"}
+                size="large"
+                haptic={isRecording ? "error" : "light"}
+                icon={<MicrophoneIcon className="h-6 w-6" />}
               >
-                <MicrophoneIcon className="h-6 w-6" />
-                <span>{isRecording ? 'Stop Recording' : 'Start Recording'}</span>
-              </button>
+                {isRecording ? 'Stop Recording' : 'Start Recording'}
+              </WarehouseButton>
               
               {audioBlob && !isRecording && (
                 <span className="text-green-600 font-medium">
@@ -214,18 +212,17 @@ export default function AIIssueReporter({
           </div>
 
           {/* Submit Button */}
-          <button
+          <WarehouseButton
             onClick={submitReport}
             disabled={isSubmitting || (!audioBlob && !imageFile)}
-            className={`
-              w-full py-4 rounded-lg text-white font-bold text-lg
-              ${isSubmitting || (!audioBlob && !imageFile)
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700'}
-            `}
+            variant="info"
+            size="xlarge"
+            fullWidth
+            loading={isSubmitting}
+            haptic="success"
           >
             {isSubmitting ? 'Analyzing with AI...' : 'Submit Report'}
-          </button>
+          </WarehouseButton>
         </div>
       </div>
     </div>

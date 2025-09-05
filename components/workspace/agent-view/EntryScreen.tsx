@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
+import WarehouseButton from '@/components/ui/WarehouseButton';
+import StatusLight from '@/components/ui/StatusLight';
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {
   const [itemStatuses, setItemStatuses] = useState<Record<string, 'pending' | 'in_progress' | 'completed'>>({});
@@ -118,13 +120,19 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
             </div>
             
             <div className="flex justify-center">
-              <button
+              <WarehouseButton
                 onClick={onStart}
-                className="worker-btn-go text-warehouse-4xl font-black px-16 py-8"
-                style={{ minHeight: '120px' }}
+                variant="go"
+                size="xlarge"
+                haptic="success"
+                icon={
+                  <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" className="w-12 h-12">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                }
               >
-                {getButtonText()}
-              </button>
+                <span className="text-warehouse-3xl font-black">{getButtonText()}</span>
+              </WarehouseButton>
             </div>
           </div>
         </div>

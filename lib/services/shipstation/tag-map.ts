@@ -2,13 +2,13 @@
 // Tags determine the workflow phase, not our database
 
 export const TAGS = {
-  FREIGHT_ORDERS: Number(process.env.FREIGHT_ORDERS_TAG_ID || 19844), // red (general freight)
-  FREIGHT_STAGED: Number(process.env.FREIGHT_STAGED_TAG_ID || 44777), // yellow (Need Labels)
-  FREIGHT_READY: Number(process.env.FREIGHT_READY_TAG_ID || 44123),   // green (Freight Order Ready)
+  FREIGHT_ORDERS: Number(process.env.FREIGHT_ORDER_TAG || 19844),     // red (general freight)
+  FREIGHT_STAGED: Number(process.env.FREIGHT_BOOKED_TAG_ID || 60447), // yellow (freight staged/planning locked)
+  FREIGHT_READY: Number(process.env.FREIGHT_READY_TAG_ID || 44123),   // green (freight order ready - inspection passed)
   
   // Aliases for semantic consistency if tag names change
   ALIASES: {
-    STAGED: [Number(process.env.FREIGHT_STAGED_TAG_ID || 44777)],
+    STAGED: [Number(process.env.FREIGHT_BOOKED_TAG_ID || 60447)],
     READY: [Number(process.env.FREIGHT_READY_TAG_ID || 44123)],
   }
 };

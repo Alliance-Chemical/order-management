@@ -3,6 +3,8 @@ import { MyCarrierOrderInterceptor } from '@/lib/freight-booking/mycarrier/order
 import { workspaceFreightLinker } from '@/lib/services/workspace-freight-linking';
 import { getEdgeDb } from '@/lib/db/neon-edge';
 import { freightOrders } from '@/lib/db/schema/freight';
+import { workspaces } from '@/lib/db/schema/qr-workspace';
+import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
 import { eq } from 'drizzle-orm';
 
 export const runtime = 'edge';
@@ -124,53 +126,117 @@ export async function POST(request: NextRequest) {
     const tracking = result.trackingNumber || result.proNumber || null;
     const actualCost = result.totalCost || null;
 
-    // Create workspace + freight order, then update with MyCarrier IDs
-    const workspaceUrl = workspaceFreightLinker.generateWorkspaceUrl(shipstationOrder.orderNumber);
-    const { workspace, freightOrder } = await workspaceFreightLinker.createWorkspaceWithFreight(
-      {
-        orderId: shipstationOrder.orderId,
-        orderNumber: shipstationOrder.orderNumber,
-        workspaceUrl,
-        status: 'active',
-        shipstationData: { ...shipstationOrder },
-      },
-      {
-        orderId: shipstationOrder.orderId,
-        orderNumber: shipstationOrder.orderNumber,
-        carrierName: carrierSelection.carrier,
-        serviceType: carrierSelection.service || 'Standard',
-        estimatedCost: estimatedCost || null,
-        originAddress: {
-          address: shipstationOrder.billTo?.street1,
-          city: shipstationOrder.billTo?.city,
-          state: shipstationOrder.billTo?.state,
-          zipCode: shipstationOrder.billTo?.postalCode,
-        },
-        destinationAddress: {
-          address: shipstationOrder.shipTo?.street1,
-          city: shipstationOrder.shipTo?.city,
-          state: shipstationOrder.shipTo?.state,
-          zipCode: shipstationOrder.shipTo?.postalCode,
-        },
-        packageDetails: {
-          weight: {
-            value: shipstationOrder.items?.reduce((sum: number, it: any) => sum + (it.weight?.value || 0) * (it.quantity || 1), 0) || 0,
-            units: 'lbs',
-          },
-          dimensions: { length: 48, width: 40, height: 48, units: 'in' },
-          packageCount: shipstationOrder.items?.length || 1,
-          description: shipstationOrder.items?.map((i: any) => i.name).join(', '),
-        },
-        specialInstructions: userOverrides?.instructions || '',
-        aiSuggestions: [],
-        confidenceScore: 1.0,
-        sessionId: null,
-        telemetryData: {},
+    // Check if workspace already exists for this order
+    const db = getEdgeDb();
+    const existingWorkspace = await db.query.workspaces.findFirst({
+      where: (workspaces, { eq }) => eq(workspaces.orderId, shipstationOrder.orderId)
+    });
+
+    let workspace, freightOrder;
+    
+    if (existingWorkspace) {
+      // Use existing workspace and link freight order to it
+      console.log(`Using existing workspace ${existingWorkspace.id} for order ${shipstationOrder.orderNumber}`);
+      
+      // Ensure freight module is enabled in existing workspace
+      const currentModules = existingWorkspace.activeModules || {};
+      if (!currentModules.freight) {
+        await db.update(workspaces)
+          .set({
+            activeModules: { ...currentModules, freight: true },
+            updatedAt: new Date()
+          })
+          .where(eq(workspaces.id, existingWorkspace.id));
       }
-    );
+      
+      workspace = existingWorkspace;
+      freightOrder = await workspaceFreightLinker.linkFreightToWorkspace(
+        workspace.id,
+        {
+          orderId: shipstationOrder.orderId,
+          orderNumber: shipstationOrder.orderNumber,
+          carrierName: carrierSelection.carrier,
+          serviceType: carrierSelection.service || 'Standard',
+          estimatedCost: estimatedCost || null,
+          originAddress: {
+            address: shipstationOrder.billTo?.street1,
+            city: shipstationOrder.billTo?.city,
+            state: shipstationOrder.billTo?.state,
+            zipCode: shipstationOrder.billTo?.postalCode,
+          },
+          destinationAddress: {
+            address: shipstationOrder.shipTo?.street1,
+            city: shipstationOrder.shipTo?.city,
+            state: shipstationOrder.shipTo?.state,
+            zipCode: shipstationOrder.shipTo?.postalCode,
+          },
+          packageDetails: {
+            weight: {
+              value: shipstationOrder.items?.reduce((sum: number, it: any) => sum + (it.weight?.value || 0) * (it.quantity || 1), 0) || 0,
+              units: 'lbs',
+            },
+            dimensions: { length: 48, width: 40, height: 48, units: 'in' },
+            packageCount: shipstationOrder.items?.length || 1,
+            description: shipstationOrder.items?.map((i: any) => i.name).join(', '),
+          },
+          specialInstructions: userOverrides?.instructions || '',
+          aiSuggestions: [],
+          confidenceScore: 1.0,
+          sessionId: null,
+          telemetryData: {},
+        }
+      );
+    } else {
+      // Create new workspace + freight order
+      console.log(`Creating new workspace for order ${shipstationOrder.orderNumber}`);
+      const workspaceUrl = workspaceFreightLinker.generateWorkspaceUrl(shipstationOrder.orderNumber);
+      const result = await workspaceFreightLinker.createWorkspaceWithFreight(
+        {
+          orderId: shipstationOrder.orderId,
+          orderNumber: shipstationOrder.orderNumber,
+          workspaceUrl,
+          status: 'active',
+          shipstationData: { ...shipstationOrder },
+        },
+        {
+          orderId: shipstationOrder.orderId,
+          orderNumber: shipstationOrder.orderNumber,
+          carrierName: carrierSelection.carrier,
+          serviceType: carrierSelection.service || 'Standard',
+          estimatedCost: estimatedCost || null,
+          originAddress: {
+            address: shipstationOrder.billTo?.street1,
+            city: shipstationOrder.billTo?.city,
+            state: shipstationOrder.billTo?.state,
+            zipCode: shipstationOrder.billTo?.postalCode,
+          },
+          destinationAddress: {
+            address: shipstationOrder.shipTo?.street1,
+            city: shipstationOrder.shipTo?.city,
+            state: shipstationOrder.shipTo?.state,
+            zipCode: shipstationOrder.shipTo?.postalCode,
+          },
+          packageDetails: {
+            weight: {
+              value: shipstationOrder.items?.reduce((sum: number, it: any) => sum + (it.weight?.value || 0) * (it.quantity || 1), 0) || 0,
+              units: 'lbs',
+            },
+            dimensions: { length: 48, width: 40, height: 48, units: 'in' },
+            packageCount: shipstationOrder.items?.length || 1,
+            description: shipstationOrder.items?.map((i: any) => i.name).join(', '),
+          },
+          specialInstructions: userOverrides?.instructions || '',
+          aiSuggestions: [],
+          confidenceScore: 1.0,
+          sessionId: null,
+          telemetryData: {},
+        }
+      );
+      workspace = result.workspace;
+      freightOrder = result.freightOrder;
+    }
 
     // Update freight order row with MyCarrier details
-    const db = getEdgeDb();
     await db.update(freightOrders)
       .set({
         myCarrierOrderId: mcOrderId || undefined,
@@ -182,6 +248,20 @@ export async function POST(request: NextRequest) {
         updatedBy: 'api/freight-booking/book',
       })
       .where(eq(freightOrders.id, freightOrder.id));
+
+    // Update ShipStation tags to mark freight as booked/staged
+    try {
+      const tagSyncResult = await tagSyncService.ensurePhase(
+        shipstationOrder.orderId,
+        'pre_mix', // This adds FREIGHT_STAGED tag (60447 - "Freight Staged")
+        'api/freight-booking/book'
+      );
+      
+      console.log(`Freight booking tagged: ${JSON.stringify(tagSyncResult.finalTags)}`);
+    } catch (error) {
+      console.error('Failed to update ShipStation tags after freight booking:', error);
+      // Don't fail the entire booking if tagging fails
+    }
 
     return NextResponse.json({
       success: true,

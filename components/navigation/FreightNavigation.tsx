@@ -27,6 +27,14 @@ const navigationItems = [
     bgColor: 'hover:bg-blue-50'
   },
   {
+    name: 'Dilution Calculator',
+    href: '/dilution-calculator',
+    icon: BeakerIcon,
+    color: 'text-cyan-600 hover:text-cyan-700',
+    bgColor: 'hover:bg-cyan-50',
+    description: 'Chemical dilution with safety protocols'
+  },
+  {
     name: 'Classifications',
     href: '/chemicals',
     icon: BeakerIcon,

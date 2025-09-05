@@ -9,6 +9,7 @@ import {
   MagnifyingGlassIcon,
   DocumentTextIcon
 } from '@heroicons/react/24/solid';
+import ProgressBar from '@/components/ui/ProgressBar';
 
 interface FreightClassification {
   id: string;
@@ -198,9 +199,15 @@ export default function ChemicalsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading freight classifications...</p>
+        <div className="w-full max-w-md px-4">
+          <ProgressBar
+            value={30}
+            label="Loading freight classifications"
+            showPercentage={false}
+            variant="default"
+            animated={true}
+          />
+          <p className="text-gray-600 text-center mt-4">Loading freight classifications...</p>
         </div>
       </div>
     );

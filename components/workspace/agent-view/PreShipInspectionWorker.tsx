@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import { CheckIcon, XMarkIcon, CameraIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
+import WarehouseButton from '@/components/ui/WarehouseButton';
+import ProgressBar from '@/components/ui/ProgressBar';
+import StatusLight from '@/components/ui/StatusLight';
 
 interface PreShipInspectionWorkerProps {
   orderId: string;
@@ -230,13 +233,17 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
             </div>
           )}
           
-          <button
+          <WarehouseButton
             onClick={handleComplete}
             disabled={isFinishing}
-            className={`px-12 py-6 text-2xl font-bold rounded-xl ${isFinishing ? 'bg-gray-400 text-gray-700' : 'bg-white text-black'}`}
+            variant="go"
+            size="xlarge"
+            loading={isFinishing}
+            haptic="success"
+            icon={<CheckIcon className="w-8 h-8" />}
           >
             {isFinishing ? 'UPLOADING…' : 'FINISH'}
-          </button>
+          </WarehouseButton>
         </div>
       </div>
     );
@@ -294,7 +301,8 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
                       />
                       <button
                         onClick={() => deletePhoto(index)}
-                        className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
+                        className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600"
+                        aria-label="Delete photo"
                       >
                         ×
                       </button>
@@ -312,19 +320,25 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
         </div>
         
         <div className="p-4 bg-black flex gap-4">
-          <button
+          <WarehouseButton
             onClick={capturePhoto}
             disabled={isProcessing}
-            className="flex-1 py-6 bg-blue-600 text-white text-2xl font-bold rounded-xl disabled:opacity-50"
+            variant="info"
+            size="xlarge"
+            fullWidth
+            haptic="light"
+            icon={<CameraIcon className="w-8 h-8" />}
           >
             {capturedPhotos.length === 0 ? 'CAPTURE' : 'CAPTURE MORE'}
-          </button>
-          <button
+          </WarehouseButton>
+          <WarehouseButton
             onClick={() => setCurrentStep(prev => prev + 1)}
-            className="px-8 py-6 bg-green-600 text-white text-xl rounded-xl"
+            variant="go"
+            size="xlarge"
+            haptic="success"
           >
             {capturedPhotos.length === 0 ? 'SKIP' : 'CONTINUE'}
-          </button>
+          </WarehouseButton>
         </div>
         
         <input
@@ -342,18 +356,28 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Progress dots */}
-      <div className="bg-gray-900 p-4 flex justify-center gap-2">
-        {[...inspectionItems, { id: 'photo', label: 'PHOTO', icon: '📸' }].map((item, index) => (
-          <div 
-            key={item.id}
-            className={`w-3 h-3 rounded-full ${
-              index < currentStep ? 'bg-green-500' : 
-              index === currentStep ? 'bg-white' : 
-              'bg-gray-700'
-            }`}
-          />
-        ))}
+      {/* Progress bar */}
+      <div className="bg-gray-900 p-4">
+        <ProgressBar
+          value={(currentStep / (inspectionItems.length + 1)) * 100}
+          label="Inspection Progress"
+          showPercentage={false}
+          variant={currentStep === inspectionItems.length + 1 ? "success" : "default"}
+          animated={true}
+        />
+        {/* Progress dots for individual items */}
+        <div className="flex justify-center gap-2 mt-2">
+          {[...inspectionItems, { id: 'photo', label: 'PHOTO', icon: '📸' }].map((item, index) => (
+            <div 
+              key={item.id}
+              className={`w-3 h-3 rounded-full ${
+                index < currentStep ? 'bg-green-500' : 
+                index === currentStep ? 'bg-white' : 
+                'bg-gray-700'
+              }`}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Main inspection area */}
@@ -371,20 +395,26 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
 
       {/* Action buttons */}
       <div className="p-4 flex gap-4">
-        <button
+        <WarehouseButton
           onClick={handleFail}
-          className="flex-1 py-8 bg-red-600 text-white rounded-xl flex flex-col items-center justify-center active:bg-red-700"
+          variant="stop"
+          size="xlarge"
+          fullWidth
+          haptic="error"
+          icon={<XMarkIcon className="w-12 h-12" />}
         >
-          <XMarkIcon className="w-12 h-12 mb-2" />
           <span className="text-2xl font-bold">FAIL</span>
-        </button>
-        <button
+        </WarehouseButton>
+        <WarehouseButton
           onClick={handlePass}
-          className="flex-1 py-8 bg-green-600 text-white rounded-xl flex flex-col items-center justify-center active:bg-green-700"
+          variant="go"
+          size="xlarge"
+          fullWidth
+          haptic="success"
+          icon={<CheckIcon className="w-12 h-12" />}
         >
-          <CheckIcon className="w-12 h-12 mb-2" />
           <span className="text-2xl font-bold">PASS</span>
-        </button>
+        </WarehouseButton>
       </div>
       {noteError && (
         <div className="p-4 text-center text-yellow-300">{noteError}</div>

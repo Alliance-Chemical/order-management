@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { TruckIcon } from '@heroicons/react/24/solid';
 import { warehouseFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
+import ProgressBar from '@/components/ui/ProgressBar';
 
 interface FreightOrder {
   orderId: number;
@@ -190,9 +191,16 @@ function FreightOrdersContent() {
           <div className="p-6">
             {activeTab === 'orders' && (
               polling ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-4 text-gray-600">Searching for freight orders...</p>
+                <div className="py-8">
+                  <ProgressBar
+                    value={30}
+                    label="Searching for freight orders"
+                    showPercentage={false}
+                    variant="default"
+                    animated={true}
+                    className="max-w-md mx-auto"
+                  />
+                  <p className="mt-4 text-gray-600 text-center">Searching for freight orders...</p>
                 </div>
               ) : orders.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -285,9 +293,16 @@ function FreightOrdersContent() {
 
             {activeTab === 'ready' && (
               readyLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-                  <p className="mt-4 text-gray-600">Loading booking-ready orders…</p>
+                <div className="py-8">
+                  <ProgressBar
+                    value={30}
+                    label="Loading booking-ready orders"
+                    showPercentage={false}
+                    variant="success"
+                    animated={true}
+                    className="max-w-md mx-auto"
+                  />
+                  <p className="mt-4 text-gray-600 text-center">Loading booking-ready orders…</p>
                 </div>
               ) : readyError ? (
                 <div className="text-center py-8 text-red-600">{readyError}</div>
@@ -353,9 +368,15 @@ export default function FreightOrdersPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+        <div className="w-full max-w-md px-4">
+          <ProgressBar
+            value={30}
+            label="Loading"
+            showPercentage={false}
+            variant="default"
+            animated={true}
+          />
+          <p className="mt-4 text-gray-600 text-center">Loading...</p>
         </div>
       </div>
     }>

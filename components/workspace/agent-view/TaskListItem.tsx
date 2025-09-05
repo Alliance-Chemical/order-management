@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
+import StatusLight from '@/components/ui/StatusLight';
+import WarehouseButton from '@/components/ui/WarehouseButton';
 
 interface TaskListItemProps {
   item: {
@@ -24,30 +26,39 @@ export default function TaskListItem({
   status = 'pending',
   onStartInspection 
 }: TaskListItemProps) {
-  const getStatusBadge = () => {
+  const getStatusDisplay = () => {
     switch (status) {
       case 'completed':
         return (
-          <div className="warehouse-badge-go">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            <span>COMPLETE</span>
+          <div className="flex items-center gap-3">
+            <StatusLight status="go" size="lg" pulse={false} />
+            <div className="warehouse-badge-go">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <span>COMPLETE</span>
+            </div>
           </div>
         );
       case 'in_progress':
         return (
-          <div className="warehouse-badge-caution animate-pulse-strong">
-            <svg className="w-6 h-6 animate-spin" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span>IN PROGRESS</span>
+          <div className="flex items-center gap-3">
+            <StatusLight status="caution" size="lg" />
+            <div className="warehouse-badge-caution animate-pulse-strong">
+              <svg className="w-6 h-6 animate-spin" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>IN PROGRESS</span>
+            </div>
           </div>
         );
       default:
         return (
-          <div className="warehouse-badge px-4 py-2 bg-gray-200 text-warehouse-text-primary border-gray-500">
-            <span>WAITING</span>
+          <div className="flex items-center gap-3">
+            <StatusLight status="off" size="lg" />
+            <div className="warehouse-badge px-4 py-2 bg-gray-200 text-warehouse-text-primary border-gray-500">
+              <span>WAITING</span>
+            </div>
           </div>
         );
     }
@@ -137,45 +148,47 @@ export default function TaskListItem({
           
           {/* Status */}
           <div className="flex items-center justify-between">
-            {getStatusBadge()}
+            {getStatusDisplay()}
           </div>
         </div>
 
         {/* Action Area */}
         <div className="flex items-center">
           {status === 'pending' && (
-            <button
-              onClick={() => {
-                warehouseFeedback.buttonPress();
-                onStartInspection();
-              }}
-              className="warehouse-btn-go min-h-touch-lg px-8 flex flex-col items-center justify-center gap-2"
-            >
-              <div className="warehouse-icon-lg">
+            <WarehouseButton
+              onClick={onStartInspection}
+              variant="go"
+              size="xlarge"
+              haptic="success"
+              icon={
                 <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
+              }
+            >
+              <div className="flex flex-col items-center">
+                <span className="text-warehouse-xl">START</span>
+                <span className="text-warehouse-base opacity-90">INSPECTION</span>
               </div>
-              <span className="text-warehouse-xl">START</span>
-              <span className="text-warehouse-base opacity-90">INSPECTION</span>
-            </button>
+            </WarehouseButton>
           )}
           {status === 'in_progress' && (
-            <button
-              onClick={() => {
-                warehouseFeedback.buttonPress();
-                onStartInspection();
-              }}
-              className="warehouse-btn-caution min-h-touch-lg px-8 flex flex-col items-center justify-center gap-2"
-            >
-              <div className="warehouse-icon-lg">
+            <WarehouseButton
+              onClick={onStartInspection}
+              variant="caution"
+              size="xlarge"
+              haptic="warning"
+              icon={
                 <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
+              }
+            >
+              <div className="flex flex-col items-center">
+                <span className="text-warehouse-xl">RESUME</span>
+                <span className="text-warehouse-base opacity-90">TASK</span>
               </div>
-              <span className="text-warehouse-xl">RESUME</span>
-              <span className="text-warehouse-base opacity-90">TASK</span>
-            </button>
+            </WarehouseButton>
           )}
           {status === 'completed' && (
             <div className="warehouse-success min-h-touch-base px-8 py-6 rounded-warehouse-lg flex flex-col items-center justify-center">

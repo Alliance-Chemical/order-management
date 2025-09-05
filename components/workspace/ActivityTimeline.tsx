@@ -10,6 +10,7 @@ import {
   CameraIcon,
   UserIcon
 } from '@heroicons/react/24/outline';
+import ProgressBar from '@/components/ui/ProgressBar';
 
 interface ActivityTimelineProps {
   orderId: string;
@@ -65,8 +66,16 @@ export default function ActivityTimeline({ orderId }: ActivityTimelineProps) {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="py-12">
+        <ProgressBar
+          value={30}
+          label="Loading activity timeline"
+          showPercentage={false}
+          variant="default"
+          animated={true}
+          size="sm"
+          className="max-w-sm mx-auto"
+        />
       </div>
     );
   }

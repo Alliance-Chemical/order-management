@@ -4,7 +4,8 @@ const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
+  disable: process.env.NODE_ENV === 'development' || process.env.DISABLE_PWA === 'true',
+  buildExcludes: [/middleware-manifest\.json$/],
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
@@ -70,4 +71,5 @@ const nextConfig: NextConfig = {
 };
 
 // Export with PWA configuration only (Sentry now handled by instrumentation.ts)
-export default withPWA(nextConfig);
+// Temporarily disable PWA for builds due to compatibility issues with Next.js 15.4.6
+export default process.env.DISABLE_PWA === 'true' ? nextConfig : withPWA(nextConfig);

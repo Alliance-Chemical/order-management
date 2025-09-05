@@ -4,10 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { useInspectionState } from '@/hooks/useInspectionState';
 import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner';
 import { inspectionQueue } from '@/lib/services/offline/inspection-queue';
-import { supervisorOverride } from '@/lib/services/supervisor-override';
 import IssueModal from './IssueModal';
 import { InspectionItem } from '@/lib/types/agent-view';
 import { QRType } from '@/lib/services/qr/validation';
+import WarehouseButton from '@/components/ui/WarehouseButton';
+import ProgressBar from '@/components/ui/ProgressBar';
+import StatusLight from '@/components/ui/StatusLight';
 
 interface ResilientInspectionScreenProps {
   orderId: string;
@@ -68,9 +70,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const [currentFailedItem, setCurrentFailedItem] = useState<InspectionItem | null>(null);
   const [networkStatus, setNetworkStatus] = useState(navigator.onLine);
   const [queueStatus, setQueueStatus] = useState(inspectionQueue.getStatus());
-  const [showOverrideDialog, setShowOverrideDialog] = useState(false);
-  const [overrideReason, setOverrideReason] = useState('');
-  const [activeOverrideId, setActiveOverrideId] = useState<string | null>(null);
   const [showMeasurementsModal, setShowMeasurementsModal] = useState(false);
   const [pendingCompletion, setPendingCompletion] = useState<{ results: Record<string, 'pass' | 'fail'>; notes: Record<string, string>; } | null>(null);
   const [dims, setDims] = useState({ length: '', width: '', height: '', units: 'in' });
@@ -129,12 +128,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
   // Handle QR scan
   const handleQRScan = (data: any, shortCode?: string) => {
-    if (!data && activeOverrideId) {
-      // Supervisor override - skip QR validation
-      supervisorOverride.useOverride(activeOverrideId, 'worker');
-      recordResult(currentItem.id, 'pass', `Skipped with override: ${overrideReason}`);
-      setActiveOverrideId(null);
-    } else if (data) {
+    if (data) {
       // Valid QR scanned
       recordQRScan(currentItem.id, shortCode || JSON.stringify(data));
       recordResult(currentItem.id, 'pass');
@@ -151,6 +145,25 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         }
       });
     }
+    
+    setShowScanner(false);
+    nextStep();
+  };
+
+  // Handle skipping QR scan with logging
+  const handleSkipQRScan = (reason: string) => {
+    recordResult(currentItem.id, 'pass', `QR scan skipped: ${reason}`);
+    
+    // Log skip for audit trail
+    inspectionQueue.enqueue({
+      type: 'qr_skip',
+      orderId,
+      data: {
+        stepId: currentItem.id,
+        reason,
+        timestamp: new Date().toISOString()
+      }
+    });
     
     setShowScanner(false);
     nextStep();
@@ -207,37 +220,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     nextStep();
   };
 
-  // Handle supervisor override request
-  const handleOverrideRequest = async () => {
-    if (!overrideReason.trim()) {
-      alert('Please provide a reason for the override');
-      return;
-    }
-
-    const response = await supervisorOverride.requestOverride({
-      type: 'skip_step',
-      orderId,
-      workflowPhase,
-      stepId: currentItem.id,
-      reason: overrideReason,
-      requestedBy: localStorage.getItem('user-id') || 'worker',
-      metadata: {
-        stepDescription: currentItem.description
-      }
-    });
-
-    if (response.approved) {
-      setActiveOverrideId(response.overrideId);
-      setShowOverrideDialog(false);
-      
-      // Auto-advance with override
-      recordResult(currentItem.id, 'pass', `Override: ${overrideReason}`);
-      nextStep();
-    } else {
-      alert('Override request sent to supervisor for approval');
-      setShowOverrideDialog(false);
-    }
-  };
 
   // Check if current item requires QR scanning
   const requiresQRScan = currentItem && (
@@ -253,41 +235,47 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     <div className="min-h-screen bg-white">
       {/* Network Status Bar */}
       {!networkStatus && (
-        <div className="bg-yellow-500 text-white px-4 py-2 text-center">
-          <span className="font-semibold">Offline Mode</span> - Changes will sync when connection restored
-          {queueStatus.queueLength > 0 && (
-            <span className="ml-2">({queueStatus.queueLength} pending)</span>
-          )}
+        <div className="bg-yellow-500 text-white px-4 py-2 flex items-center justify-center gap-3">
+          <StatusLight status="caution" size="base" />
+          <span>
+            <span className="font-semibold">Offline Mode</span> - Changes will sync when connection restored
+            {queueStatus.queueLength > 0 && (
+              <span className="ml-2">({queueStatus.queueLength} pending)</span>
+            )}
+          </span>
         </div>
       )}
 
       {/* Header */}
       <div className="bg-blue-600 text-white p-4">
         <div className="flex justify-between items-center mb-2">
-          <button
+          <WarehouseButton
             onClick={previousStep}
             disabled={currentIndex === 0}
-            className="text-white hover:text-blue-200 disabled:opacity-50"
+            variant="neutral"
+            size="base"
           >
             ← Back
-          </button>
+          </WarehouseButton>
           
           <div className="flex gap-2">
             {canUndo && (
-              <button
+              <WarehouseButton
                 onClick={undo}
-                className="px-3 py-1 bg-blue-500 rounded hover:bg-blue-400"
+                variant="info"
+                size="base"
               >
                 Undo
-              </button>
+              </WarehouseButton>
             )}
             
-            <button
+            <WarehouseButton
               onClick={onSwitchToSupervisor}
-              className="px-3 py-1 bg-blue-500 rounded hover:bg-blue-400"
+              variant="info"
+              size="base"
             >
               Supervisor View
-            </button>
+            </WarehouseButton>
           </div>
         </div>
         
@@ -296,16 +284,13 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         
         {/* Progress Bar */}
         <div className="mt-4">
-          <div className="bg-blue-800 rounded-full h-3">
-            <div 
-              className="bg-white rounded-full h-3 transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <div className="flex justify-between mt-1 text-sm">
-            <span>Step {currentIndex + 1} of {items.length}</span>
-            <span>{Math.round(progress)}%</span>
-          </div>
+          <ProgressBar
+            value={progress}
+            label={`Step ${currentIndex + 1} of ${items.length}`}
+            showPercentage={true}
+            variant="default"
+            animated={true}
+          />
         </div>
       </div>
 
@@ -356,35 +341,67 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         {/* Action Buttons */}
         {requiresQRScan ? (
           <div className="space-y-4">
-            <button
+            <WarehouseButton
               onClick={() => setShowScanner(true)}
-              className="w-full py-6 bg-blue-600 text-white text-2xl rounded-lg hover:bg-blue-700"
+              variant="info"
+              size="xlarge"
+              fullWidth
+              haptic="light"
+              icon={
+                <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" className="w-8 h-8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              }
             >
-              📷 Scan QR Code
-            </button>
+              <span className="text-2xl">Scan QR Code</span>
+            </WarehouseButton>
             
-            <button
-              onClick={() => setShowOverrideDialog(true)}
-              className="w-full py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+            <WarehouseButton
+              onClick={() => {
+                const reason = prompt('Why are you skipping the QR scan?');
+                if (reason && reason.trim()) {
+                  handleSkipQRScan(reason.trim());
+                }
+              }}
+              variant="neutral"
+              size="large"
+              fullWidth
             >
-              Request Override
-            </button>
+              Skip QR Scan
+            </WarehouseButton>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            <button
+            <WarehouseButton
               onClick={() => handleResult('pass')}
-              className="py-6 bg-green-600 text-white text-2xl rounded-lg hover:bg-green-700"
+              variant="go"
+              size="xlarge"
+              fullWidth
+              haptic="success"
+              icon={
+                <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" className="w-8 h-8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              }
             >
-              ✓ Pass
-            </button>
+              <span className="text-2xl">Pass</span>
+            </WarehouseButton>
             
-            <button
+            <WarehouseButton
               onClick={() => handleResult('fail')}
-              className="py-6 bg-red-600 text-white text-2xl rounded-lg hover:bg-red-700"
+              variant="stop"
+              size="xlarge"
+              fullWidth
+              haptic="error"
+              icon={
+                <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" className="w-8 h-8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              }
             >
-              ✗ Fail
-            </button>
+              <span className="text-2xl">Fail</span>
+            </WarehouseButton>
           </div>
         )}
       </div>
@@ -397,7 +414,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           onValidScan={handleQRScan}
           onClose={() => setShowScanner(false)}
           allowManualEntry={true}
-          allowSkip={!!activeOverrideId}
+          allowSkip={false}
           supervisorMode={false}
         />
       )}
@@ -411,42 +428,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         />
       )}
 
-      {/* Override Dialog */}
-      {showOverrideDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4">Request Supervisor Override</h3>
-            
-            <p className="text-gray-600 mb-4">
-              Provide a reason for skipping this step:
-            </p>
-            
-            <textarea
-              value={overrideReason}
-              onChange={(e) => setOverrideReason(e.target.value)}
-              className="w-full p-3 border rounded-lg"
-              rows={3}
-              placeholder="Enter reason..."
-            />
-            
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={handleOverrideRequest}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Submit Request
-              </button>
-              
-              <button
-                onClick={() => setShowOverrideDialog(false)}
-                className="flex-1 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showMeasurementsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">

@@ -13,6 +13,10 @@ import {
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import { HazmatRAGPanel, type RAGSuggestion } from '@/components/freight-booking/HazmatRAGPanel';
 import { warehouseFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
+import HazmatCallout from '@/components/ui/HazmatCallout';
+import WarehouseButton from '@/components/ui/WarehouseButton';
+import ProgressBar from '@/components/ui/ProgressBar';
+import StatusLight from '@/components/ui/StatusLight';
 
 interface ShipStationOrder {
   orderId: number;
@@ -784,10 +788,12 @@ export default function FreightBookingPage() {
                               </div>
                               <p className="text-warehouse-lg font-bold text-gray-700 mt-2">
                                 CLASS {classification.classification?.freightClass}
-                                {classification.classification?.isHazmat && (
-                                  <span className="block text-warehouse-stop mt-1">⚠️ HAZMAT</span>
-                                )}
                               </p>
+                              {classification.classification?.isHazmat && (
+                                <div className="mt-2">
+                                  <StatusLight status="caution" size="base" label="HAZMAT" />
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="bg-gray-50 p-4 rounded-md border border-gray-200 w-[380px]">
@@ -801,14 +807,16 @@ export default function FreightBookingPage() {
                               </div>
                               {/* Display hazmat data if present */}
                               {manualInputs[item.sku]?.hazmatData && manualInputs[item.sku]?.hazmatData?.unNumber && (
-                                <div className="bg-orange-50 border border-orange-200 rounded-md p-2 mb-3 text-xs">
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div><span className="font-semibold">UN:</span> {manualInputs[item.sku]?.hazmatData?.unNumber}</div>
-                                    <div><span className="font-semibold">Class:</span> {manualInputs[item.sku]?.hazmatData?.hazardClass}</div>
-                                    <div><span className="font-semibold">PG:</span> {manualInputs[item.sku]?.hazmatData?.packingGroup || 'N/A'}</div>
-                                    <div className="col-span-2"><span className="font-semibold">Name:</span> {manualInputs[item.sku]?.hazmatData?.properShippingName}</div>
-                                  </div>
-                                </div>
+                                <HazmatCallout
+                                  level="warning"
+                                  unNumber={manualInputs[item.sku]?.hazmatData?.unNumber}
+                                  hazardClass={manualInputs[item.sku]?.hazmatData?.hazardClass}
+                                  packingGroup={manualInputs[item.sku]?.hazmatData?.packingGroup}
+                                  properShippingName={manualInputs[item.sku]?.hazmatData?.properShippingName}
+                                  className="mb-3"
+                                >
+                                  This product requires special handling and documentation
+                                </HazmatCallout>
                               )}
                               <div className="grid grid-cols-2 gap-3 mb-3">
                                 <div>

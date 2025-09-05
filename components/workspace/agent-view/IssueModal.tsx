@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { IssueModalProps, InspectionItem } from '@/lib/types/agent-view';
+import WarehouseButton from '@/components/ui/WarehouseButton';
 
 export default function IssueModal({ 
   isOpen, 
@@ -107,27 +108,31 @@ export default function IssueModal({
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {commonReasons.map((reason) => (
-              <button
+              <WarehouseButton
                 key={reason.id}
                 onClick={() => handleReasonClick(reason)}
                 disabled={isSubmitting}
-                className="worker-btn bg-gray-100 hover:bg-gray-200 text-worker-gray border-2 border-gray-300 hover:border-worker-red transition-all flex items-center justify-center gap-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="caution"
+                size="large"
+                haptic="warning"
+                fullWidth
+                icon={<span className="text-3xl">{reason.icon}</span>}
               >
-                <span className="text-3xl">{reason.icon}</span>
-                <span>{reason.label}</span>
-              </button>
+                {reason.label}
+              </WarehouseButton>
             ))}
           </div>
 
           {/* Cancel button */}
           <div className="mt-6 flex justify-center">
-            <button
+            <WarehouseButton
               onClick={onClose}
               disabled={isSubmitting}
-              className="worker-btn-gray"
+              variant="neutral"
+              size="large"
             >
               CANCEL
-            </button>
+            </WarehouseButton>
           </div>
         </div>
 

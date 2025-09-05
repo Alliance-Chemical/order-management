@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { FastQRScanner } from '@/components/qr/FastQRScanner';
 import IssueModal from './IssueModal';
+import WarehouseButton from '@/components/ui/WarehouseButton';
+import StatusLight from '@/components/ui/StatusLight';
+import ProgressBar from '@/components/ui/ProgressBar';
 
 interface Container {
   id: string;
@@ -202,12 +205,13 @@ export default function MultiContainerInspection({
                 Order #{orderNumber} • {customerName}
               </p>
             </div>
-            <button
+            <WarehouseButton
               onClick={onSwitchToSupervisor}
-              className="text-sm text-gray-500 hover:text-gray-700 underline"
+              variant="neutral"
+              size="base"
             >
               Supervisor View
-            </button>
+            </WarehouseButton>
           </div>
         </div>
       </div>
@@ -232,12 +236,15 @@ export default function MultiContainerInspection({
       {/* Container Progress Grid */}
       <div className="max-w-4xl mx-auto px-4 mt-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Container Progress</h2>
-            <div className="text-right">
-              <p className="text-2xl font-bold text-green-600">{Math.round(progress)}%</p>
-              <p className="text-xs text-gray-500">Complete</p>
-            </div>
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Container Progress</h2>
+            <ProgressBar
+              value={progress}
+              label="Inspection Progress"
+              showPercentage={true}
+              variant={progress === 100 ? "success" : "default"}
+              animated={progress < 100}
+            />
           </div>
           
           {/* Container Grid */}
@@ -296,27 +303,33 @@ export default function MultiContainerInspection({
                 Position the QR code in the camera view
               </p>
 
-              <button
+              <WarehouseButton
                 onClick={() => setShowScanner(true)}
-                className="w-full max-w-md mx-auto bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-xl py-6 px-8 font-bold text-xl shadow-lg transform transition-all hover:scale-105"
-              >
-                <div className="flex items-center justify-center gap-3">
+                variant="info"
+                size="xlarge"
+                fullWidth
+                haptic="light"
+                icon={
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} 
                       d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} 
                       d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span>OPEN SCANNER</span>
-                </div>
-              </button>
+                }
+                className="max-w-md mx-auto"
+              >
+                OPEN SCANNER
+              </WarehouseButton>
 
-              <button
+              <WarehouseButton
                 onClick={() => handleQRScan(`MANUAL-${Date.now()}`)}
-                className="mt-4 text-sm text-gray-500 hover:text-gray-700 underline"
+                variant="neutral"
+                size="base"
+                className="mt-4"
               >
                 Skip scanning (testing only)
-              </button>
+              </WarehouseButton>
             </div>
           </div>
         ) : (
@@ -348,25 +361,33 @@ export default function MultiContainerInspection({
               </div>
 
               <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
-                <button
+                <WarehouseButton
                   onClick={handleQuestionPass}
-                  className="bg-green-500 hover:bg-green-600 text-white rounded-xl py-6 px-8 font-bold text-xl shadow-lg transform transition-all hover:scale-105"
+                  variant="go"
+                  size="xlarge"
+                  haptic="success"
+                  icon={
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  }
                 >
-                  <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
                   YES
-                </button>
+                </WarehouseButton>
                 
-                <button
+                <WarehouseButton
                   onClick={handleQuestionFail}
-                  className="bg-red-500 hover:bg-red-600 text-white rounded-xl py-6 px-8 font-bold text-xl shadow-lg transform transition-all hover:scale-105"
+                  variant="stop"
+                  size="xlarge"
+                  haptic="error"
+                  icon={
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  }
                 >
-                  <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
                   NO
-                </button>
+                </WarehouseButton>
               </div>
             </div>
           </div>
