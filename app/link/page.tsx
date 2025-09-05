@@ -46,6 +46,10 @@ interface ProductLink {
   classificationDescription: string;
   freightClass: string;
   isHazmat: boolean;
+  createdAt?: string;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  createdBy?: string | null;
 }
 
 export default function LinkPage() {
@@ -58,6 +62,9 @@ export default function LinkPage() {
   const [selectedClassification, setSelectedClassification] = useState<string>('');
   const [showHazardousOnly, setShowHazardousOnly] = useState(false);
   const [recentLinks, setRecentLinks] = useState<ProductLink[]>([]);
+  const [approveOnSave, setApproveOnSave] = useState<boolean>(true);
+  const [approvingIds, setApprovingIds] = useState<Set<string>>(new Set());
+  const [bulkApproving, setBulkApproving] = useState<boolean>(false);
 
   // Load initial data
   useEffect(() => {
@@ -102,6 +109,79 @@ export default function LinkPage() {
     }
   };
 
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return '';
+    try {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString();
+    } catch {
+      return '';
+    }
+  };
+
+  const handleApproveLink = async (linkId: string) => {
+    if (!linkId || approvingIds.has(linkId)) return;
+    setApprovingIds(prev => new Set(prev).add(linkId));
+    try {
+      const res = await fetch('/api/product-links', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: linkId, isApproved: true, approvedBy: 'ui/link' })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any)?.error || 'Approve failed');
+      }
+      await loadRecentLinks();
+      await loadUnlinkedProducts();
+    } catch (e) {
+      console.error('Approve link error:', e);
+      alert('Failed to approve link');
+    } finally {
+      setApprovingIds(prev => {
+        const next = new Set(prev);
+        next.delete(linkId);
+        return next;
+      });
+    }
+  };
+
+  const handleApproveAllPending = async () => {
+    const pending = recentLinks.filter(l => !l.isApproved);
+    if (pending.length === 0 || bulkApproving) return;
+    setBulkApproving(true);
+    // Optimistically mark as approving to disable buttons
+    setApprovingIds(prev => {
+      const next = new Set(prev);
+      for (const l of pending) next.add(l.linkId);
+      return next;
+    });
+    try {
+      const results = await Promise.all(pending.map(l => fetch('/api/product-links', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: l.linkId, isApproved: true, approvedBy: 'ui/link/bulk' })
+      })));
+      const failed = results.filter(r => !r.ok).length;
+      if (failed > 0) {
+        alert(`Some approvals failed (${failed}). Others succeeded.`);
+      }
+      await loadRecentLinks();
+      await loadUnlinkedProducts();
+    } catch (e) {
+      console.error('Bulk approve error:', e);
+      alert('Failed to approve pending links');
+    } finally {
+      setBulkApproving(false);
+      setApprovingIds(prev => {
+        const next = new Set(prev);
+        for (const l of pending) next.delete(l.linkId);
+        return next;
+      });
+    }
+  };
+
   const handleProductSelect = (productId: string, checked: boolean) => {
     const newSelected = new Set(selectedProducts);
     if (checked) {
@@ -139,7 +219,8 @@ export default function LinkPage() {
             productId,
             classificationId: selectedClassification,
             linkSource: 'manual',
-            isApproved: false, // Requires manual approval for safety
+            isApproved: approveOnSave,
+            createdBy: 'ui/link',
           }),
         })
       );
@@ -403,6 +484,22 @@ export default function LinkPage() {
                   </div>
                 )}
 
+                {/* Approve toggle + Link Button */}
+                <div className="mt-4 flex items-center justify-between">
+                  <label className="flex items-center text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={approveOnSave}
+                      onChange={(e) => setApproveOnSave(e.target.checked)}
+                      className="mr-2"
+                    />
+                    Approve on save
+                  </label>
+                  <span className="text-xs text-gray-500">
+                    {approveOnSave ? 'Approved links are used immediately' : 'Unapproved links require review'}
+                  </span>
+                </div>
+
                 {/* Link Button */}
                 <button
                   onClick={handleBulkLink}
@@ -422,37 +519,71 @@ export default function LinkPage() {
                   )}
                 </button>
 
-                <p className="mt-3 text-xs text-gray-500 text-center">
-                  Links require manual approval for DOT compliance
-                </p>
+                {!approveOnSave && (
+                  <p className="mt-3 text-xs text-gray-500 text-center">
+                    Links will be created as pending and won’t be used until approved
+                  </p>
+                )}
               </div>
             </div>
 
             {/* Recent Links */}
             {recentLinks.length > 0 && (
               <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                <div className="px-6 py-4 bg-gray-600 text-white">
+                <div className="px-6 py-4 bg-gray-600 text-white flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Recent Links</h2>
+                  {(() => {
+                    const pendingCount = recentLinks.filter(l => !l.isApproved).length;
+                    return (
+                      <button
+                        onClick={handleApproveAllPending}
+                        disabled={pendingCount === 0 || bulkApproving}
+                        className={`text-xs px-3 py-1 rounded ${pendingCount === 0 || bulkApproving ? 'bg-gray-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white`}
+                        title={pendingCount === 0 ? 'No pending links to approve' : 'Approve all pending links'}
+                      >
+                        {bulkApproving ? 'Approving…' : `Approve All Pending (${pendingCount})`}
+                      </button>
+                    );
+                  })()}
                 </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {recentLinks.slice(0, 5).map((link) => (
-                    <div key={link.linkId} className="p-4 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{link.productSku}</p>
-                          <p className="text-xs text-gray-500">→ Class {link.freightClass}</p>
+                    <div className="max-h-64 overflow-y-auto">
+                      {recentLinks.slice(0, 5).map((link) => (
+                        <div key={link.linkId} className="p-4 border-b border-gray-200">
+                          <div className="flex items-start justify-between">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{link.productSku}</p>
+                              <p className="text-xs text-gray-500">→ Class {link.freightClass}</p>
+                              <div className="mt-1 text-xs text-gray-500">
+                                <span className="mr-3">
+                                  Linked: {formatDateTime(link.createdAt) || '—'}{link.createdBy ? ` by ${link.createdBy}` : ''}
+                                </span>
+                                {link.isApproved && (
+                                  <span>
+                                    Approved: {formatDateTime(link.approvedAt) || '—'}{link.approvedBy ? ` by ${link.approvedBy}` : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center ml-4 space-x-3">
+                              {link.isApproved ? (
+                                <CheckCircleIcon className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <>
+                                  <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500" />
+                                  <button
+                                    onClick={() => handleApproveLink(link.linkId)}
+                                    disabled={approvingIds.has(link.linkId)}
+                                    className="text-xs bg-green-600 text-white px-2 py-1 rounded disabled:opacity-50"
+                                  >
+                                    {approvingIds.has(link.linkId) ? 'Approving…' : 'Approve'}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center">
-                          {link.isApproved ? (
-                            <CheckCircleIcon className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500" />
-                          )}
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
               </div>
             )}
           </div>

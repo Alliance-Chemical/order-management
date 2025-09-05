@@ -207,6 +207,7 @@ export async function POST(request: NextRequest) {
     // Clear cache
     await KVCache.deletePattern('product-links:*');
     await KVCache.deletePattern('unlinked-products:*');
+    await KVCache.deletePattern('unlinked-products:*');
     
     return NextResponse.json(result, { status: 201 });
     
