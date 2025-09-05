@@ -175,16 +175,29 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   const orderNumber = ws[0]?.orderNumber || String(orderId);
   const shipstationData = ws[0]?.shipstationData as any;
   
-  // Fetch freight order information for enhanced QR context
-  const freightOrder = await db
-    .select()
-    .from(freightOrders)
-    .where(eq(freightOrders.workspaceId, workspaceId))
-    .limit(1);
-  
-  const freightData = freightOrder[0] || null;
-  console.log(`[QR] Found freight order for workspace: ${freightData ? 'Yes' : 'No'}`, 
-              freightData ? { carrier: freightData.carrierName, status: freightData.bookingStatus } : {});
+  // Fetch freight order information for enhanced QR context (optional)
+  let freightData: any = null;
+  try {
+    const freightOrder = await db
+      .select()
+      .from(freightOrders)
+      .where(eq(freightOrders.workspaceId, workspaceId))
+      .limit(1);
+    freightData = freightOrder[0] || null;
+  } catch (e: any) {
+    // If freight tables haven't been migrated yet, skip enrichment gracefully
+    const code = e?.code || e?.cause?.code;
+    if (code === '42P01' || /relation \"?freight_orders\"? does not exist/i.test(String(e?.message || ''))) {
+      console.warn('[QR] Freight tables not present yet; continuing without freight enrichment');
+    } else {
+      console.warn('[QR] Freight lookup failed; continuing', e);
+    }
+  }
+  if (freightData) {
+    console.log('[QR] Found freight order for workspace', { carrier: freightData.carrierName, status: freightData.bookingStatus });
+  } else {
+    console.log('[QR] No freight order found for workspace (optional)');
+  }
 
   const now = Date.now();
   const makeCode = (suffix: string) => `QR-${orderId}-${suffix}-${now}-${Math.floor(Math.random() * 1000)}`;
