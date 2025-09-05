@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
 import { productFreightLinks, products, freightClassifications } from '@/lib/db/schema/freight';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { KVCache } from '@/lib/cache/kv-cache';
 
 // Enable Edge Runtime for performance
@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
       }
       
       const linksList = await query
+        .orderBy(desc(productFreightLinks.createdAt))
         .limit(limit)
         .offset(offset)
         .execute();

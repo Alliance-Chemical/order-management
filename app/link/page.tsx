@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from '@/hooks/use-toast';
 import { 
   CheckCircleIcon, 
   ExclamationTriangleIcon, 
@@ -137,7 +138,7 @@ export default function LinkPage() {
       await loadUnlinkedProducts();
     } catch (e) {
       console.error('Approve link error:', e);
-      alert('Failed to approve link');
+      toast({ title: 'Approve failed', description: 'Could not approve link', variant: 'destructive' });
     } finally {
       setApprovingIds(prev => {
         const next = new Set(prev);
@@ -150,6 +151,7 @@ export default function LinkPage() {
   const handleApproveAllPending = async () => {
     const pending = recentLinks.filter(l => !l.isApproved);
     if (pending.length === 0 || bulkApproving) return;
+    if (!confirm(`Approve all pending links (${pending.length})?`)) return;
     setBulkApproving(true);
     // Optimistically mark as approving to disable buttons
     setApprovingIds(prev => {
@@ -158,20 +160,21 @@ export default function LinkPage() {
       return next;
     });
     try {
-      const results = await Promise.all(pending.map(l => fetch('/api/product-links', {
-        method: 'PUT',
+      const res = await fetch('/api/product-links/approve', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: l.linkId, isApproved: true, approvedBy: 'ui/link/bulk' })
-      })));
-      const failed = results.filter(r => !r.ok).length;
-      if (failed > 0) {
-        alert(`Some approvals failed (${failed}). Others succeeded.`);
+        body: JSON.stringify({ ids: pending.map(p => p.linkId), approvedBy: 'ui/link/bulk' })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any)?.error || 'Batch approve failed');
       }
+      toast({ title: 'Approved', description: `Approved ${pending.length} links` });
       await loadRecentLinks();
       await loadUnlinkedProducts();
     } catch (e) {
       console.error('Bulk approve error:', e);
-      alert('Failed to approve pending links');
+      toast({ title: 'Batch approve failed', description: 'Some links may remain pending', variant: 'destructive' });
     } finally {
       setBulkApproving(false);
       setApprovingIds(prev => {
@@ -203,7 +206,7 @@ export default function LinkPage() {
 
   const handleBulkLink = async () => {
     if (!selectedClassification || selectedProducts.size === 0) {
-      alert('Please select products and a classification');
+      toast({ title: 'Selection required', description: 'Select products and a classification', variant: 'destructive' });
       return;
     }
 
@@ -230,7 +233,7 @@ export default function LinkPage() {
       const failed = results.length - successful;
 
       if (successful > 0) {
-        alert(`✅ Successfully linked ${successful} products${failed > 0 ? `, ${failed} failed` : ''}`);
+        toast({ title: 'Links created', description: `${successful} linked${failed ? `, ${failed} failed` : ''}` });
         
         // Reload data
         setSelectedProducts(new Set());
@@ -238,11 +241,11 @@ export default function LinkPage() {
         await loadUnlinkedProducts();
         await loadRecentLinks();
       } else {
-        alert('❌ Failed to create links. Please check product-classification compatibility.');
+        toast({ title: 'No links created', description: 'Check product/classification compatibility', variant: 'destructive' });
       }
     } catch (error) {
       console.error('Error creating bulk links:', error);
-      alert('❌ Error creating links. Please try again.');
+      toast({ title: 'Create failed', description: 'Error creating links', variant: 'destructive' });
     } finally {
       setLinking(false);
     }
@@ -317,7 +320,7 @@ export default function LinkPage() {
                     Unlinked Products ({filteredProducts.length})
                   </h2>
                   <div className="flex items-center space-x-3">
-                    <label className="flex items-center text-sm">
+                    <label className="flex items-center text-sm" aria-label="Filter hazardous products only" title="Filter hazardous products only">
                       <input
                         type="checkbox"
                         checked={showHazardousOnly}
@@ -345,7 +348,7 @@ export default function LinkPage() {
                   </div>
                   
                   {filteredProducts.length > 0 && (
-                    <label className="flex items-center whitespace-nowrap">
+                    <label className="flex items-center whitespace-nowrap" aria-label="Select all filtered products" title="Select all filtered products">
                       <input
                         type="checkbox"
                         checked={filteredProducts.length > 0 && selectedProducts.size === filteredProducts.length}
@@ -486,7 +489,7 @@ export default function LinkPage() {
 
                 {/* Approve toggle + Link Button */}
                 <div className="mt-4 flex items-center justify-between">
-                  <label className="flex items-center text-sm text-gray-700">
+                  <label className="flex items-center text-sm text-gray-700" aria-label="Approve on save" title="Approve on save">
                     <input
                       type="checkbox"
                       checked={approveOnSave}
@@ -505,6 +508,8 @@ export default function LinkPage() {
                   onClick={handleBulkLink}
                   disabled={linking || !selectedClassification || selectedProducts.size === 0}
                   className="w-full mt-6 bg-green-600 text-white py-3 px-4 rounded-md font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                  aria-label="Link selected products"
+                  title="Link selected products"
                 >
                   {linking ? (
                     <>
@@ -574,6 +579,8 @@ export default function LinkPage() {
                                     onClick={() => handleApproveLink(link.linkId)}
                                     disabled={approvingIds.has(link.linkId)}
                                     className="text-xs bg-green-600 text-white px-2 py-1 rounded disabled:opacity-50"
+                                    aria-label={`Approve link for ${link.productSku}`}
+                                    title={`Approve link for ${link.productSku}`}
                                   >
                                     {approvingIds.has(link.linkId) ? 'Approving…' : 'Approve'}
                                   </button>
