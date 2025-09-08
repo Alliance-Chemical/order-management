@@ -241,6 +241,7 @@ export default function WorkspacePage() {
             workflowPhase={workspace.workflowPhase}
             workflowType={workspace.workflowType}
             items={inspectionItems}
+            workspace={workspace}
             onComplete={(results) => {
               handleWorkerInspectionComplete(results);
               // After completing inspection for this item, go back to task list

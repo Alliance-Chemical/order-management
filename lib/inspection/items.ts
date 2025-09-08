@@ -27,6 +27,11 @@ export function buildInspectionItems(workspace: WorkspaceLike, selectedItem?: Or
 
   if (workspace.workflowPhase === 'pre_mix') {
     inspectionItems.push(
+      { id: 'basic_info', label: 'Basic Information', description: 'Enter Date Performed, Invoice #, and Inspector name' },
+      { id: 'packing_slip', label: 'Packing Slip Verification', description: 'Verify ship to match, ship via, ship date, P.O. number, signature label, and freight' },
+      { id: 'lot_numbers', label: 'Lot Numbers', description: 'Enter lot numbers (last four digits)' },
+      { id: 'coa_status', label: 'C of A\'s Status', description: 'Select certificate of analysis status' },
+      { id: 'product_inspection', label: 'Product Inspection', description: 'Check label information, lid condition, and GHS labels' },
       { id: 'container_condition', label: 'Check Destination Containers', description: 'Inspect DESTINATION containers for damage, leaks, or contamination (containers going to customer)' },
       { id: 'label_verification', label: 'Verify Destination Labels', description: 'Verify labels on DESTINATION containers match order specifications' },
       { id: 'quantity_check', label: 'Count Destination Containers', description: 'Confirm correct quantity of DESTINATION containers' },

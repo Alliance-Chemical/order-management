@@ -19,6 +19,7 @@ interface ResilientInspectionScreenProps {
   workflowPhase: string;
   workflowType: string;
   items: InspectionItem[];
+  workspace?: any; // Add workspace data for full order details
   onComplete: (results: Record<string, 'pass' | 'fail'>, notes: Record<string, string>) => void;
   onSwitchToSupervisor: () => void;
 }
@@ -31,6 +32,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     orderItems,
     workflowPhase,
     items,
+    workspace,
     onComplete,
     onSwitchToSupervisor
   } = props;
@@ -75,6 +77,25 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const [dims, setDims] = useState({ length: '', width: '', height: '', units: 'in' });
   const [wgt, setWgt] = useState({ value: '', units: 'lbs' });
   const [savingMeasurements, setSavingMeasurements] = useState(false);
+
+  // Form data for new workflow fields
+  const [formData, setFormData] = useState({
+    datePerformed: new Date().toISOString().split('T')[0],
+    inspector: '',
+    packingSlipVerified: false,
+    lotNumbers: '',
+    coaStatus: '',
+    productInspection: {
+      check_label_info: false,
+      lid_inspection: false,
+      ghs_labels: false
+    },
+    lidPhotos: [],
+    lotNumberPhoto: null,
+    extractedLotNumbers: []
+  });
+
+  const [isProcessingLotNumbers, setIsProcessingLotNumbers] = useState(false);
 
   // Monitor network status
   useEffect(() => {
@@ -167,6 +188,105 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     
     setShowScanner(false);
     nextStep();
+  };
+
+  // Form handling functions
+  const updateFormField = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const updateNestedField = (parent: string, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [parent]: { ...prev[parent], [field]: value }
+    }));
+  };
+
+  const handlePhotoUpload = async (file: File) => {
+    const photoUrl = URL.createObjectURL(file);
+    const newPhoto = { url: photoUrl, name: file.name, timestamp: new Date().toISOString() };
+    setFormData(prev => ({
+      ...prev,
+      lidPhotos: [...prev.lidPhotos, newPhoto]
+    }));
+  };
+
+  const validateFormStep = (stepId: string): boolean => {
+    switch (stepId) {
+      case 'basic_info':
+        return !!(formData.datePerformed && formData.inspector);
+      case 'packing_slip':
+        return formData.packingSlipVerified;
+      case 'lot_numbers':
+        return !!formData.lotNumbers.trim();
+      case 'coa_status':
+        return !!formData.coaStatus;
+      case 'product_inspection':
+        const hasSelection = Object.values(formData.productInspection).some(Boolean);
+        const hasLidPhotos = !formData.productInspection.lid_inspection || formData.lidPhotos.length > 0;
+        return hasSelection && hasLidPhotos;
+      default:
+        return true;
+    }
+  };
+
+  const handleFormStepComplete = (stepId: string) => {
+    if (validateFormStep(stepId)) {
+      recordResult(stepId, 'pass', JSON.stringify(formData));
+      nextStep();
+    } else {
+      alert('Please complete all required fields before continuing.');
+    }
+  };
+
+  const handleLotNumberPhotoCapture = async (file: File) => {
+    const photoUrl = URL.createObjectURL(file);
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      setFormData(prev => ({
+        ...prev,
+        lotNumberPhoto: { url: photoUrl, base64, timestamp: new Date().toISOString() }
+      }));
+    };
+    
+    reader.readAsDataURL(file);
+  };
+
+  const extractLotNumbersFromPhoto = async () => {
+    if (!formData.lotNumberPhoto?.base64) return;
+    
+    setIsProcessingLotNumbers(true);
+    try {
+      const response = await fetch('/api/ai/extract-lot-numbers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          image: formData.lotNumberPhoto.base64,
+          orderId 
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const extractedNumbers = data.lotNumbers || [];
+        
+        setFormData(prev => ({
+          ...prev,
+          extractedLotNumbers: extractedNumbers,
+          lotNumbers: extractedNumbers.join(', ') // Auto-populate the text field
+        }));
+      } else {
+        console.error('Failed to extract lot numbers');
+        alert('Failed to extract lot numbers. Please try again or enter manually.');
+      }
+    } catch (error) {
+      console.error('Error extracting lot numbers:', error);
+      alert('Error extracting lot numbers. Please try again or enter manually.');
+    } finally {
+      setIsProcessingLotNumbers(false);
+    }
   };
 
   // Handle pass/fail buttons
@@ -338,8 +458,288 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           )}
         </div>
 
-        {/* Action Buttons */}
-        {requiresQRScan ? (
+        {/* Form Fields or Action Buttons */}
+        {currentItem.id === 'basic_info' ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-xl font-bold text-gray-900 mb-2">Order #</label>
+                <div className="w-full px-4 py-3 text-xl bg-gray-100 border-2 border-gray-300 rounded-lg text-gray-700">
+                  {orderNumber}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xl font-bold text-gray-900 mb-2">Date Performed *</label>
+                <input
+                  type="date"
+                  value={formData.datePerformed}
+                  onChange={(e) => updateFormField('datePerformed', e.target.value)}
+                  className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xl font-bold text-gray-900 mb-2">Inspector *</label>
+                <input
+                  type="text"
+                  value={formData.inspector}
+                  onChange={(e) => updateFormField('inspector', e.target.value)}
+                  placeholder="Enter inspector name"
+                  className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <WarehouseButton
+              onClick={() => handleFormStepComplete('basic_info')}
+              variant="go"
+              size="xlarge"
+              fullWidth
+              haptic="success"
+            >
+              <span className="text-2xl">Continue</span>
+            </WarehouseButton>
+          </div>
+        ) : currentItem.id === 'packing_slip' ? (
+          <div className="space-y-4">
+            {/* Order Details Display */}
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+              <h3 className="text-xl font-bold text-gray-900 mb-3">Expected Order Details</h3>
+              <div className="space-y-2 text-lg">
+                <div><strong>Ship To:</strong> {workspace?.shipstationData?.shipTo?.name || customerName}</div>
+                <div><strong>Company:</strong> {workspace?.shipstationData?.shipTo?.company || 'N/A'}</div>
+                <div><strong>Address:</strong> {workspace?.shipstationData?.shipTo?.street1 || 'N/A'}, {workspace?.shipstationData?.shipTo?.city || 'N/A'}, {workspace?.shipstationData?.shipTo?.state || 'N/A'} {workspace?.shipstationData?.shipTo?.postalCode || 'N/A'}</div>
+                <div><strong>Order #:</strong> {orderNumber}</div>
+                <div><strong>P.O. Number:</strong> {workspace?.shipstationData?.customerReference || 'N/A'}</div>
+              </div>
+            </div>
+            
+            {/* Items List */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="text-lg font-bold text-gray-900 mb-3">Order Items</h4>
+              <div className="space-y-2">
+                {orderItems?.map((item, index) => (
+                  <div key={index} className="bg-white rounded p-3 text-base">
+                    <div><strong>{item.quantity}x</strong> {item.name}</div>
+                    <div className="text-gray-600">SKU: {item.sku}</div>
+                  </div>
+                )) || (
+                  <div className="text-gray-600">No items available</div>
+                )}
+              </div>
+            </div>
+            
+            {/* Verification */}
+            <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
+              <label className="flex items-start cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.packingSlipVerified}
+                  onChange={(e) => updateFormField('packingSlipVerified', e.target.checked)}
+                  className="w-8 h-8 mt-1 text-blue-600 focus:ring-blue-500 border-gray-300 rounded flex-shrink-0"
+                />
+                <div className="ml-4">
+                  <div className="text-xl font-bold text-gray-900">Physical packing slip matches the order details shown above?</div>
+                  <div className="text-base text-gray-700 mt-1">Compare the physical packing slip to the expected order details displayed above</div>
+                </div>
+              </label>
+            </div>
+            
+            <WarehouseButton
+              onClick={() => handleFormStepComplete('packing_slip')}
+              variant="go"
+              size="xlarge"
+              fullWidth
+              haptic="success"
+            >
+              <span className="text-2xl">Continue</span>
+            </WarehouseButton>
+          </div>
+        ) : currentItem.id === 'lot_numbers' ? (
+          <div className="space-y-4">
+            {/* Photo Capture Section */}
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-3">AI Lot Number Extraction</h3>
+              <p className="text-sm text-gray-700 mb-4">
+                Take a photo of the container label to automatically extract lot numbers
+              </p>
+              
+              {!formData.lotNumberPhoto ? (
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer hover:border-blue-400 bg-blue-25">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => e.target.files?.[0] && handleLotNumberPhotoCapture(e.target.files[0])}
+                    className="sr-only"
+                  />
+                  <div className="text-center">
+                    <svg className="mx-auto w-12 h-12 text-blue-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-lg font-medium text-blue-700">Take Photo of Label</span>
+                  </div>
+                </label>
+              ) : (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <img 
+                      src={formData.lotNumberPhoto.url} 
+                      alt="Container label"
+                      className="w-full max-h-48 object-cover rounded-lg"
+                    />
+                    <button
+                      onClick={() => setFormData(prev => ({ ...prev, lotNumberPhoto: null, extractedLotNumbers: [] }))}
+                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  {formData.extractedLotNumbers.length === 0 ? (
+                    <WarehouseButton
+                      onClick={extractLotNumbersFromPhoto}
+                      disabled={isProcessingLotNumbers}
+                      variant="info"
+                      size="large"
+                      fullWidth
+                      loading={isProcessingLotNumbers}
+                    >
+                      <span className="text-lg">
+                        {isProcessingLotNumbers ? 'Extracting...' : 'Extract Lot Numbers'}
+                      </span>
+                    </WarehouseButton>
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <p className="text-sm font-medium text-green-800 mb-2">Extracted Lot Numbers:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {formData.extractedLotNumbers.map((lot, index) => (
+                          <span key={index} className="px-2 py-1 bg-green-100 text-green-800 rounded text-sm font-mono">
+                            {lot}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Manual Entry */}
+            <div>
+              <label className="block text-xl font-bold text-gray-900 mb-2">Lot Numbers *</label>
+              <input
+                type="text"
+                value={formData.lotNumbers}
+                onChange={(e) => updateFormField('lotNumbers', e.target.value)}
+                placeholder="Enter or capture lot numbers"
+                className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-sm text-gray-600 mt-1">
+                Separate multiple lot numbers with commas
+              </p>
+            </div>
+            
+            <WarehouseButton
+              onClick={() => handleFormStepComplete('lot_numbers')}
+              variant="go"
+              size="xlarge"
+              fullWidth
+              haptic="success"
+            >
+              <span className="text-2xl">Continue</span>
+            </WarehouseButton>
+          </div>
+        ) : currentItem.id === 'coa_status' ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xl font-bold text-gray-900 mb-2">C of A's Status *</label>
+              <select
+                value={formData.coaStatus}
+                onChange={(e) => updateFormField('coaStatus', e.target.value)}
+                className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select status</option>
+                <option value="match">Match</option>
+                <option value="no_coas_needed">No C of A's needed</option>
+              </select>
+            </div>
+            <WarehouseButton
+              onClick={() => handleFormStepComplete('coa_status')}
+              variant="go"
+              size="xlarge"
+              fullWidth
+              haptic="success"
+            >
+              <span className="text-2xl">Continue</span>
+            </WarehouseButton>
+          </div>
+        ) : currentItem.id === 'product_inspection' ? (
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+              {[
+                { id: 'check_label_info', label: 'Check label information (ACS / Tech / UN # / PG)' },
+                { id: 'lid_inspection', label: 'Lid (Bleach, Hydrogen Peroxide, Ammonium)' },
+                { id: 'ghs_labels', label: 'GHS Labels' }
+              ].map((item) => (
+                <label key={item.id} className="flex items-center cursor-pointer p-2 bg-white rounded-lg">
+                  <input
+                    type="checkbox"
+                    checked={formData.productInspection[item.id]}
+                    onChange={(e) => updateNestedField('productInspection', item.id, e.target.checked)}
+                    className="w-6 h-6 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="ml-3 text-lg font-medium text-gray-900">{item.label}</span>
+                </label>
+              ))}
+            </div>
+            
+            {formData.productInspection.lid_inspection && (
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                <h3 className="text-lg font-bold text-gray-900 mb-3">Lid Verification Photos Required</h3>
+                <p className="text-sm text-gray-700 mb-4">
+                  Take photos to verify that lids are clean and properly secured.
+                </p>
+                
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  {formData.lidPhotos.map((photo, index) => (
+                    <div key={index} className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                      <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
+                      <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                        Lid {index + 1}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <label className="relative aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer flex items-center justify-center">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])}
+                      className="sr-only"
+                    />
+                    <div className="text-center">
+                      <svg className="mx-auto w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="mt-2 block text-xs text-gray-500">Add Photo</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+            
+            <WarehouseButton
+              onClick={() => handleFormStepComplete('product_inspection')}
+              variant="go"
+              size="xlarge"
+              fullWidth
+              haptic="success"
+            >
+              <span className="text-2xl">Continue</span>
+            </WarehouseButton>
+          </div>
+        ) : requiresQRScan ? (
           <div className="space-y-4">
             <WarehouseButton
               onClick={() => setShowScanner(true)}
