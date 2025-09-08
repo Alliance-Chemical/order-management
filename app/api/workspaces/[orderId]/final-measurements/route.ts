@@ -18,11 +18,20 @@ export async function POST(
     const {
       dimensions, // { length, width, height, units }
       weight,     // { value, units }
+      pallets,    // Array of pallet configurations
+      mode,       // 'single' or 'pallets'
+      palletCount,
+      totalWeight,
       measuredBy,
       measuredAt,
     } = body || {};
 
-    if (!dimensions || !weight) {
+    // Validate based on mode
+    if (mode === 'pallets') {
+      if (!pallets || pallets.length === 0) {
+        return NextResponse.json({ error: 'Missing pallet configurations' }, { status: 400 });
+      }
+    } else if (!dimensions || !weight) {
       return NextResponse.json({ error: 'Missing dimensions or weight' }, { status: 400 });
     }
 
@@ -32,8 +41,16 @@ export async function POST(
     }
 
     const finalMeasurements = {
-      weight,
-      dimensions,
+      ...(mode === 'pallets' ? {
+        pallets,
+        mode: 'pallets',
+        palletCount: palletCount || pallets.length,
+        totalWeight: totalWeight || pallets.reduce((sum: number, p: any) => sum + p.weight.value, 0),
+      } : {
+        weight,
+        dimensions,
+        mode: 'single',
+      }),
       measuredBy: measuredBy || userId,
       measuredAt: measuredAt || new Date().toISOString(),
     } as any;
@@ -52,7 +69,12 @@ export async function POST(
 
     // Append to ShipStation internal notes
     try {
-      const note = `Final dims/weight recorded: ${dimensions.length}x${dimensions.width}x${dimensions.height} ${dimensions.units}, ${weight.value} ${weight.units}. By ${finalMeasurements.measuredBy} at ${finalMeasurements.measuredAt}`;
+      let note = '';
+      if (mode === 'pallets') {
+        note = `Pallet arrangement recorded: ${palletCount || pallets.length} pallets, total weight ${totalWeight || 0} lbs. By ${finalMeasurements.measuredBy} at ${finalMeasurements.measuredAt}`;
+      } else {
+        note = `Final dims/weight recorded: ${dimensions.length}x${dimensions.width}x${dimensions.height} ${dimensions.units}, ${weight.value} ${weight.units}. By ${finalMeasurements.measuredBy} at ${finalMeasurements.measuredAt}`;
+      }
       await ss.appendInternalNotes(orderId, note);
     } catch (e) {
       console.warn('Failed to append ShipStation internal notes:', e);

@@ -8,7 +8,8 @@ import {
   CubeIcon,
   HomeIcon,
   ChatBubbleLeftRightIcon,
-  ClipboardDocumentCheckIcon 
+  ClipboardDocumentCheckIcon,
+  ArchiveBoxIcon 
 } from '@heroicons/react/24/solid';
 
 const navigationItems = [
@@ -49,6 +50,14 @@ const navigationItems = [
     bgColor: 'hover:bg-purple-50'
   },
   {
+    name: 'Containers',
+    href: '/containers',
+    icon: ArchiveBoxIcon,
+    color: 'text-amber-600 hover:text-amber-700',
+    bgColor: 'hover:bg-amber-50',
+    description: 'Manage container types and materials'
+  },
+  {
     name: 'Link Products',
     href: '/link',
     icon: LinkIcon,
@@ -63,6 +72,14 @@ const navigationItems = [
     color: 'text-indigo-600 hover:text-indigo-700',
     bgColor: 'hover:bg-indigo-50',
     description: 'AI-powered hazmat assistant'
+  },
+  {
+    name: 'Hazmat Chatworld',
+    href: '/hazmat-chatworld',
+    icon: ChatBubbleLeftRightIcon,
+    color: 'text-purple-600 hover:text-purple-700',
+    bgColor: 'hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50',
+    description: 'Premium GPT-5 nano assistant'
   },
   {
     name: 'Warehouse Guide',

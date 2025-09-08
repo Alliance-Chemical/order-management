@@ -1,4 +1,4 @@
-import { pgTable, uuid, bigint, varchar, jsonb, timestamp, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, bigint, varchar, jsonb, timestamp, integer, boolean, index, pgSchema, decimal } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const qrWorkspaceSchema = pgSchema('qr_workspace');
@@ -44,8 +44,25 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
   
   // Final Measurements (post-production)
   finalMeasurements: jsonb('final_measurements').$type<{
-    weight: { value: number; units: string; };
-    dimensions: { length: number; width: number; height: number; units: string; };
+    weight?: { value: number; units: string; };
+    dimensions?: { length: number; width: number; height: number; units: string; };
+    pallets?: Array<{
+      id: string;
+      type: '48x48' | '48x40' | 'custom';
+      dimensions: { length: number; width: number; height: number; units: string; };
+      weight: { value: number; units: string; };
+      items: Array<{
+        sku: string;
+        name: string;
+        quantity: number;
+        position?: { x: number; y: number; z: number; };
+      }>;
+      stackable: boolean;
+      notes?: string;
+    }>;
+    mode?: 'single' | 'pallets';
+    palletCount?: number;
+    totalWeight?: number;
     measuredBy?: string;
     measuredAt?: string;
   }>(),
@@ -276,7 +293,6 @@ export const activityLogRelations = relations(activityLog, ({ one }) => ({
 }));
 
 // Chemicals Table - for storing chemical data with specific gravity and concentration info
-import { decimal } from 'drizzle-orm/pg-core';
 
 export const chemicals = qrWorkspaceSchema.table('chemicals', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -363,3 +379,63 @@ export const batchHistoryRelations = relations(batchHistory, ({ one }) => ({
     references: [qrCodes.id],
   }),
 }));
+
+// Container Types Table - for managing chemical container specifications linked to Shopify
+export const containerTypes = qrWorkspaceSchema.table('container_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // Shopify Integration
+  shopifyProductId: varchar('shopify_product_id', { length: 100 }).notNull(),
+  shopifyVariantId: varchar('shopify_variant_id', { length: 100 }).notNull().unique(),
+  shopifyTitle: varchar('shopify_title', { length: 255 }).notNull(),
+  shopifyVariantTitle: varchar('shopify_variant_title', { length: 255 }),
+  shopifySku: varchar('shopify_sku', { length: 100 }),
+  
+  // Container Specifications
+  containerMaterial: varchar('container_material', { length: 20 }).notNull().default('poly'), // 'metal' or 'poly'
+  containerType: varchar('container_type', { length: 100 }), // 'drum', 'tote', 'pail', 'carboy', etc.
+  
+  // Physical Properties
+  capacity: decimal('capacity', { precision: 8, scale: 2 }), // Container capacity
+  capacityUnit: varchar('capacity_unit', { length: 10 }).default('gallons'), // 'gallons', 'liters'
+  
+  // Dimensions (inches)
+  length: decimal('length', { precision: 6, scale: 2 }),
+  width: decimal('width', { precision: 6, scale: 2 }),
+  height: decimal('height', { precision: 6, scale: 2 }),
+  
+  // Weight Properties (pounds)
+  emptyWeight: decimal('empty_weight', { precision: 8, scale: 2 }),
+  maxGrossWeight: decimal('max_gross_weight', { precision: 8, scale: 2 }),
+  
+  // Freight & Shipping
+  freightClass: varchar('freight_class', { length: 10 }), // '50', '55', '60', etc.
+  nmfcCode: varchar('nmfc_code', { length: 20 }),
+  
+  // UN Rating & Hazmat
+  unRating: varchar('un_rating', { length: 50 }), // UN rating for dangerous goods
+  hazmatApproved: boolean('hazmat_approved').default(false),
+  
+  // Stacking & Handling
+  isStackable: boolean('is_stackable').default(true),
+  maxStackHeight: integer('max_stack_height').default(1),
+  
+  // Operational Properties
+  isReusable: boolean('is_reusable').default(true),
+  requiresLiner: boolean('requires_liner').default(false),
+  
+  // Metadata
+  notes: varchar('notes', { length: 1000 }),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  createdBy: varchar('created_by', { length: 255 }),
+  updatedBy: varchar('updated_by', { length: 255 }),
+}, (table) => ({
+  shopifyProductIdx: index('container_types_shopify_product_idx').on(table.shopifyProductId),
+  shopifyVariantIdx: index('container_types_shopify_variant_idx').on(table.shopifyVariantId),
+  materialIdx: index('container_types_material_idx').on(table.containerMaterial),
+  containerTypeIdx: index('container_types_type_idx').on(table.containerType),
+}));
+
+export const containerTypesRelations = relations(containerTypes, ({ one }) => ({}));

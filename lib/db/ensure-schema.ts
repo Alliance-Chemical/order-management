@@ -138,7 +138,16 @@ export async function ensureCoreFreightSchema() {
   await sql`CREATE INDEX IF NOT EXISTS idx_product_freight_product ON product_freight_links (product_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_product_freight_classification ON product_freight_links (classification_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_product_freight_approved ON product_freight_links (is_approved)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_product_freight_source ON product_freight_links (link_source)`;
+  
+  // Add link_source column if it doesn't exist
+  try {
+    await sql`ALTER TABLE product_freight_links ADD COLUMN IF NOT EXISTS link_source varchar(50) DEFAULT 'manual'`;
+  } catch (_) {}
+  
+  // Create index on link_source only if column exists
+  try {
+    await sql`CREATE INDEX IF NOT EXISTS idx_product_freight_source ON product_freight_links (link_source)`;
+  } catch (_) {}
   try {
     await sql`ALTER TABLE product_freight_links ADD CONSTRAINT uq_product_classification UNIQUE (product_id, classification_id)`;
   } catch (_) {}

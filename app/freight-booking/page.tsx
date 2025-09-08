@@ -17,6 +17,7 @@ import HazmatCallout from '@/components/ui/HazmatCallout';
 import WarehouseButton from '@/components/ui/WarehouseButton';
 import ProgressBar from '@/components/ui/ProgressBar';
 import StatusLight from '@/components/ui/StatusLight';
+import PalletSummaryDisplay from '@/components/freight-booking/PalletSummaryDisplay';
 
 interface ShipStationOrder {
   orderId: number;
@@ -92,6 +93,7 @@ export default function FreightBookingPage() {
   const [booking, setBooking] = useState(false);
   const [success, setSuccess] = useState(false);
   const [workspaceLink, setWorkspaceLink] = useState<string>('');
+  const [palletData, setPalletData] = useState<any[] | null>(null);
   // Per-SKU hazmat overrides captured in the UI
   const [hazmatBySku, setHazmatBySku] = useState<Record<string, {
     isHazmat?: boolean;
@@ -431,6 +433,19 @@ export default function FreightBookingPage() {
   const handleOrderSelection = async (order: ShipStationOrder) => {
     setBookingData(prev => ({ ...prev, selectedOrder: order }));
     
+    // Fetch workspace pallet data if available
+    try {
+      const response = await fetch(`/api/workspace/${order.orderId}`);
+      if (response.ok) {
+        const workspace = await response.json();
+        if (workspace.finalMeasurements?.pallets) {
+          setPalletData(workspace.finalMeasurements.pallets);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch workspace pallet data:', error);
+    }
+    
     // Auto-classify products
     const classifiedItems: Array<{
       sku: string;
@@ -552,7 +567,8 @@ export default function FreightBookingPage() {
           shipstationOrder: bookingData.selectedOrder,
           carrierSelection: { carrier: bookingData.carrierName, service: bookingData.serviceType, mode: 'LTL' },
           userOverrides: { instructions: bookingData.specialInstructions, hazmatBySku: hazBySkuPayload, nmfcBySku: nmfcBySkuPayload },
-          estimatedCost: bookingData.estimatedCost
+          estimatedCost: bookingData.estimatedCost,
+          palletData: palletData // Include pallet configurations from warehouse
         })
       });
 
@@ -796,8 +812,8 @@ export default function FreightBookingPage() {
                               )}
                             </div>
                           ) : (
-                            <div className="bg-gray-50 p-4 rounded-md border border-gray-200 w-[380px]">
-                              <div className="font-bold text-gray-800 mb-2">
+                            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 max-w-2xl">
+                              <div className="font-bold text-gray-800 mb-4 text-base">
                                 Manual Classification
                                 {manualInputs[item.sku]?.hazmatData?.isHazmat && (
                                   <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
@@ -813,14 +829,14 @@ export default function FreightBookingPage() {
                                   hazardClass={manualInputs[item.sku]?.hazmatData?.hazardClass}
                                   packingGroup={manualInputs[item.sku]?.hazmatData?.packingGroup}
                                   properShippingName={manualInputs[item.sku]?.hazmatData?.properShippingName}
-                                  className="mb-3"
+                                  className="mb-4"
                                 >
                                   This product requires special handling and documentation
                                 </HazmatCallout>
                               )}
-                              <div className="grid grid-cols-2 gap-3 mb-3">
+                              <div className="grid grid-cols-3 gap-4 mb-4">
                                 <div>
-                                  <label className="block text-xs text-gray-600 mb-1">Freight Class</label>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Freight Class</label>
                                   <input
                                     type="text"
                                     value={manualInputs[item.sku]?.freightClass ?? ''}
@@ -835,11 +851,11 @@ export default function FreightBookingPage() {
                                       }
                                     }))}
                                     placeholder="e.g. 85"
-                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs text-gray-600 mb-1">NMFC Code</label>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">NMFC Code</label>
                                   <input
                                     type="text"
                                     value={manualInputs[item.sku]?.nmfcCode ?? ''}
@@ -854,11 +870,11 @@ export default function FreightBookingPage() {
                                       }
                                     }))}
                                     placeholder="e.g. 12345"
-                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-xs text-gray-600 mb-1">NMFC Sub</label>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">NMFC Sub</label>
                                   <input
                                     type="text"
                                     value={manualInputs[item.sku]?.nmfcSub ?? ''}
@@ -873,28 +889,28 @@ export default function FreightBookingPage() {
                                       }
                                     }))}
                                     placeholder="e.g. 03"
-                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                   />
                                 </div>
-                                <div>
-                                  <label className="block text-xs text-gray-600 mb-1">Description</label>
-                                  <input
-                                    type="text"
-                                    value={manualInputs[item.sku]?.description ?? ''}
-                                    onChange={(e) => setManualInputs(prev => ({
-                                      ...prev,
-                                      [item.sku]: {
-                                        ...prev[item.sku],
-                                        freightClass: prev[item.sku]?.freightClass ?? '',
-                                        nmfcCode: prev[item.sku]?.nmfcCode ?? '',
-                                        nmfcSub: prev[item.sku]?.nmfcSub ?? '',
-                                        description: e.target.value,
-                                      }
-                                    }))}
-                                    placeholder="Proper shipping name"
-                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                  />
-                                </div>
+                              </div>
+                              <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Description / Proper Shipping Name</label>
+                                <input
+                                  type="text"
+                                  value={manualInputs[item.sku]?.description ?? ''}
+                                  onChange={(e) => setManualInputs(prev => ({
+                                    ...prev,
+                                    [item.sku]: {
+                                      ...prev[item.sku],
+                                      freightClass: prev[item.sku]?.freightClass ?? '',
+                                      nmfcCode: prev[item.sku]?.nmfcCode ?? '',
+                                      nmfcSub: prev[item.sku]?.nmfcSub ?? '',
+                                      description: e.target.value,
+                                    }
+                                  }))}
+                                  placeholder="Enter proper shipping name or description"
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
                               </div>
                               {manualInputs[item.sku]?.successMessage && (
                                 <div className="text-green-600 text-xs mb-2 font-bold animate-pulse">
@@ -1445,6 +1461,13 @@ export default function FreightBookingPage() {
                 </div>
               </div>
             </div>
+            
+            {/* Pallet Configuration from Warehouse */}
+            {palletData && palletData.length > 0 && (
+              <div className="mb-8">
+                <PalletSummaryDisplay pallets={palletData} />
+              </div>
+            )}
             
             {/* Special Instructions */}
             <div className="mb-8">

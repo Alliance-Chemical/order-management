@@ -7,9 +7,7 @@ import PrintPreparationModalSimplified from '@/components/desktop/PrintPreparati
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import WarehouseButton from '@/components/ui/WarehouseButton';
-import StatusLight from '@/components/ui/StatusLight';
 import ProgressBar from '@/components/ui/ProgressBar';
-import HazmatCallout from '@/components/ui/HazmatCallout';
 
 interface OrderItem {
   name: string;
@@ -288,24 +286,6 @@ export default function WorkQueueDashboard() {
                             >
                               Workspace
                             </WarehouseButton>
-                            {!order.freightStatus ? (
-                              <WarehouseButton
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/freight-booking?orderId=${order.orderId}`);
-                                }}
-                                variant="caution"
-                                size="base"
-                                title="Book freight shipping for this order"
-                                icon={<span className="text-lg">🚛</span>}
-                              >
-                                Book Freight
-                              </WarehouseButton>
-                            ) : (
-                              <div className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg">
-                                <span className="text-xs">Freight Booked</span>
-                              </div>
-                            )}
                             <WarehouseButton
                               onClick={(e) => {
                                 e.stopPropagation();

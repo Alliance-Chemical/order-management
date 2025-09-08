@@ -1,16 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ScaleIcon, CubeIcon, QrCodeIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { useState, useEffect, useRef } from 'react';
+import { ScaleIcon, CubeIcon, QrCodeIcon, CheckCircleIcon, TruckIcon } from '@heroicons/react/24/outline';
 import { QRScanner } from '@/components/qr/QRScannerAdapter';
+import PalletArrangementBuilder from './PalletArrangementBuilder';
 
 interface FinalMeasurementsProps {
   orderId: string;
+  orderItems?: Array<{
+    sku: string;
+    name: string;
+    quantity: number;
+    weight?: { value: number; units: string };
+  }>;
   initialData?: any;
   onSave: (measurements: any) => void;
 }
 
-export default function FinalMeasurements({ orderId, initialData, onSave }: FinalMeasurementsProps) {
+export default function FinalMeasurements({ orderId, orderItems = [], initialData, onSave }: FinalMeasurementsProps) {
   const [showScanner, setShowScanner] = useState(false);
   const [scannedContainer, setScannedContainer] = useState<string | null>(null);
   const [measurements, setMeasurements] = useState({
@@ -23,6 +30,8 @@ export default function FinalMeasurements({ orderId, initialData, onSave }: Fina
   });
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [mode, setMode] = useState<'single' | 'pallets'>('single');
+  const [palletData, setPalletData] = useState<any[]>(initialData?.pallets || []);
 
   const handleQRScan = async (data: string) => {
     try {
@@ -53,40 +62,70 @@ export default function FinalMeasurements({ orderId, initialData, onSave }: Fina
   };
 
   const handleSave = async () => {
-    // Validate inputs
-    if (!measurements.weight || !measurements.length || !measurements.width || !measurements.height) {
-      alert('Please enter all measurements');
-      return;
-    }
+    if (mode === 'single') {
+      // Validate inputs
+      if (!measurements.weight || !measurements.length || !measurements.width || !measurements.height) {
+        alert('Please enter all measurements');
+        return;
+      }
 
+      setSaving(true);
+      try {
+        const measurementData = {
+          weight: {
+            value: parseFloat(measurements.weight),
+            units: measurements.weightUnit
+          },
+          dimensions: {
+            length: parseFloat(measurements.length),
+            width: parseFloat(measurements.width),
+            height: parseFloat(measurements.height),
+            units: measurements.dimensionUnit
+          },
+          scannedContainer,
+          measuredBy: 'Current User', // In production, get from auth context
+          measuredAt: new Date().toISOString(),
+          mode: 'single'
+        };
+
+        await onSave(measurementData);
+        setLastSaved(new Date());
+        
+        // Show success feedback
+        setTimeout(() => {
+          setLastSaved(null);
+        }, 3000);
+      } catch (error) {
+        console.error('Error saving measurements:', error);
+        alert('Failed to save measurements');
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  const handleSavePallets = async (pallets: any[]) => {
     setSaving(true);
     try {
       const measurementData = {
-        weight: {
-          value: parseFloat(measurements.weight),
-          units: measurements.weightUnit
-        },
-        dimensions: {
-          length: parseFloat(measurements.length),
-          width: parseFloat(measurements.width),
-          height: parseFloat(measurements.height),
-          units: measurements.dimensionUnit
-        },
-        scannedContainer,
-        measuredBy: 'Current User', // In production, get from auth context
+        pallets,
+        mode: 'pallets',
+        totalWeight: pallets.reduce((sum: number, p: any) => sum + p.weight.value, 0),
+        palletCount: pallets.length,
+        measuredBy: 'Current User',
         measuredAt: new Date().toISOString()
       };
 
       await onSave(measurementData);
+      setPalletData(pallets);
       setLastSaved(new Date());
       
-      // Show success feedback
       setTimeout(() => {
         setLastSaved(null);
       }, 3000);
     } catch (error) {
-      console.error('Error saving measurements:', error);
-      alert('Failed to save measurements');
+      console.error('Error saving pallet arrangement:', error);
+      alert('Failed to save pallet arrangement');
     } finally {
       setSaving(false);
     }
@@ -117,10 +156,47 @@ export default function FinalMeasurements({ orderId, initialData, onSave }: Fina
         <p className="text-sm text-gray-600 mt-1">
           Enter the actual measured values after mixing/packaging
         </p>
+        
+        {/* Mode Toggle */}
+        {orderItems.length > 0 && (
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => setMode('single')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                mode === 'single'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              <CubeIcon className="h-5 w-5 inline mr-2" />
+              Single Package
+            </button>
+            <button
+              onClick={() => setMode('pallets')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                mode === 'pallets'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              <TruckIcon className="h-5 w-5 inline mr-2" />
+              Multiple Pallets
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* QR Scanner Section */}
-      <div className="mb-6">
+      {mode === 'pallets' ? (
+        <PalletArrangementBuilder
+          orderId={orderId}
+          orderItems={orderItems}
+          existingPallets={palletData}
+          onSave={handleSavePallets}
+        />
+      ) : (
+        <>
+          {/* QR Scanner Section */}
+          <div className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <label className="text-sm font-medium text-gray-700">
             Container Identification
@@ -272,12 +348,14 @@ export default function FinalMeasurements({ orderId, initialData, onSave }: Fina
         </div>
       </form>
 
-      {/* Quick Tips */}
-      <div className="mt-6 p-3 bg-blue-50 rounded-lg">
-        <p className="text-xs text-blue-700">
-          <strong>Tips:</strong> Scan any container QR to identify it • Press Enter to move between fields • All measurements are saved to the order record
-        </p>
-      </div>
+          {/* Quick Tips */}
+          <div className="mt-6 p-3 bg-blue-50 rounded-lg">
+            <p className="text-xs text-blue-700">
+              <strong>Tips:</strong> Scan any container QR to identify it • Press Enter to move between fields • All measurements are saved to the order record
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }

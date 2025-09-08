@@ -6,8 +6,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const filter = searchParams.get('filter');
     
-    // Get freight ready tag ID from environment - only show orders ready for booking
-    const freightTagId = parseInt(process.env.FREIGHT_READY_TAG_ID || '44123');
+    // Get freight order tag ID from environment - show all freight orders
+    const freightTagId = parseInt(process.env.FREIGHT_ORDER_TAG || '19844');
     
     // Trim any whitespace from environment variables
     const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
@@ -20,22 +20,36 @@ export async function GET(request: NextRequest) {
     let hasMorePages = true;
     
     while (hasMorePages) {
-      const response = await fetch(
-        `https://ssapi.shipstation.com/orders/listbytag?` + 
-        `orderStatus=awaiting_shipment&` +
-        `tagId=${freightTagId}&` +
-        `page=${page}&` +
-        `pageSize=500`,
-        {
-          headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/json',
-          },
+      // Retry logic for network issues
+      let response;
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          response = await fetch(
+            `https://ssapi.shipstation.com/orders/listbytag?` + 
+            `orderStatus=awaiting_shipment&` +
+            `tagId=${freightTagId}&` +
+            `page=${page}&` +
+            `pageSize=500`,
+            {
+              headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json',
+              },
+              signal: AbortSignal.timeout(30000), // 30 second timeout
+            }
+          );
+          break; // Success, exit retry loop
+        } catch (error: any) {
+          retries--;
+          if (retries === 0) throw error;
+          console.log(`ShipStation request failed, retrying... (${retries} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
         }
-      );
+      }
       
-      if (!response.ok) {
-        throw new Error(`ShipStation API error: ${response.statusText}`);
+      if (!response || !response.ok) {
+        throw new Error(`ShipStation API error: ${response?.statusText || 'Unknown error'}`);
       }
       
       const data = await response.json();

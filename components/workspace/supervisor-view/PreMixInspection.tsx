@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CheckCircleIcon, XCircleIcon, CameraIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XCircleIcon, CameraIcon, CalendarIcon } from '@heroicons/react/24/outline';
 
 interface PreMixInspectionProps {
   orderId: string;
@@ -9,32 +9,67 @@ interface PreMixInspectionProps {
   onStateChange: (state: any) => void;
 }
 
-const inspectionItems = [
-  { id: 'container_condition', label: 'Container Condition', description: 'Check for damage, leaks, or contamination' },
-  { id: 'label_verification', label: 'Label Verification', description: 'Verify product labels match order' },
-  { id: 'quantity_check', label: 'Quantity Check', description: 'Confirm correct quantity of containers' },
-  { id: 'scan_destination_qr', label: 'Scan Destination QR', description: 'Scan QR code on each destination container' },
-  { id: 'hazmat_placards', label: 'Hazmat Placards', description: 'Verify proper hazmat labeling if required' },
-  { id: 'seal_integrity', label: 'Seal Integrity', description: 'Check all seals are intact' },
+const packingSlipItems = [
+  { id: 'ship_to_match', label: 'Ship to match' },
+  { id: 'ship_via', label: 'Ship Via' },
+  { id: 'ship_date', label: 'Ship Date' },
+  { id: 'po_number', label: 'P.O. Number' },
+  { id: 'signature_label', label: 'Signature Label' },
+  { id: 'freight', label: 'Freight' },
+];
+
+const coaOptions = [
+  { value: 'match', label: 'Match' },
+  { value: 'no_coas_needed', label: 'No C of A\'s needed' },
+];
+
+const productInspectionItems = [
+  { id: 'check_label_info', label: 'Check label information (ACS / Tech / UN # / PG)' },
+  { id: 'lid_inspection', label: 'Lid (Bleach, Hydrogen Peroxide, Ammonium)' },
+  { id: 'ghs_labels', label: 'GHS Labels' },
 ];
 
 export default function PreMixInspection({ orderId, initialState = {}, onStateChange }: PreMixInspectionProps) {
   const [state, setState] = useState({
-    checklist: initialState.checklist || {},
+    datePerformed: initialState.datePerformed || new Date().toISOString().split('T')[0],
+    invoiceNumber: initialState.invoiceNumber || '',
+    inspector: initialState.inspector || '',
+    packingSlip: initialState.packingSlip || {},
+    lotNumbers: initialState.lotNumbers || '',
+    coaStatus: initialState.coaStatus || '',
+    productInspection: initialState.productInspection || {},
+    lidPhotos: initialState.lidPhotos || [],
     notes: initialState.notes || '',
-    photos: initialState.photos || [],
     completedAt: initialState.completedAt || null,
     completedBy: initialState.completedBy || null,
   });
 
-  const handleChecklistChange = (itemId: string, value: 'pass' | 'fail' | null) => {
+  const handlePackingSlipChange = (itemId: string, checked: boolean) => {
     const newState = {
       ...state,
-      checklist: {
-        ...state.checklist,
-        [itemId]: value,
+      packingSlip: {
+        ...state.packingSlip,
+        [itemId]: checked,
       },
     };
+    setState(newState);
+    onStateChange(newState);
+  };
+
+  const handleProductInspectionChange = (itemId: string, checked: boolean) => {
+    const newState = {
+      ...state,
+      productInspection: {
+        ...state.productInspection,
+        [itemId]: checked,
+      },
+    };
+    setState(newState);
+    onStateChange(newState);
+  };
+
+  const handleFieldChange = (field: string, value: string) => {
+    const newState = { ...state, [field]: value };
     setState(newState);
     onStateChange(newState);
   };
@@ -45,28 +80,47 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
     onStateChange(newState);
   };
 
-  const handlePhotoUpload = async (file: File) => {
+  const handleLidPhotoUpload = async (file: File) => {
     // In a real app, upload to S3 here
     const photoUrl = URL.createObjectURL(file);
     const newState = {
       ...state,
-      photos: [...state.photos, { url: photoUrl, name: file.name, timestamp: new Date().toISOString() }],
+      lidPhotos: [...state.lidPhotos, { url: photoUrl, name: file.name, timestamp: new Date().toISOString() }],
     };
     setState(newState);
     onStateChange(newState);
   };
 
   const handleComplete = () => {
-    const allItemsChecked = inspectionItems.every(item => state.checklist[item.id] !== undefined);
-    
-    if (!allItemsChecked) {
-      alert('Please complete all inspection items before marking as complete');
+    // Check required fields
+    if (!state.datePerformed) {
+      alert('Please enter the date performed');
       return;
     }
-
-    const hasFailures = Object.values(state.checklist).includes('fail');
-    if (hasFailures && !state.notes) {
-      alert('Please add notes explaining any failed items');
+    
+    if (!state.invoiceNumber) {
+      alert('Please enter the invoice number');
+      return;
+    }
+    
+    if (!state.inspector) {
+      alert('Please enter the inspector name');
+      return;
+    }
+    
+    if (!state.lotNumbers) {
+      alert('Please enter the lot numbers (last four digits)');
+      return;
+    }
+    
+    if (!state.coaStatus) {
+      alert('Please select C of A status');
+      return;
+    }
+    
+    // Check if lid inspection was selected and photos are required
+    if (state.productInspection.lid_inspection && state.lidPhotos.length === 0) {
+      alert('Please take photos of the lids for verification');
       return;
     }
 
@@ -91,7 +145,11 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
   };
 
   const isComplete = state.completedAt !== null;
-  const progress = (Object.keys(state.checklist).length / inspectionItems.length) * 100;
+  const requiredFieldsCount = 5; // datePerformed, invoiceNumber, inspector, lotNumbers, coaStatus
+  const completedRequiredFields = [state.datePerformed, state.invoiceNumber, state.inspector, state.lotNumbers, state.coaStatus].filter(field => field && field.length > 0).length;
+  const packingSlipProgress = Object.values(state.packingSlip).filter(Boolean).length / packingSlipItems.length;
+  const productInspectionProgress = Object.values(state.productInspection).filter(Boolean).length / productInspectionItems.length;
+  const overallProgress = ((completedRequiredFields / requiredFieldsCount) + packingSlipProgress + productInspectionProgress) / 3 * 100;
 
   return (
     <div className="space-y-6">
@@ -99,54 +157,148 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Inspection Progress</span>
-          <span className="text-sm text-gray-500">{Math.round(progress)}%</span>
+          <span className="text-sm text-gray-500">{Math.round(overallProgress)}%</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div 
             className="bg-blue-600 h-2 rounded-full transition-all"
-            style={{ width: `${progress}%` }}
+            style={{ width: `${overallProgress}%` }}
           />
         </div>
       </div>
 
-      {/* Inspection Checklist */}
+      {/* Basic Information */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <CalendarIcon className="w-5 h-5 mr-2" />
+          Basic Information
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Date Performed <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              value={state.datePerformed}
+              onChange={(e) => handleFieldChange('datePerformed', e.target.value)}
+              disabled={isComplete}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Invoice # <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={state.invoiceNumber}
+              onChange={(e) => handleFieldChange('invoiceNumber', e.target.value)}
+              disabled={isComplete}
+              placeholder="Enter invoice number"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Inspector <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={state.inspector}
+              onChange={(e) => handleFieldChange('inspector', e.target.value)}
+              disabled={isComplete}
+              placeholder="Enter inspector name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Packing Slip */}
       <div className="bg-white rounded-lg shadow">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Inspection Checklist</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Packing Slip <span className="text-red-500">*</span></h3>
         </div>
         <div className="divide-y divide-gray-200">
-          {inspectionItems.map((item) => (
+          {packingSlipItems.map((item) => (
             <div key={item.id} className="px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-gray-900">{item.label}</h4>
-                  <p className="text-sm text-gray-500">{item.description}</p>
-                </div>
-                <div className="flex gap-2 ml-4">
-                  <button
-                    onClick={() => handleChecklistChange(item.id, 'pass')}
-                    disabled={isComplete}
-                    className={`p-2 rounded-lg transition-colors ${
-                      state.checklist[item.id] === 'pass'
-                        ? 'bg-green-100 text-green-600'
-                        : 'bg-gray-100 text-gray-400 hover:bg-green-50 hover:text-green-500'
-                    } ${isComplete ? 'cursor-not-allowed opacity-50' : ''}`}
-                  >
-                    <CheckCircleIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => handleChecklistChange(item.id, 'fail')}
-                    disabled={isComplete}
-                    className={`p-2 rounded-lg transition-colors ${
-                      state.checklist[item.id] === 'fail'
-                        ? 'bg-red-100 text-red-600'
-                        : 'bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-500'
-                    } ${isComplete ? 'cursor-not-allowed opacity-50' : ''}`}
-                  >
-                    <XCircleIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={state.packingSlip[item.id] || false}
+                  onChange={(e) => handlePackingSlipChange(item.id, e.target.checked)}
+                  disabled={isComplete}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                />
+                <span className="ml-3 text-sm font-medium text-gray-900">{item.label}</span>
+                {state.packingSlip[item.id] && (
+                  <CheckCircleIcon className="w-5 h-5 text-green-500 ml-auto" />
+                )}
+              </label>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Lot Numbers and C of A's */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Lot #'s (Last four digits) <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={state.lotNumbers}
+              onChange={(e) => handleFieldChange('lotNumbers', e.target.value)}
+              disabled={isComplete}
+              placeholder="Enter lot numbers"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              C of A's <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={state.coaStatus}
+              onChange={(e) => handleFieldChange('coaStatus', e.target.value)}
+              disabled={isComplete}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
+            >
+              <option value="">Select status</option>
+              {coaOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Inspect Products */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Inspect Products <span className="text-red-500">*</span></h3>
+        </div>
+        <div className="divide-y divide-gray-200">
+          {productInspectionItems.map((item) => (
+            <div key={item.id} className="px-6 py-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={state.productInspection[item.id] || false}
+                  onChange={(e) => handleProductInspectionChange(item.id, e.target.checked)}
+                  disabled={isComplete}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
+                />
+                <span className="ml-3 text-sm font-medium text-gray-900">{item.label}</span>
+                {state.productInspection[item.id] && (
+                  <CheckCircleIcon className="w-5 h-5 text-green-500 ml-auto" />
+                )}
+              </label>
             </div>
           ))}
         </div>
@@ -164,31 +316,43 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
         />
       </div>
 
-      {/* Photo Upload */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Photos</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {state.photos.map((photo: any, index: number) => (
-            <div key={index} className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
-              <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
-            </div>
-          ))}
-          {!isComplete && (
-            <label className="relative aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer flex items-center justify-center">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])}
-                className="sr-only"
-              />
-              <div className="text-center">
-                <CameraIcon className="mx-auto w-6 h-6 text-gray-400" />
-                <span className="mt-2 block text-xs text-gray-500">Add Photo</span>
+      {/* Lid Photo Verification */}
+      {state.productInspection.lid_inspection && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <CameraIcon className="w-5 h-5 mr-2" />
+            Lid Verification Photos
+            <span className="text-red-500 ml-1">*</span>
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Take photos to verify that lids are clean and properly secured, especially for chemicals like Bleach, Hydrogen Peroxide, and Ammonium.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {state.lidPhotos.map((photo: any, index: number) => (
+              <div key={index} className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
+                <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                  Lid {index + 1}
+                </div>
               </div>
-            </label>
-          )}
+            ))}
+            {!isComplete && (
+              <label className="relative aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer flex items-center justify-center">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => e.target.files?.[0] && handleLidPhotoUpload(e.target.files[0])}
+                  className="sr-only"
+                />
+                <div className="text-center">
+                  <CameraIcon className="mx-auto w-6 h-6 text-gray-400" />
+                  <span className="mt-2 block text-xs text-gray-500">Add Lid Photo</span>
+                </div>
+              </label>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Complete Button */}
       {!isComplete && (

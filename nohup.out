@@ -1,0 +1,2 @@
+Usage: node scripts/migrate-rag-batch.js "<DEV_URL>" "<PROD_URL>" [--offset=N]
+Usage: node scripts/migrate-rag-batch.js "<DEV_URL>" "<PROD_URL>" [--offset=N]

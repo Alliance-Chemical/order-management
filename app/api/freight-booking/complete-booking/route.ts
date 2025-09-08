@@ -39,8 +39,39 @@ function createShipStationDataFromFreight(bookingData: any) {
       addressVerified: 'Customer provided address',
     },
     
-    // Convert package details to items format
-    items: [{
+    // Convert package details to items format - use pallet data if available
+    items: bookingData.palletData?.length > 0 ? 
+      bookingData.palletData.map((pallet: any, index: number) => ({
+        sku: `PALLET-${index + 1}`,
+        name: `${pallet.type} Pallet - ${pallet.items.length} items`,
+        quantity: 1,
+        unitPrice: (bookingData.estimatedCost || 0) / bookingData.palletData.length,
+        weight: {
+          value: pallet.weight.value || 0,
+          units: pallet.weight.units || 'lbs',
+          WeightUnits: 2 // lbs
+        },
+        dimensions: {
+          length: pallet.dimensions.length,
+          width: pallet.dimensions.width,
+          height: pallet.dimensions.height,
+          units: pallet.dimensions.units
+        },
+        imageUrl: '',
+        productId: `${bookingData.orderId}-pallet-${index + 1}`,
+        createDate: new Date().toISOString(),
+        modifyDate: new Date().toISOString(),
+        options: [
+          {
+            name: 'Stackable',
+            value: pallet.stackable ? 'Yes' : 'No'
+          },
+          {
+            name: 'Items',
+            value: pallet.items.map((i: any) => `${i.name} (${i.quantity})`).join(', ')
+          }
+        ]
+      })) : [{
       sku: `FREIGHT-${bookingData.orderNumber}`,
       name: `Freight Shipment - ${bookingData.serviceType || 'Standard'}`,
       quantity: bookingData.packageDetails?.packageCount || 1,

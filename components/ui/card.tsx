@@ -15,3 +15,17 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
 );
 
 Card.displayName = 'Card';
+
+export const CardContent = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className = '', ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={`p-6 pt-0 ${className}`}
+        {...props}
+      />
+    );
+  }
+);
+
+CardContent.displayName = 'CardContent';

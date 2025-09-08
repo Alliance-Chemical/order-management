@@ -9,7 +9,7 @@ import * as qrSchema from '../../../lib/db/schema/qr-workspace';
 import * as freightSchema from '../../../lib/db/schema/freight';
 import * as ragSchema from '../../../lib/db/schema/rag-embeddings';
 
-const connectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
+// connectionString will be evaluated inside initializeDb() to ensure env vars are loaded
 
 // Lazy-initialized connection
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -22,6 +22,7 @@ function detectRuntime(): 'edge' | 'serverless' | 'node' {
 }
 
 function initializeDb() {
+  const connectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
   if (!connectionString) {
     throw new Error('DATABASE_URL or NEON_DATABASE_URL environment variable required');
   }
