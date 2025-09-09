@@ -12,7 +12,17 @@ import {
   ArchiveBoxIcon 
 } from '@heroicons/react/24/solid';
 
-const navigationItems = [
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: any;
+  color: string;
+  bgColor: string;
+  description?: string;
+  external?: boolean;
+}
+
+const navigationItems: NavigationItem[] = [
   {
     name: 'Dashboard',
     href: '/',
@@ -82,6 +92,15 @@ const navigationItems = [
     description: 'Premium GPT-5 nano assistant'
   },
   {
+    name: 'Hazmat Orders',
+    href: 'https://hazmat-three.vercel.app',
+    icon: TruckIcon,
+    color: 'text-red-600 hover:text-red-700',
+    bgColor: 'hover:bg-red-50',
+    description: 'Hazmat order management',
+    external: true
+  },
+  {
     name: 'Warehouse Guide',
     href: '/warehouse-guide',
     icon: ClipboardDocumentCheckIcon,
@@ -107,13 +126,19 @@ export default function FreightNavigation({
     return (
       <nav className={`space-y-2 ${className}`}>
         {navigationItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = !item.external && pathname === item.href;
           const Icon = item.icon;
           
           return (
             <button
               key={item.name}
-              onClick={() => router.push(item.href)}
+              onClick={() => {
+                if (item.external) {
+                  window.open(item.href, '_blank', 'noopener,noreferrer');
+                } else {
+                  router.push(item.href);
+                }
+              }}
               className={`w-full flex items-center px-4 py-3 text-left text-sm font-medium rounded-lg transition-colors ${
                 isActive 
                   ? 'bg-blue-100 text-blue-700 border-l-4 border-blue-700' 
@@ -143,7 +168,13 @@ export default function FreightNavigation({
         return (
           <button
             key={item.name}
-            onClick={() => router.push(item.href)}
+            onClick={() => {
+              if (item.external) {
+                window.open(item.href, '_blank', 'noopener,noreferrer');
+              } else {
+                router.push(item.href);
+              }
+            }}
             className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
               isActive 
                 ? 'bg-blue-100 text-blue-700' 
