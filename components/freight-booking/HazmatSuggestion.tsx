@@ -1,5 +1,7 @@
 import React from 'react';
-import { Alert, Button, Badge } from 'flowbite-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { HiCheckCircle, HiExclamation, HiLightBulb, HiX } from 'react-icons/hi';
 
 interface HazmatSuggestionProps {

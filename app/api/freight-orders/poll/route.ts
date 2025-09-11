@@ -57,6 +57,8 @@ export async function GET(request: NextRequest) {
       const orders = data.orders || [];
       allFreightOrders = [...allFreightOrders, ...orders];
       
+      console.log(`[Pagination] Page ${page}/${data.pages || 1}: Found ${orders.length} orders. Total so far: ${allFreightOrders.length}`);
+      
       // Check if there are more pages
       hasMorePages = data.pages && page < data.pages;
       page++;

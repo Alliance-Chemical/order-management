@@ -1,27 +1,28 @@
-'use client';
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import { useInspectionState } from '@/hooks/useInspectionState';
-import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner';
-import { inspectionQueue } from '@/lib/services/offline/inspection-queue';
-import IssueModal from './IssueModal';
-import { InspectionItem } from '@/lib/types/agent-view';
-import { QRType } from '@/lib/services/qr/validation';
-import WarehouseButton from '@/components/ui/WarehouseButton';
-import ProgressBar from '@/components/ui/ProgressBar';
-import StatusLight from '@/components/ui/StatusLight';
+import React from 'react'
+import { useInspection } from '@/hooks/useInspection'
+import { useToast } from '@/hooks/use-toast'
+import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner'
+import IssueModal from './IssueModal'
+import { InspectionItem } from '@/lib/types/agent-view'
+import { InspectionHeader } from '@/components/inspection/InspectionHeader'
+import { InspectionForm } from '@/components/inspection/InspectionForm'
+import { InspectionActions } from '@/components/inspection/InspectionActions'
+import { MeasurementsModal } from '@/components/inspection/MeasurementsModal'
+import { saveFinalMeasurements } from '@/app/actions/workspace'
 
 interface ResilientInspectionScreenProps {
-  orderId: string;
-  orderNumber: string;
-  customerName: string;
-  orderItems: any[];
-  workflowPhase: string;
-  workflowType: string;
-  items: InspectionItem[];
-  workspace?: any; // Add workspace data for full order details
-  onComplete: (results: Record<string, 'pass' | 'fail'>, notes: Record<string, string>) => void;
-  onSwitchToSupervisor: () => void;
+  orderId: string
+  orderNumber: string
+  customerName: string
+  orderItems: any[]
+  workflowPhase: string
+  workflowType: string
+  items: InspectionItem[]
+  workspace?: any
+  onComplete: (results: Record<string, 'pass' | 'fail'>, notes: Record<string, string>) => void
+  onSwitchToSupervisor: () => void
 }
 
 export default function ResilientInspectionScreen(props: ResilientInspectionScreenProps) {
@@ -35,397 +36,51 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     workspace,
     onComplete,
     onSwitchToSupervisor
-  } = props;
+  } = props
 
-  // Use the inspection state hook for persistence and recovery
-  const {
-    currentIndex,
-    currentItem,
-    results,
-    notes,
-    scannedQRs,
-    progress,
-    isRestored,
-    canUndo,
-    goToStep,
-    nextStep,
-    previousStep,
-    recordResult,
-    recordQRScan,
-    undo,
-    clearState,
-    isStepCompleted
-  } = useInspectionState({
+  const { toast } = useToast()
+
+  // Use the custom hook for all inspection logic
+  const inspection = useInspection({
     orderId,
+    orderNumber,
     workflowPhase,
     items,
-    onComplete: (r, n) => {
-      // Intercept completion to collect final dims/weight
-      setPendingCompletion({ results: r, notes: n });
-      setShowMeasurementsModal(true);
-    },
-    enablePersistence: true
-  });
+    onComplete
+  })
 
-  const [showScanner, setShowScanner] = useState(false);
-  const [issueModalOpen, setIssueModalOpen] = useState(false);
-  const [currentFailedItem, setCurrentFailedItem] = useState<InspectionItem | null>(null);
-  const [networkStatus, setNetworkStatus] = useState(navigator.onLine);
-  const [queueStatus, setQueueStatus] = useState(inspectionQueue.getStatus());
-  const [showMeasurementsModal, setShowMeasurementsModal] = useState(false);
-  const [pendingCompletion, setPendingCompletion] = useState<{ results: Record<string, 'pass' | 'fail'>; notes: Record<string, string>; } | null>(null);
-  const [dims, setDims] = useState({ length: '', width: '', height: '', units: 'in' });
-  const [wgt, setWgt] = useState({ value: '', units: 'lbs' });
-  const [savingMeasurements, setSavingMeasurements] = useState(false);
-
-  // Form data for new workflow fields
-  const [formData, setFormData] = useState({
-    datePerformed: new Date().toISOString().split('T')[0],
-    inspector: '',
-    packingSlipVerified: false,
-    lotNumbers: '',
-    coaStatus: '',
-    productInspection: {
-      check_label_info: false,
-      lid_inspection: false,
-      ghs_labels: false
-    },
-    lidPhotos: [],
-    lotNumberPhoto: null,
-    extractedLotNumbers: []
-  });
-
-  const [isProcessingLotNumbers, setIsProcessingLotNumbers] = useState(false);
-
-  // Monitor network status
-  useEffect(() => {
-    const handleOnline = () => {
-      setNetworkStatus(true);
-      inspectionQueue.retryFailed();
-    };
-    
-    const handleOffline = () => {
-      setNetworkStatus(false);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Update queue status periodically
-    const interval = setInterval(() => {
-      setQueueStatus(inspectionQueue.getStatus());
-    }, 5000);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Show restoration message
-  useEffect(() => {
-    if (isRestored) {
-      const message = document.createElement('div');
-      message.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      message.textContent = 'Inspection progress restored';
-      document.body.appendChild(message);
-      
-      setTimeout(() => {
-        message.remove();
-      }, 3000);
-    }
-  }, [isRestored]);
-
-  // Determine expected QR type
-  const getExpectedQRType = (): QRType | undefined => {
-    if (!currentItem) return undefined;
-    
-    if (currentItem.id === 'scan_destination_qr') return 'destination';
-    if (currentItem.id === 'scan_master_label') return 'order_master';
-    
-    return undefined;
-  };
-
-  // Handle QR scan
-  const handleQRScan = (data: any, shortCode?: string) => {
-    if (data) {
-      // Valid QR scanned
-      recordQRScan(currentItem.id, shortCode || JSON.stringify(data));
-      recordResult(currentItem.id, 'pass');
-      
-      // Queue for server sync
-      inspectionQueue.enqueue({
-        type: 'qr_scan',
-        orderId,
-        data: {
-          stepId: currentItem.id,
-          qrData: data,
-          shortCode,
-          timestamp: new Date().toISOString()
-        }
-      });
-    }
-    
-    setShowScanner(false);
-    nextStep();
-  };
-
-  // Handle skipping QR scan with logging
-  const handleSkipQRScan = (reason: string) => {
-    recordResult(currentItem.id, 'pass', `QR scan skipped: ${reason}`);
-    
-    // Log skip for audit trail
-    inspectionQueue.enqueue({
-      type: 'qr_skip',
-      orderId,
-      data: {
-        stepId: currentItem.id,
-        reason,
-        timestamp: new Date().toISOString()
-      }
-    });
-    
-    setShowScanner(false);
-    nextStep();
-  };
-
-  // Form handling functions
-  const updateFormField = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const updateNestedField = (parent: string, field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [parent]: { ...prev[parent], [field]: value }
-    }));
-  };
-
-  const handlePhotoUpload = async (file: File) => {
-    const photoUrl = URL.createObjectURL(file);
-    const newPhoto = { url: photoUrl, name: file.name, timestamp: new Date().toISOString() };
-    setFormData(prev => ({
-      ...prev,
-      lidPhotos: [...prev.lidPhotos, newPhoto]
-    }));
-  };
-
-  const validateFormStep = (stepId: string): boolean => {
-    switch (stepId) {
-      case 'basic_info':
-        return !!(formData.datePerformed && formData.inspector);
-      case 'packing_slip':
-        return formData.packingSlipVerified;
-      case 'lot_numbers':
-        return !!formData.lotNumbers.trim();
-      case 'coa_status':
-        return !!formData.coaStatus;
-      case 'product_inspection':
-        const hasSelection = Object.values(formData.productInspection).some(Boolean);
-        const hasLidPhotos = !formData.productInspection.lid_inspection || formData.lidPhotos.length > 0;
-        return hasSelection && hasLidPhotos;
-      default:
-        return true;
-    }
-  };
-
-  const handleFormStepComplete = (stepId: string) => {
-    if (validateFormStep(stepId)) {
-      recordResult(stepId, 'pass', JSON.stringify(formData));
-      nextStep();
-    } else {
-      alert('Please complete all required fields before continuing.');
-    }
-  };
-
-  const handleLotNumberPhotoCapture = async (file: File) => {
-    const photoUrl = URL.createObjectURL(file);
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
-      setFormData(prev => ({
-        ...prev,
-        lotNumberPhoto: { url: photoUrl, base64, timestamp: new Date().toISOString() }
-      }));
-    };
-    
-    reader.readAsDataURL(file);
-  };
-
-  const extractLotNumbersFromPhoto = async () => {
-    if (!formData.lotNumberPhoto?.base64) return;
-    
-    setIsProcessingLotNumbers(true);
-    try {
-      const response = await fetch('/api/ai/extract-lot-numbers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          image: formData.lotNumberPhoto.base64,
-          orderId 
-        }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        const extractedNumbers = data.lotNumbers || [];
-        
-        setFormData(prev => ({
-          ...prev,
-          extractedLotNumbers: extractedNumbers,
-          lotNumbers: extractedNumbers.join(', ') // Auto-populate the text field
-        }));
-      } else {
-        console.error('Failed to extract lot numbers');
-        alert('Failed to extract lot numbers. Please try again or enter manually.');
-      }
-    } catch (error) {
-      console.error('Error extracting lot numbers:', error);
-      alert('Error extracting lot numbers. Please try again or enter manually.');
-    } finally {
-      setIsProcessingLotNumbers(false);
-    }
-  };
-
-  // Handle pass/fail buttons
-  const handleResult = (result: 'pass' | 'fail') => {
-    if (result === 'fail') {
-      setCurrentFailedItem(currentItem);
-      setIssueModalOpen(true);
-    } else {
-      recordResult(currentItem.id, 'pass');
-      
-      // Queue for server sync
-      inspectionQueue.enqueue({
-        type: 'inspection_result',
-        orderId,
-        phase: workflowPhase,
-        data: {
-          stepId: currentItem.id,
-          result: 'pass',
-          timestamp: new Date().toISOString(),
-          phase: workflowPhase
-        }
-      });
-      
-      nextStep();
-    }
-  };
-
-  // Handle issue submission
-  const handleIssueSubmit = (issue: string) => {
-    if (currentFailedItem) {
-      recordResult(currentFailedItem.id, 'fail', issue);
-      
-      // Queue for server sync
-      inspectionQueue.enqueue({
-        type: 'inspection_result',
-        orderId,
-        phase: workflowPhase,
-        data: {
-          stepId: currentFailedItem.id,
-          result: 'fail',
-          issue,
-          phase: workflowPhase,
-          timestamp: new Date().toISOString()
-        }
-      });
-      
-      setCurrentFailedItem(null);
-    }
-    
-    setIssueModalOpen(false);
-    nextStep();
-  };
-
-
-  // Check if current item requires QR scanning
-  const requiresQRScan = currentItem && (
-    currentItem.id === 'scan_destination_qr' ||
-    currentItem.id === 'scan_master_label'
-  );
-
-  if (!currentItem) {
-    return <div>Loading...</div>;
+  if (!inspection.currentItem) {
+    return <div>Loading...</div>
   }
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Network Status Bar */}
-      {!networkStatus && (
-        <div className="bg-yellow-500 text-white px-4 py-2 flex items-center justify-center gap-3">
-          <StatusLight status="caution" size="base" />
-          <span>
-            <span className="font-semibold">Offline Mode</span> - Changes will sync when connection restored
-            {queueStatus.queueLength > 0 && (
-              <span className="ml-2">({queueStatus.queueLength} pending)</span>
-            )}
-          </span>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="bg-blue-600 text-white p-4">
-        <div className="flex justify-between items-center mb-2">
-          <WarehouseButton
-            onClick={previousStep}
-            disabled={currentIndex === 0}
-            variant="neutral"
-            size="base"
-          >
-            ← Back
-          </WarehouseButton>
-          
-          <div className="flex gap-2">
-            {canUndo && (
-              <WarehouseButton
-                onClick={undo}
-                variant="info"
-                size="base"
-              >
-                Undo
-              </WarehouseButton>
-            )}
-            
-            <WarehouseButton
-              onClick={onSwitchToSupervisor}
-              variant="info"
-              size="base"
-            >
-              Supervisor View
-            </WarehouseButton>
-          </div>
-        </div>
-        
-        <h1 className="text-2xl font-bold">Order #{orderNumber}</h1>
-        <p className="text-blue-100">{customerName}</p>
-        
-        {/* Progress Bar */}
-        <div className="mt-4">
-          <ProgressBar
-            value={progress}
-            label={`Step ${currentIndex + 1} of ${items.length}`}
-            showPercentage={true}
-            variant="default"
-            animated={true}
-          />
-        </div>
-      </div>
+      <InspectionHeader
+        orderNumber={orderNumber}
+        customerName={customerName}
+        currentIndex={inspection.currentIndex}
+        totalItems={items.length}
+        progress={inspection.progress}
+        networkStatus={inspection.networkStatus}
+        queueLength={inspection.queueStatus.queueLength}
+        canUndo={inspection.canUndo}
+        onBack={inspection.previousStep}
+        onUndo={inspection.undo}
+        onSwitchToSupervisor={onSwitchToSupervisor}
+      />
 
       {/* Step Navigation */}
       <div className="p-4 bg-gray-50 border-b">
         <div className="flex gap-2 overflow-x-auto pb-2">
           {items.map((item, idx) => {
-            const isCompleted = isStepCompleted(item.id);
-            const isCurrent = idx === currentIndex;
-            const result = results[item.id];
+            const isCompleted = inspection.isStepCompleted(item.id)
+            const isCurrent = idx === inspection.currentIndex
+            const result = inspection.results[item.id]
             
             return (
               <button
                 key={item.id}
-                onClick={() => goToStep(idx)}
+                onClick={() => inspection.goToStep(idx)}
                 className={`
                   px-3 py-1 rounded-lg text-sm whitespace-nowrap
                   ${isCurrent ? 'bg-blue-600 text-white' : ''}
@@ -436,7 +91,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               >
                 {idx + 1}. {item.description.substring(0, 20)}...
               </button>
-            );
+            )
           })}
         </div>
       </div>
@@ -488,7 +143,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
                 />
               </div>
             </div>
-            <WarehouseButton
+            <Button
               onClick={() => handleFormStepComplete('basic_info')}
               variant="go"
               size="xlarge"
@@ -496,7 +151,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               haptic="success"
             >
               <span className="text-2xl">Continue</span>
-            </WarehouseButton>
+            </Button>
           </div>
         ) : currentItem.id === 'packing_slip' ? (
           <div className="space-y-4">
@@ -543,7 +198,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               </label>
             </div>
             
-            <WarehouseButton
+            <Button
               onClick={() => handleFormStepComplete('packing_slip')}
               variant="go"
               size="xlarge"
@@ -551,7 +206,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               haptic="success"
             >
               <span className="text-2xl">Continue</span>
-            </WarehouseButton>
+            </Button>
           </div>
         ) : currentItem.id === 'lot_numbers' ? (
           <div className="space-y-4">
@@ -596,7 +251,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
                   </div>
                   
                   {formData.extractedLotNumbers.length === 0 ? (
-                    <WarehouseButton
+                    <Button
                       onClick={extractLotNumbersFromPhoto}
                       disabled={isProcessingLotNumbers}
                       variant="info"
@@ -607,7 +262,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
                       <span className="text-lg">
                         {isProcessingLotNumbers ? 'Extracting...' : 'Extract Lot Numbers'}
                       </span>
-                    </WarehouseButton>
+                    </Button>
                   ) : (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                       <p className="text-sm font-medium text-green-800 mb-2">Extracted Lot Numbers:</p>
@@ -639,7 +294,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               </p>
             </div>
             
-            <WarehouseButton
+            <Button
               onClick={() => handleFormStepComplete('lot_numbers')}
               variant="go"
               size="xlarge"
@@ -647,7 +302,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               haptic="success"
             >
               <span className="text-2xl">Continue</span>
-            </WarehouseButton>
+            </Button>
           </div>
         ) : currentItem.id === 'coa_status' ? (
           <div className="space-y-4">
@@ -663,7 +318,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
                 <option value="no_coas_needed">No C of A's needed</option>
               </select>
             </div>
-            <WarehouseButton
+            <Button
               onClick={() => handleFormStepComplete('coa_status')}
               variant="go"
               size="xlarge"
@@ -671,7 +326,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               haptic="success"
             >
               <span className="text-2xl">Continue</span>
-            </WarehouseButton>
+            </Button>
           </div>
         ) : currentItem.id === 'product_inspection' ? (
           <div className="space-y-4">
@@ -729,7 +384,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               </div>
             )}
             
-            <WarehouseButton
+            <Button
               onClick={() => handleFormStepComplete('product_inspection')}
               variant="go"
               size="xlarge"
@@ -737,11 +392,11 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               haptic="success"
             >
               <span className="text-2xl">Continue</span>
-            </WarehouseButton>
+            </Button>
           </div>
         ) : requiresQRScan ? (
           <div className="space-y-4">
-            <WarehouseButton
+            <Button
               onClick={() => setShowScanner(true)}
               variant="info"
               size="xlarge"
@@ -755,9 +410,9 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               }
             >
               <span className="text-2xl">Scan QR Code</span>
-            </WarehouseButton>
+            </Button>
             
-            <WarehouseButton
+            <Button
               onClick={() => {
                 const reason = prompt('Why are you skipping the QR scan?');
                 if (reason && reason.trim()) {
@@ -769,11 +424,11 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               fullWidth
             >
               Skip QR Scan
-            </WarehouseButton>
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            <WarehouseButton
+            <Button
               onClick={() => handleResult('pass')}
               variant="go"
               size="xlarge"
@@ -786,9 +441,9 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               }
             >
               <span className="text-2xl">Pass</span>
-            </WarehouseButton>
+            </Button>
             
-            <WarehouseButton
+            <Button
               onClick={() => handleResult('fail')}
               variant="stop"
               size="xlarge"
@@ -801,7 +456,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               }
             >
               <span className="text-2xl">Fail</span>
-            </WarehouseButton>
+            </Button>
           </div>
         )}
       </div>
@@ -865,27 +520,31 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
                 onClick={async () => {
                   if (!pendingCompletion) return;
                   if (!dims.length || !dims.width || !dims.height || !wgt.value) {
-                    alert('Please enter all dimensions and weight.');
+                    toast({
+                      title: "Error",
+                      description: "Please enter all dimensions and weight.",
+                      variant: "destructive"
+                    });
                     return;
                   }
                   try {
                     setSavingMeasurements(true);
-                    await fetch(`/api/workspaces/${orderId}/final-measurements`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        dimensions: {
-                          length: Number(dims.length),
-                          width: Number(dims.width),
-                          height: Number(dims.height),
-                          units: dims.units,
-                        },
-                        weight: {
-                          value: Number(wgt.value),
-                          units: wgt.units,
-                        },
-                      }),
+                    const result = await saveFinalMeasurements(orderId, {
+                      dimensions: {
+                        length: Number(dims.length),
+                        width: Number(dims.width),
+                        height: Number(dims.height),
+                        units: dims.units,
+                      },
+                      weight: {
+                        value: Number(wgt.value),
+                        units: wgt.units,
+                      },
                     });
+                    
+                    if (!result.success) {
+                      throw new Error(result.error || 'Failed to save measurements');
+                    }
                   } catch (e) {
                     console.error('Failed to save measurements', e);
                   } finally {
@@ -910,5 +569,5 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         </div>
       )}
     </div>
-  );
+  )
 }

@@ -6,6 +6,7 @@ import { TruckIcon } from '@heroicons/react/24/solid';
 import { warehouseFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import ProgressBar from '@/components/ui/ProgressBar';
+import { useToast } from '@/hooks/use-toast';
 
 interface FreightOrder {
   orderId: number;
@@ -19,6 +20,7 @@ interface FreightOrder {
 }
 
 function FreightOrdersContent() {
+  const { toast } = useToast()
   const [orders, setOrders] = useState<FreightOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
@@ -53,7 +55,11 @@ function FreightOrdersContent() {
       }
     } catch (error) {
       console.error('Error polling orders:', error);
-      alert('Failed to fetch freight orders');
+      toast({
+        title: "Error",
+        description: "Failed to fetch freight orders",
+        variant: "destructive"
+      })
     } finally {
       setPolling(false);
     }
@@ -109,11 +115,19 @@ function FreightOrdersContent() {
         // Navigate to the new workspace
         router.push(data.workspaceUrl);
       } else {
-        alert(data.error || 'Failed to create workspace');
+        toast({
+          title: "Error",
+          description: data.error || "Failed to create workspace",
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error creating workspace:', error);
-      alert('Failed to create workspace');
+      toast({
+        title: "Error",
+        description: "Failed to create workspace",
+        variant: "destructive"
+      })
     }
   };
 

@@ -6,7 +6,7 @@ import { PrinterIcon, ClipboardDocumentCheckIcon, ChevronDownIcon, ChevronRightI
 import PrintPreparationModalSimplified from '@/components/desktop/PrintPreparationModalSimplified';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
-import WarehouseButton from '@/components/ui/WarehouseButton';
+import { Button } from '@/components/ui/button';
 import ProgressBar from '@/components/ui/ProgressBar';
 
 interface OrderItem {
@@ -274,29 +274,29 @@ export default function WorkQueueDashboard() {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex flex-wrap items-center justify-center gap-2">
-                            <WarehouseButton
+                            <Button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 navigateToWorkspace(order.orderId);
                               }}
-                              variant="info"
-                              size="base"
+                              variant="warehouse-info"
+                              size="warehouse"
                               title="Open Workspace"
-                              icon={<ArrowRightIcon className="h-4 w-4" />}
                             >
+                              <ArrowRightIcon className="mr-2 h-4 w-4" />
                               Workspace
-                            </WarehouseButton>
-                            <WarehouseButton
+                            </Button>
+                            <Button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handlePrepareAndPrint(order);
                               }}
-                              variant="go"
-                              size="base"
-                              icon={<PrinterIcon className="h-4 w-4" />}
+                              variant="warehouse-go"
+                              size="warehouse"
                             >
+                              <PrinterIcon className="mr-2 h-4 w-4" />
                               Print Labels
-                            </WarehouseButton>
+                            </Button>
                           </div>
                         </td>
                       </tr>

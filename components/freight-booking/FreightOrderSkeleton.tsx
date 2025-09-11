@@ -1,5 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card } from "flowbite-react";
+import { Card } from "@/components/ui/card";
 
 export function FreightOrderSkeleton() {
   return (

@@ -3,7 +3,7 @@
 import React from 'react';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import StatusLight from '@/components/ui/StatusLight';
-import WarehouseButton from '@/components/ui/WarehouseButton';
+import { Button } from '@/components/ui/button';
 
 interface TaskListItemProps {
   item: {
@@ -155,7 +155,7 @@ export default function TaskListItem({
         {/* Action Area */}
         <div className="flex items-center">
           {status === 'pending' && (
-            <WarehouseButton
+            <Button
               onClick={onStartInspection}
               variant="go"
               size="xlarge"
@@ -170,10 +170,10 @@ export default function TaskListItem({
                 <span className="text-warehouse-xl">START</span>
                 <span className="text-warehouse-base opacity-90">INSPECTION</span>
               </div>
-            </WarehouseButton>
+            </Button>
           )}
           {status === 'in_progress' && (
-            <WarehouseButton
+            <Button
               onClick={onStartInspection}
               variant="caution"
               size="xlarge"
@@ -188,7 +188,7 @@ export default function TaskListItem({
                 <span className="text-warehouse-xl">RESUME</span>
                 <span className="text-warehouse-base opacity-90">TASK</span>
               </div>
-            </WarehouseButton>
+            </Button>
           )}
           {status === 'completed' && (
             <div className="warehouse-success min-h-touch-base px-8 py-6 rounded-warehouse-lg flex flex-col items-center justify-center">

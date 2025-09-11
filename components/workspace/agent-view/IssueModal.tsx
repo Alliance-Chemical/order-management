@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { IssueModalProps, InspectionItem } from '@/lib/types/agent-view';
-import WarehouseButton from '@/components/ui/WarehouseButton';
+import { Button } from '@/components/ui/button';
+import { notifyWorkspace } from '@/app/actions/workspace';
 
 export default function IssueModal({ 
   isOpen, 
@@ -34,20 +35,14 @@ export default function IssueModal({
     const notes = `${phaseLabel} Failure: ${item.label} - ${reason.label}`;
     
     try {
-      // Send notification to supervisor
-      const response = await fetch(`/api/workspace/${orderId}/notify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.NEXT_PUBLIC_API_KEY || '',
-        },
-        body: JSON.stringify({
-          type: 'issue_reported',
-          notes: notes,
-        }),
+      // Send notification to supervisor using server action
+      const result = await notifyWorkspace(orderId, {
+        type: 'issue_reported',
+        status: 'failed',
+        notes: notes,
       });
 
-      if (response.ok) {
+      if (result.success) {
         setShowSuccess(true);
         setTimeout(() => {
           onIssueReported(notes);
@@ -108,7 +103,7 @@ export default function IssueModal({
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {commonReasons.map((reason) => (
-              <WarehouseButton
+              <Button
                 key={reason.id}
                 onClick={() => handleReasonClick(reason)}
                 disabled={isSubmitting}
@@ -119,20 +114,20 @@ export default function IssueModal({
                 icon={<span className="text-3xl">{reason.icon}</span>}
               >
                 {reason.label}
-              </WarehouseButton>
+              </Button>
             ))}
           </div>
 
           {/* Cancel button */}
           <div className="mt-6 flex justify-center">
-            <WarehouseButton
+            <Button
               onClick={onClose}
               disabled={isSubmitting}
               variant="neutral"
               size="large"
             >
               CANCEL
-            </WarehouseButton>
+            </Button>
           </div>
         </div>
 

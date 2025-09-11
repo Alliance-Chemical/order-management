@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { XMarkIcon, MagnifyingGlassIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { useToast } from '@/hooks/use-toast';
+import { getWorkspaceDocuments } from '@/app/actions/documents';
 
 interface Photo {
   id: string;
@@ -20,6 +22,7 @@ interface PhotoGalleryProps {
 }
 
 export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps) {
+  const { toast } = useToast()
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
@@ -40,14 +43,28 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
         return;
       }
 
-      // Otherwise fetch from documents API
-      const response = await fetch(`/api/workspace/${orderId}/documents?type=pre_ship_photo`);
-      if (!response.ok) {
-        throw new Error('Failed to load photos');
+      // Otherwise fetch from documents server action
+      const result = await getWorkspaceDocuments(orderId);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to load photos');
       }
       
-      const data = await response.json();
-      setPhotos(data.documents || []);
+      // Filter for pre_ship_photo type
+      const preShipPhotos = result.documents?.filter(
+        (doc: any) => doc.documentType === 'pre_ship_photo'
+      ) || [];
+      
+      setPhotos(preShipPhotos.map((doc: any) => ({
+        id: doc.id,
+        documentName: doc.fileName,
+        s3Url: doc.documentUrl,
+        s3Key: doc.s3Key,
+        lotNumbers: doc.metadata?.lotNumbers,
+        capturedAt: doc.metadata?.capturedAt,
+        uploadedAt: doc.createdAt,
+        documentId: doc.id
+      })));
     } catch (err: any) {
       console.error('Error loading photos:', err);
       setError(err.message || 'Failed to load photos');
@@ -70,7 +87,11 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error downloading photo:', err);
-      alert('Failed to download photo');
+      toast({
+        title: "Error",
+        description: "Failed to download photo",
+        variant: "destructive"
+      })
     }
   };
 

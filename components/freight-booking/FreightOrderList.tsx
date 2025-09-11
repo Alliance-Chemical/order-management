@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, Card } from "flowbite-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { HiClock, HiDatabase, HiRefresh, HiTrash } from "react-icons/hi";
 import { FreightOrderSkeleton } from "./FreightOrderSkeleton";
@@ -58,6 +59,7 @@ export default function FreightOrderList({
 
   return (
     <Card className="mt-4 w-full md:max-w-screen-lg">
+      <CardContent className="p-6">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -86,7 +88,7 @@ export default function FreightOrderList({
         <div className="flex gap-2">
           <Button
             size="sm"
-            color="light"
+            variant="outline"
             onClick={() => onRefresh(false)}
             disabled={isLoading}
             className="transition-all duration-200 hover:shadow-sm"
@@ -96,7 +98,7 @@ export default function FreightOrderList({
           </Button>
           <Button
             size="sm"
-            color="blue"
+            variant="default"
             onClick={() => onRefresh(true)}
             disabled={isLoading}
             className="transition-all duration-200 hover:shadow-sm"
@@ -107,7 +109,7 @@ export default function FreightOrderList({
           {onClearCache && metadata?.cached && (
             <Button
               size="sm"
-              color="failure"
+              variant="destructive"
               onClick={onClearCache}
               disabled={isLoading}
               className="transition-all duration-200 hover:shadow-sm"
@@ -182,6 +184,7 @@ export default function FreightOrderList({
           </div>
         )}
       </div>
+      </CardContent>
     </Card>
   );
 }

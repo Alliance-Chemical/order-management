@@ -7,8 +7,10 @@ import {
   ArrowTrendingUpIcon,
   ShieldExclamationIcon 
 } from '@heroicons/react/24/outline';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AnomalyDashboard() {
+  const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false);
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [selectedDays, setSelectedDays] = useState(30);
@@ -28,7 +30,11 @@ export default function AnomalyDashboard() {
       }
     } catch (error) {
       console.error('Analysis failed:', error);
-      alert('Failed to run anomaly detection');
+      toast({
+        title: "Error",
+        description: "Failed to run anomaly detection",
+        variant: "destructive"
+      })
     } finally {
       setIsLoading(false);
     }

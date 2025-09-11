@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { DocumentIcon, ArrowUpTrayIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { uploadDocument } from '@/app/actions/documents';
 
 interface DocumentsHubProps {
   orderId: string;
@@ -16,21 +17,22 @@ export default function DocumentsHub({ orderId, workspace }: DocumentsHubProps) 
 
   const handleFileUpload = async (file: File, documentType: string) => {
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('orderId', orderId);
-    formData.append('orderNumber', workspace.orderNumber);
-    formData.append('documentType', documentType);
 
     try {
-      const response = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
+      const result = await uploadDocument({
+        file,
+        orderId,
+        documentType,
+        metadata: {
+          orderNumber: workspace.orderNumber,
+          uploadedAt: new Date().toISOString()
+        }
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setDocuments([...documents, data.document]);
+      if (result.success && result.document) {
+        setDocuments([...documents, result.document]);
+      } else {
+        console.error('Upload failed:', result.error);
       }
     } catch (error) {
       console.error('Upload failed:', error);

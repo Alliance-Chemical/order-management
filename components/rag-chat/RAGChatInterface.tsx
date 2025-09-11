@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, Send, X, Loader2, AlertCircle, Check, Package } from 'lucide-react';
+import { ragChat } from '@/app/actions/ai';
 
 interface Message {
   id: string;
@@ -59,14 +60,8 @@ export default function RAGChatInterface() {
     setMessages(prev => [...prev, loadingMessage]);
 
     try {
-      // Call RAG API
-      const response = await fetch('/api/rag/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: input })
-      });
-
-      const data = await response.json();
+      // Call RAG server action
+      const result = await ragChat({ query: input });
 
       // Remove loading message and add response
       setMessages(prev => {
@@ -74,8 +69,8 @@ export default function RAGChatInterface() {
         return [...filtered, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: formatResponse(data),
-          data: data,
+          content: formatResponse(result),
+          data: result,
           timestamp: new Date()
         }];
       });

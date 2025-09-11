@@ -10,6 +10,7 @@ import {
   DocumentTextIcon
 } from '@heroicons/react/24/solid';
 import ProgressBar from '@/components/ui/ProgressBar';
+import { useToast } from '@/hooks/use-toast';
 
 interface FreightClassification {
   id: string;
@@ -66,6 +67,7 @@ const HAZMAT_CLASSES = [
 const PACKING_GROUPS = ['I', 'II', 'III'];
 
 export default function ChemicalsPage() {
+  const { toast } = useToast()
   const [classifications, setClassifications] = useState<FreightClassification[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -168,11 +170,19 @@ export default function ChemicalsPage() {
         closeModal();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast({
+          title: "Error",
+          description: `Error: ${error.error}`,
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error saving classification:', error);
-      alert('Error saving classification. Please try again.');
+      toast({
+        title: "Error",
+        description: "Error saving classification. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setSaving(false);
     }

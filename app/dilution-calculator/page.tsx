@@ -1,71 +1,31 @@
-'use client';
+'use client'
 
-import React, { useState, useMemo, ChangeEvent, useEffect, Suspense } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import React from 'react'
+import { useDilutionCalculator } from '@/hooks/useDilutionCalculator'
+import { useToast } from '@/hooks/use-toast'
+import { DilutionForm } from '@/components/dilution/DilutionForm'
+import { DilutionResults } from '@/components/dilution/DilutionResults'
+import { BatchInfo } from '@/components/dilution/BatchInfo'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   BeakerIcon,
-  ScaleIcon,
-  ExclamationTriangleIcon,
-  DocumentTextIcon,
-  PrinterIcon,
   ClipboardDocumentListIcon,
   ShieldExclamationIcon,
-  UserIcon,
-  ChevronDownIcon,
-  ArrowDownTrayIcon,
-  PlusIcon,
-  TagIcon,
   CalendarIcon,
-} from '@heroicons/react/24/outline';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-import DilutionDesktop from '@/components/dilution/DilutionDesktop';
-import DilutionMobile from '@/components/dilution/DilutionMobile';
+  ClockIcon
+} from '@heroicons/react/24/outline'
 
-interface ChemicalData {
-  name: string;
-  specificGravity: number;
-  initialConcentration: number;
-  method: 'vv' | 'wv' | 'ww';
-  hazardClass?: string;
-  ppeSuggestion?: string;
-  batchHistoryIds?: string[];
-}
-
-interface BatchHistory {
-  id: string;
-  date: string;
-  chemicalName: string;
-  initialConcentration: number;
-  desiredConcentration: number;
-  totalVolume: number;
-  chemicalAmount: number;
-  waterAmount: number;
-  chemicalWeight: number;
-  waterWeight: number;
-  notes: string;
-  completedBy: string;
-  batchNumber: string;
-  methodUsed: 'vv' | 'wv' | 'ww';
-  initialSpecificGravity: number;
-}
-
-// Constants
-const DENSITY_WATER_LBS_PER_GAL = 8.345;
-const GALLONS_TO_LITERS = 3.78541;
-const LITERS_TO_GALLONS = 1 / GALLONS_TO_LITERS;
-const LBS_TO_KG = 0.453592;
-
-// Chemical data from the chemical-pricer app
-const chemicalData: ChemicalData[] = [
+// Common chemicals database
+const COMMON_CHEMICALS = [
   {
-    name: 'Acetic Acid 100% / Vinegar 100%',
+    name: 'Acetic Acid (Glacial)',
     specificGravity: 1.049,
-    initialConcentration: 100.0,
-    method: 'ww',
+    initialConcentration: 99.7,
+    method: 'ww' as const,
     hazardClass: 'Corrosive',
     ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant apron'
   },
@@ -73,7 +33,7 @@ const chemicalData: ChemicalData[] = [
     name: 'Aluminum Sulfate Solution 48%',
     specificGravity: 1.335,
     initialConcentration: 48.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive, Skin/Eye Irritant',
     ppeSuggestion: 'Closed goggles or face shield, chemical resistant gloves (rubber, neoprene, PVC), work clothing.'
   },
@@ -81,7 +41,7 @@ const chemicalData: ChemicalData[] = [
     name: 'Ammonium Hydroxide 29%',
     specificGravity: 0.897,
     initialConcentration: 29.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive',
     ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, respirator'
   },
@@ -89,7 +49,7 @@ const chemicalData: ChemicalData[] = [
     name: 'Ferric Chloride Solution 40%',
     specificGravity: 1.37,
     initialConcentration: 40.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive, Serious Eye Damage, Skin Irritant, Harmful if Swallowed',
     ppeSuggestion: 'Chemical splash goggles or face shield, impervious rubber gloves, rubber boots, rain suit or rubber apron.'
   },
@@ -97,7 +57,7 @@ const chemicalData: ChemicalData[] = [
     name: 'Hydrochloric Acid 31%',
     specificGravity: 1.15,
     initialConcentration: 31.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive',
     ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant apron, respirator'
   },
@@ -105,7 +65,7 @@ const chemicalData: ChemicalData[] = [
     name: 'Hydrochloric Acid 35%',
     specificGravity: 1.18,
     initialConcentration: 35.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive',
     ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant apron, respirator'
   },
@@ -113,47 +73,31 @@ const chemicalData: ChemicalData[] = [
     name: 'Hydrogen Peroxide 35%',
     specificGravity: 1.13,
     initialConcentration: 35.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Oxidizer',
     ppeSuggestion: 'Chemical resistant gloves, goggles, face shield'
   },
   {
-    name: 'Hydrogen Peroxide 50%',
-    specificGravity: 1.20,
-    initialConcentration: 50.0,
-    method: 'ww',
-    hazardClass: 'Oxidizer',
-    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, chemical resistant suit'
-  },
-  {
-    name: 'Isopropyl Alcohol 99.9%',
-    specificGravity: 0.785,
-    initialConcentration: 99.9,
-    method: 'vv',
+    name: 'Isopropyl Alcohol 99%',
+    specificGravity: 0.786,
+    initialConcentration: 99.0,
+    method: 'vv' as const,
     hazardClass: 'Flammable',
-    ppeSuggestion: 'Chemical resistant gloves, safety glasses'
+    ppeSuggestion: 'Chemical resistant gloves, goggles'
   },
   {
-    name: 'Methanol 100%',
-    specificGravity: 0.791,
-    initialConcentration: 100.0,
-    method: 'vv',
+    name: 'Methanol',
+    specificGravity: 0.792,
+    initialConcentration: 99.9,
+    method: 'vv' as const,
     hazardClass: 'Flammable, Toxic',
     ppeSuggestion: 'Chemical resistant gloves, goggles, respirator'
   },
   {
-    name: 'Monoethanolamine (MEA) 100%',
-    specificGravity: 1.012,
-    initialConcentration: 100.0,
-    method: 'ww',
-    hazardClass: 'Corrosive',
-    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield'
-  },
-  {
-    name: 'Nitric Acid 65%',
-    specificGravity: 1.40,
-    initialConcentration: 65.0,
-    method: 'ww',
+    name: 'Nitric Acid 70%',
+    specificGravity: 1.42,
+    initialConcentration: 70.0,
+    method: 'ww' as const,
     hazardClass: 'Corrosive, Oxidizer',
     ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant apron, respirator'
   },
@@ -161,209 +105,197 @@ const chemicalData: ChemicalData[] = [
     name: 'Phosphoric Acid 85%',
     specificGravity: 1.685,
     initialConcentration: 85.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive',
     ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant apron'
   },
   {
-    name: 'Propylene Glycol 100%',
-    specificGravity: 1.038,
-    initialConcentration: 100.0,
-    method: 'vv',
-    hazardClass: 'Mild Skin Irritant, Eye Irritant',
-    ppeSuggestion: 'Chemical safety glasses or goggles, nitrile or rubber gloves, apron or lab coat.'
+    name: 'Potassium Hydroxide 45%',
+    specificGravity: 1.48,
+    initialConcentration: 45.0,
+    method: 'ww' as const,
+    hazardClass: 'Corrosive',
+    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield'
   },
   {
     name: 'Sodium Hydroxide 50%',
-    specificGravity: 1.54,
+    specificGravity: 1.53,
     initialConcentration: 50.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive',
-    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, caustic resistant apron'
+    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield'
   },
   {
     name: 'Sodium Hypochlorite 12.5%',
-    specificGravity: 1.21,
-    initialConcentration: 12.50,
-    method: 'ww',
-    hazardClass: 'Corrosive (Skin Burns, Eye Damage), Very Toxic to Aquatic Life',
-    ppeSuggestion: 'Chemical safety glasses or goggles, face shield, nitrile or rubber gloves, complete body suit.'
-  },
-  {
-    name: 'Sulfuric Acid 50%',
-    specificGravity: 1.40,
-    initialConcentration: 50.0,
-    method: 'ww',
-    hazardClass: 'Corrosive',
-    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant apron'
+    specificGravity: 1.16,
+    initialConcentration: 12.5,
+    method: 'ww' as const,
+    hazardClass: 'Corrosive, Oxidizer',
+    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield'
   },
   {
     name: 'Sulfuric Acid 93%',
     specificGravity: 1.84,
     initialConcentration: 93.0,
-    method: 'ww',
+    method: 'ww' as const,
     hazardClass: 'Corrosive',
-    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant suit, respirator'
-  },
-  {
-    name: 'Ethylene Glycol 100%',
-    specificGravity: 1.113,
-    initialConcentration: 100.0,
-    method: 'vv',
-    hazardClass: 'Toxic',
-    ppeSuggestion: 'Chemical resistant gloves, safety glasses'
-  },
-  {
-    name: 'Denatured Ethanol 200 Proof',
-    specificGravity: 0.789,
-    initialConcentration: 100.0,
-    method: 'vv',
-    hazardClass: 'Flammable, Toxic',
-    ppeSuggestion: 'Chemical resistant gloves, goggles, respirator'
+    ppeSuggestion: 'Chemical resistant gloves, goggles, face shield, acid resistant apron, respirator'
   }
-];
-
-// Utility functions
-const loadBatchHistory = (): BatchHistory[] => {
-  if (typeof window !== 'undefined') {
-    const savedHistory = localStorage.getItem('batchHistory');
-    if (savedHistory) {
-      try {
-        const parsed = JSON.parse(savedHistory);
-        return parsed.map((item: any) => ({
-          ...item,
-          methodUsed: item.methodUsed || 'vv',
-          initialSpecificGravity: item.initialSpecificGravity || 1,
-          chemicalWeight: item.chemicalWeight || 0,
-          waterWeight: item.waterWeight || 0
-        }));
-      } catch (e) {
-        console.error('Error parsing batch history from localStorage', e);
-      }
-    }
-  }
-  return [];
-};
-
-const generateBatchNumber = (chemicalName: string): string => {
-  const date = new Date();
-  const year = date.getFullYear().toString().substring(2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  const abbrev = chemicalName.split(' ')[0].substring(0, 4).toUpperCase();
-  return `${abbrev}${year}${month}${day}-${Date.now().toString().slice(-4)}`;
-};
-
-function DilutionCalculatorContent() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const isMobile = useMediaQuery('(max-width: 768px)');
-  const sortedChemicalData = useMemo(() => [...chemicalData].sort((a, b) => a.name.localeCompare(b.name)), []);
-
-  // States
-  const [selectedChemical, setSelectedChemical] = useState<string>('');
-  const [initialConcentration, setInitialConcentration] = useState<number>(0);
-  const [desiredConcentration, setDesiredConcentration] = useState<number>(0);
-  const [totalVolume, setTotalVolume] = useState<number>(0);
-  const [method, setMethod] = useState<'vv' | 'wv' | 'ww'>('vv');
-  const [specificGravity, setSpecificGravity] = useState<number>(1);
-  const [result, setResult] = useState<{
-    chemicalVolume: number;
-    waterVolume: number;
-    chemicalWeight: number;
-    waterWeight: number;
-    totalWeight: number;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [batchNumber, setBatchNumber] = useState<string>('');
-  const [completedBy, setCompletedBy] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
-  const [batchHistory, setBatchHistory] = useState<BatchHistory[]>([]);
-  const [volumeUnit, setVolumeUnit] = useState<'gallons' | 'liters'>('gallons');
-  const [activeTab, setActiveTab] = useState<number>(0);
-  const [quickTemplates] = useState<Array<{ name: string; concentration: number }>>([
-    { name: '10%', concentration: 10 },
-    { name: '20%', concentration: 20 },
-    { name: '30%', concentration: 30 },
-    { name: '50%', concentration: 50 },
-    { name: '75%', concentration: 75 },
-  ]);
-
-  // Common shared props for both desktop and mobile
-  const sharedProps = {
-    sortedChemicalData,
-    selectedChemical,
-    setSelectedChemical,
-    initialConcentration,
-    setInitialConcentration,
-    desiredConcentration,
-    setDesiredConcentration,
-    totalVolume,
-    setTotalVolume,
-    method,
-    setMethod,
-    specificGravity,
-    setSpecificGravity,
-    result,
-    setResult,
-    error,
-    setError,
-    isLoading,
-    setIsLoading,
-    batchNumber,
-    setBatchNumber,
-    completedBy,
-    setCompletedBy,
-    notes,
-    setNotes,
-    batchHistory,
-    setBatchHistory,
-    volumeUnit,
-    setVolumeUnit,
-    activeTab,
-    setActiveTab,
-    quickTemplates,
-    generateBatchNumber,
-    loadBatchHistory,
-    params,
-    router,
-    DENSITY_WATER_LBS_PER_GAL,
-    GALLONS_TO_LITERS,
-    LITERS_TO_GALLONS,
-    LBS_TO_KG,
-  };
-
-  // Load batch history on mount
-  useEffect(() => {
-    setBatchHistory(loadBatchHistory());
-  }, []);
-
-  // Generate batch number when chemical is selected
-  useEffect(() => {
-    if (selectedChemical) {
-      setBatchNumber(generateBatchNumber(selectedChemical));
-    } else {
-      setBatchNumber('');
-    }
-  }, [selectedChemical]);
-
-  // Render appropriate component based on screen size
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-cyan-50">
-      {isMobile ? (
-        <DilutionMobile {...sharedProps} />
-      ) : (
-        <DilutionDesktop {...sharedProps} />
-      )}
-    </div>
-  );
-}
+]
 
 export default function DilutionCalculatorPage() {
+  const { toast } = useToast()
+  const calculator = useDilutionCalculator()
+  const {
+    result,
+    validationErrors,
+    saveBatch,
+    loadBatchHistory,
+    generateReport
+  } = calculator
+
+  const handleSave = async () => {
+    const batch = await saveBatch()
+    if (batch) {
+      toast({
+        title: "Success",
+        description: "Batch saved successfully!"
+      })
+    }
+  }
+
+  const handlePrint = () => {
+    const report = generateReport()
+    if (report) {
+      // In a real app, this would format and print the report
+      console.log('Printing report:', report)
+      window.print()
+    }
+  }
+
+  const handleExport = () => {
+    const report = generateReport()
+    if (report) {
+      // In a real app, this would generate and download a PDF
+      const dataStr = JSON.stringify(report, null, 2)
+      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
+      const exportFileDefaultName = `dilution-report-${report.batchNumber || Date.now()}.json`
+      
+      const linkElement = document.createElement('a')
+      linkElement.setAttribute('href', dataUri)
+      linkElement.setAttribute('download', exportFileDefaultName)
+      linkElement.click()
+    }
+  }
+
+  // Get current chemical details for PPE display
+  const currentChemical = COMMON_CHEMICALS.find(c => c.name === calculator.chemicalName)
+
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
-      <DilutionCalculatorContent />
-    </Suspense>
-  );
+    <div className="container mx-auto max-w-7xl p-4 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-3">
+            <BeakerIcon className="h-8 w-8 text-blue-600" />
+            Chemical Dilution Calculator
+          </h1>
+          <p className="text-gray-600 mt-1">
+            Calculate precise dilutions for chemical solutions
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <CalendarIcon className="h-4 w-4" />
+          {new Date().toLocaleDateString()}
+          <ClockIcon className="h-4 w-4 ml-2" />
+          {new Date().toLocaleTimeString()}
+        </div>
+      </div>
+
+      {/* PPE Warning */}
+      {currentChemical && (
+        <Alert className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950">
+          <ShieldExclamationIcon className="h-4 w-4" />
+          <AlertDescription>
+            <div className="space-y-2">
+              <div className="font-semibold">
+                Hazard Class: {currentChemical.hazardClass}
+              </div>
+              <div>
+                Required PPE: {currentChemical.ppeSuggestion}
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Main Content */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Left Column - Input Form */}
+        <div className="space-y-6">
+          <DilutionForm
+            {...calculator}
+            commonChemicals={COMMON_CHEMICALS}
+          />
+          
+          <BatchInfo
+            completedBy={calculator.completedBy}
+            setCompletedBy={calculator.setCompletedBy}
+            batchNumber={calculator.batchNumber}
+            setBatchNumber={calculator.setBatchNumber}
+            notes={calculator.notes}
+            setNotes={calculator.setNotes}
+            onSave={handleSave}
+            onPrint={handlePrint}
+            onExport={handleExport}
+            canSave={!!result && validationErrors.length === 0}
+          />
+        </div>
+
+        {/* Right Column - Results */}
+        <div className="space-y-6">
+          <DilutionResults
+            result={result}
+            validationErrors={validationErrors}
+            volumeUnit={calculator.volumeUnit}
+          />
+
+          {/* Batch History */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardDocumentListIcon className="h-5 w-5" />
+                Recent Batches
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {loadBatchHistory().slice(-5).map((batch) => (
+                  <div
+                    key={batch.id}
+                    className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900"
+                  >
+                    <div className="text-sm">
+                      <div className="font-medium">{batch.batchNumber}</div>
+                      <div className="text-gray-500">
+                        {batch.chemicalName} - {batch.desiredConcentration}%
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(batch.date).toLocaleDateString()}
+                    </div>
+                  </div>
+                ))}
+                {loadBatchHistory().length === 0 && (
+                  <div className="text-center text-sm text-gray-500 py-4">
+                    No batch history available
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
 }

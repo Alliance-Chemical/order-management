@@ -9,6 +9,7 @@ import {
   ExclamationTriangleIcon,
   MagnifyingGlassIcon
 } from '@heroicons/react/24/solid';
+import { useToast } from '@/hooks/use-toast';
 
 interface Product {
   id: string;
@@ -48,6 +49,7 @@ interface ProductFormData {
 }
 
 export default function ProductsPage() {
+  const { toast } = useToast()
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -166,11 +168,19 @@ export default function ProductsPage() {
         closeModal();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast({
+          title: "Error",
+          description: `Error: ${error.error}`,
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error saving product:', error);
-      alert('Error saving product. Please try again.');
+      toast({
+        title: "Error",
+        description: "Error saving product. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setSaving(false);
     }
@@ -188,11 +198,19 @@ export default function ProductsPage() {
         await loadProducts();
       } else {
         const error = await response.json();
-        alert(`Error: ${error.error}`);
+        toast({
+          title: "Error",
+          description: `Error: ${error.error}`,
+          variant: "destructive"
+        })
       }
     } catch (error) {
       console.error('Error deleting product:', error);
-      alert('Error deleting product. Please try again.');
+      toast({
+        title: "Error",
+        description: "Error deleting product. Please try again.",
+        variant: "destructive"
+      })
     }
   };
 

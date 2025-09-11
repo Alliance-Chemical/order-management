@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
 
 interface InspectionState {
   orderId: string;
@@ -15,6 +16,7 @@ interface InspectionState {
 }
 
 export default function AdminDebugPanel() {
+  const { toast } = useToast()
   const [inspections, setInspections] = useState<InspectionState[]>([]);
   const [selectedInspection, setSelectedInspection] = useState<InspectionState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,7 +89,10 @@ export default function AdminDebugPanel() {
       });
       
       if (response.ok) {
-        alert('Demo data reset successfully!');
+        toast({
+          title: "Success",
+          description: "Demo data reset successfully!"
+        })
         fetchInspectionStates();
       }
     } catch (error) {

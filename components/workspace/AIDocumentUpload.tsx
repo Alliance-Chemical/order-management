@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { DocumentIcon, CloudArrowUpIcon } from '@heroicons/react/24/outline';
+import { useToast } from '@/hooks/use-toast';
+import { processDocumentOCR } from '@/app/actions/ai';
 
 interface AIDocumentUploadProps {
   orderId: string;
@@ -9,6 +11,7 @@ interface AIDocumentUploadProps {
 }
 
 export default function AIDocumentUpload({ orderId, onUploadComplete }: AIDocumentUploadProps) {
+  const { toast } = useToast()
   const [isUploading, setIsUploading] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
   const [selectedType, setSelectedType] = useState<'BOL' | 'COA'>('BOL');
@@ -21,17 +24,14 @@ export default function AIDocumentUpload({ orderId, onUploadComplete }: AIDocume
     setExtractedData(null);
 
     try {
-      const formData = new FormData();
-      formData.append('orderId', orderId);
-      formData.append('document', file);
-      formData.append('type', selectedType);
-
-      const response = await fetch('/api/ai/document-ocr', {
-        method: 'POST',
-        body: formData
+      // Convert type to proper document type string
+      const documentType = selectedType === 'BOL' ? 'bill_of_lading' : 'certificate_of_analysis';
+      
+      // Call server action
+      const result = await processDocumentOCR({
+        file,
+        documentType
       });
-
-      const result = await response.json();
 
       if (result.success) {
         setExtractedData(result);
@@ -41,7 +41,11 @@ export default function AIDocumentUpload({ orderId, onUploadComplete }: AIDocume
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to process document');
+      toast({
+        title: "Error",
+        description: "Failed to process document",
+        variant: "destructive"
+      })
     } finally {
       setIsUploading(false);
     }

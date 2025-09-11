@@ -1,7 +1,14 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
-import { Card, Badge, Button, Alert, Spinner } from 'flowbite-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Spinner } from '@/components/ui/spinner';
 import { HiLightBulb, HiSparkles, HiCheckCircle, HiArrowRight, HiRefresh, HiExclamation } from 'react-icons/hi';
 import Link from 'next/link';
+import { classifyHazmat } from '@/app/actions/ai';
 
 export interface RAGSuggestion {
   un_number: string | null;
@@ -38,16 +45,22 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
       const item = items.find(i => i.sku === sku);
       if (item) {
         try {
-          const response = await fetch('/api/hazmat/classify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sku, productName: item.name }),
+          const data = await classifyHazmat({ 
+            sku, 
+            productName: item.name 
           });
           
-          if (response.ok) {
-            const data = await response.json();
+          if (data.success) {
             if ((data.confidence > 0.35 && data.un_number) || data.exemption_reason) {
-              newSuggestions[sku] = data;
+              newSuggestions[sku] = {
+                un_number: data.un_number,
+                proper_shipping_name: data.proper_shipping_name,
+                hazard_class: data.hazard_class,
+                packing_group: data.packing_group,
+                confidence: data.confidence,
+                source: 'rag' as const,
+                exemption_reason: data.exemption_reason
+              };
             }
           }
         } catch (err) {

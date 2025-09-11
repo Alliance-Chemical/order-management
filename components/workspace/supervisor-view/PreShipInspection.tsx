@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { CheckCircleIcon, TruckIcon, DocumentTextIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import FinalMeasurements from '@/components/workspace/FinalMeasurements';
 import PhotoGallery from '@/components/workspace/PhotoGallery';
+import { useToast } from '@/hooks/use-toast';
+import { updateMeasurements, shipWorkspace } from '@/app/actions/workspace';
 
 interface PreShipInspectionProps {
   orderId: string;
@@ -20,6 +22,7 @@ const shippingChecklist = [
 ];
 
 export default function PreShipInspection({ orderId, initialState = {}, onStateChange }: PreShipInspectionProps) {
+  const { toast } = useToast()
   const [state, setState] = useState({
     checklist: initialState.checklist || {},
     bolNumber: initialState.bolNumber || '',
@@ -85,20 +88,16 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
   };
 
   const handleMeasurementsSave = async (measurements: any) => {
-    // Save measurements to workspace via API
+    // Save measurements to workspace via server action
     try {
-      const response = await fetch(`/api/workspace/${orderId}/measurements`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(measurements),
-      });
+      const result = await updateMeasurements(orderId, measurements);
       
-      if (response.ok) {
+      if (result.success) {
         const newState = { ...state, finalMeasurements: measurements };
         setState(newState);
         onStateChange(newState);
       } else {
-        throw new Error('Failed to save measurements');
+        throw new Error(result.error || 'Failed to save measurements');
       }
     } catch (error) {
       console.error('Error saving measurements:', error);
@@ -112,12 +111,20 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
     const allRequiredComplete = requiredItems.every(item => state.checklist[item.id]);
 
     if (!allRequiredComplete) {
-      alert('Please complete all required checklist items');
+      toast({
+        title: "Error",
+        description: "Please complete all required checklist items",
+        variant: "destructive"
+      })
       return;
     }
 
     if (!state.bolNumber || !state.carrierName) {
-      alert('Please enter BOL number and carrier name');
+      toast({
+        title: "Error",
+        description: "Please enter BOL number and carrier name",
+        variant: "destructive"
+      })
       return;
     }
 
@@ -130,16 +137,11 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
     setState(newState);
     onStateChange(newState);
 
-    // Update ShipStation and send notifications
-    fetch(`/api/workspace/${orderId}/ship`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bolNumber: state.bolNumber,
-        carrierName: state.carrierName,
-        trailerNumber: state.trailerNumber,
-        sealNumbers: state.sealNumbers,
-      }),
+    // Update ShipStation and send notifications via server action
+    shipWorkspace(orderId).then(result => {
+      if (!result.success) {
+        console.error('Failed to ship workspace:', result.error);
+      }
     });
   };
 

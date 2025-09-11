@@ -1,424 +1,112 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
-import { CheckIcon, XMarkIcon, CameraIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
-import WarehouseButton from '@/components/ui/WarehouseButton';
-import ProgressBar from '@/components/ui/ProgressBar';
-import StatusLight from '@/components/ui/StatusLight';
+import { usePreShipInspection } from '@/hooks/usePreShipInspection';
+import { PreShipProgress } from '@/components/inspection/PreShipProgress';
+import { PreShipInspectionItem } from '@/components/inspection/PreShipInspectionItem';
+import { PreShipPhotoCapture } from '@/components/inspection/PreShipPhotoCapture';
+import { PreShipCompletionView } from '@/components/inspection/PreShipCompletionView';
+import { PreShipActionButtons } from '@/components/inspection/PreShipActionButtons';
 
 interface PreShipInspectionWorkerProps {
   orderId: string;
   onComplete: () => void;
 }
 
-const inspectionItems = [
-  { id: 'order_match', label: 'ORDER CORRECT?', icon: '📦' },
-  { id: 'container_clean', label: 'CONTAINERS CLEAN?', icon: '🧹' },
-  { id: 'caps_clean', label: 'CAPS CLEAN?', icon: '🔧' },
-  { id: 'no_leaks', label: 'NO LEAKS?', icon: '💧' },
-  { id: 'pallet_stable', label: 'PALLET STABLE?', icon: '📐' },
-];
-
 export default function PreShipInspectionWorkerView({ orderId, onComplete }: PreShipInspectionWorkerProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [checkedItems, setCheckedItems] = useState<Record<string, boolean | 'failed'>>({});
-  const [failureNotes, setFailureNotes] = useState<Record<string, string>>({});
-  const [capturedPhotos, setCapturedPhotos] = useState<Array<{ base64: string; url: string; lotNumbers: string[]; timestamp: string }>>([]);
-  const [showCamera, setShowCamera] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isFinishing, setIsFinishing] = useState(false);
-  const [noteError, setNoteError] = useState<string | null>(null);
-  const [idempotencyKey] = useState<string>(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2,9)}`));
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const {
+    currentStep,
+    checkedItems,
+    failureNotes,
+    capturedPhotos,
+    showCamera,
+    isProcessing,
+    isFinishing,
+    noteError,
+    videoRef,
+    canvasRef,
+    fileInputRef,
+    currentItem,
+    isPhotoStep,
+    isComplete,
+    hasFailures,
+    progress,
+    inspectionItems,
+    handlePass,
+    handleFail,
+    startCamera,
+    stopCamera,
+    capturePhoto,
+    handleFileUpload,
+    deletePhoto,
+    handleComplete,
+    skipToCompletion,
+    setNoteError,
+  } = usePreShipInspection({ orderId, onComplete });
 
   // Auto-start camera when reaching photo step
   useEffect(() => {
-    if (currentStep === inspectionItems.length) {
-      setShowCamera(true);
+    if (isPhotoStep && showCamera) {
       startCamera();
     }
-  }, [currentStep]);
-
-  const vibrate = () => {
-    if ('vibration' in navigator) {
-      navigator.vibrate(50);
-    }
-  };
-
-  const playSound = (success: boolean) => {
-    const audio = new Audio(`data:audio/wav;base64,${success ? 'UklGRo' : 'UklGRm'}`);
-    audio.play().catch(() => {});
-  };
-
-  const handlePass = () => {
-    vibrate();
-    playSound(true);
-    const item = inspectionItems[currentStep];
-    setCheckedItems(prev => ({ ...prev, [item.id]: true }));
-    setTimeout(() => {
-      setCurrentStep(prev => prev + 1);
-    }, 300);
-  };
-
-  const handleFail = () => {
-    vibrate();
-    playSound(false);
-    const item = inspectionItems[currentStep];
-    setCheckedItems(prev => ({ ...prev, [item.id]: 'failed' }));
-    // Show quick note input
-    const note = prompt("What's wrong? (required)");
-    if (note && note.trim()) {
-      setFailureNotes(prev => ({ ...prev, [item.id]: note.trim() }));
-      setNoteError(null);
-      setTimeout(() => {
-        setCurrentStep(prev => prev + 1);
-      }, 300);
-    } else {
-      setNoteError('Note required');
-      // Do not advance until user provides a note
-    }
-  };
-
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+    return () => {
+      if (isPhotoStep && !showCamera) {
+        stopCamera();
       }
-    } catch (error) {
-      console.error('Error accessing camera:', error);
-      fileInputRef.current?.click();
-    }
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      vibrate();
-      const context = canvasRef.current.getContext('2d');
-      if (context) {
-        canvasRef.current.width = videoRef.current.videoWidth;
-        canvasRef.current.height = videoRef.current.videoHeight;
-        context.drawImage(videoRef.current, 0, 0);
-        const dataUrl = canvasRef.current.toDataURL('image/jpeg');
-        processPhoto(dataUrl);
-      }
-    }
-  };
-
-  const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setShowCamera(false);
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        processPhoto(dataUrl);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const processPhoto = async (photoData: string) => {
-    setIsProcessing(true);
-    try {
-      const response = await fetch('/api/ai/extract-lot-numbers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          image: photoData,
-          orderId 
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setCapturedPhotos(prev => [...prev, {
-          base64: photoData,
-          url: photoData, // Keep for display
-          lotNumbers: data.lotNumbers || [],
-          timestamp: new Date().toISOString()
-        }]);
-        // Don't automatically advance - let user capture more photos
-      }
-    } catch (error) {
-      console.error('Error processing photo:', error);
-      setCapturedPhotos(prev => [...prev, {
-        base64: photoData,
-        url: photoData,
-        lotNumbers: [],
-        timestamp: new Date().toISOString()
-      }]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const deletePhoto = (index: number) => {
-    vibrate();
-    setCapturedPhotos(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleComplete = async () => {
-    try { warehouseFeedback.buttonPress(); } catch {}
-    const hasFailures = Object.values(checkedItems).some(v => v === 'failed');
-    
-    try {
-      setIsFinishing(true);
-      await fetch(`/api/workspace/${orderId}/pre-ship-complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          checkedItems,
-          failureNotes,
-          photos: capturedPhotos,
-          completedAt: new Date().toISOString(),
-          passed: !hasFailures,
-          idempotencyKey
-        }),
-      });
-      try { warehouseFeedback.complete(); } catch {}
-      onComplete();
-    } catch (error) {
-      console.error('Error completing inspection:', error);
-      alert('Failed to save inspection. Please try again.');
-    } finally {
-      setIsFinishing(false);
-    }
-  };
-
-  // Current item being inspected
-  const currentItem = currentStep < inspectionItems.length ? inspectionItems[currentStep] : null;
-  const isPhotoStep = currentStep === inspectionItems.length;
-  const isComplete = currentStep > inspectionItems.length;
+    };
+  }, [isPhotoStep, showCamera, startCamera, stopCamera]);
 
   if (isComplete) {
-    const hasFailures = Object.values(checkedItems).some(v => v === 'failed');
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-8">
-        <div className="text-center">
-          <div className={`text-8xl mb-4 ${hasFailures ? 'text-yellow-500' : 'text-green-500'}`}>
-            {hasFailures ? '⚠️' : '✅'}
-          </div>
-          <h1 className="text-4xl font-bold text-white mb-2">
-            {hasFailures ? 'INSPECTION COMPLETE' : 'ALL GOOD!'}
-          </h1>
-          {hasFailures && (
-            <p className="text-xl text-yellow-400 mb-4">Issues reported - supervisor notified</p>
-          )}
-          <p className="text-2xl text-gray-300 mb-8">Order #{orderId}</p>
-          
-          {capturedPhotos.length > 0 && (
-            <div className="mb-8">
-              <p className="text-lg text-gray-400 mb-2">Lot Numbers Captured:</p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {capturedPhotos.flatMap(p => p.lotNumbers).map((lot, i) => (
-                  <span key={i} className="px-3 py-1 bg-gray-800 text-white rounded font-mono">
-                    {lot}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          <WarehouseButton
-            onClick={handleComplete}
-            disabled={isFinishing}
-            variant="go"
-            size="xlarge"
-            loading={isFinishing}
-            haptic="success"
-            icon={<CheckIcon className="w-8 h-8" />}
-          >
-            {isFinishing ? 'UPLOADING…' : 'FINISH'}
-          </WarehouseButton>
-        </div>
-      </div>
+      <PreShipCompletionView
+        hasFailures={hasFailures}
+        orderId={orderId}
+        capturedPhotos={capturedPhotos}
+        isFinishing={isFinishing}
+        onComplete={handleComplete}
+      />
     );
   }
 
   if (isPhotoStep) {
     return (
-      <div className="min-h-screen bg-black flex flex-col">
-        <div className="bg-blue-600 text-white p-4">
-          <h1 className="text-2xl font-bold">CAPTURE LABELS</h1>
-          <p className="text-lg opacity-90">Take photos of container labels</p>
-          <p className="text-sm opacity-75">{capturedPhotos.length} photo(s) captured</p>
-        </div>
-        
-        <div className="flex-1 relative">
-          {showCamera && (
-            <>
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                playsInline
-                className="w-full h-full object-cover"
-              />
-              {/* Capture overlay */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-80 h-80 border-4 border-white rounded-lg opacity-50"></div>
-              </div>
-              {/* Guide text */}
-              <div className="absolute top-4 left-4 right-4 text-center text-white text-sm opacity-75">
-                Position label within the frame
-              </div>
-            </>
-          )}
-          
-          {isProcessing && (
-            <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-6xl mb-4 animate-spin">📸</div>
-                <p className="text-xl text-white">Extracting lot numbers...</p>
-              </div>
-            </div>
-          )}
-          
-          {/* Show captured photos as thumbnails */}
-          {capturedPhotos.length > 0 && (
-            <div className="absolute bottom-20 left-4 right-4">
-              <div className="bg-black bg-opacity-75 rounded-lg p-2">
-                <div className="flex gap-2 overflow-x-auto">
-                  {capturedPhotos.map((photo, index) => (
-                    <div key={index} className="relative flex-shrink-0">
-                      <img 
-                        src={photo.url} 
-                        alt={`Captured ${index + 1}`}
-                        className="w-16 h-16 object-cover rounded border-2 border-white"
-                      />
-                      <button
-                        onClick={() => deletePhoto(index)}
-                        className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600"
-                        aria-label="Delete photo"
-                      >
-                        ×
-                      </button>
-                      {photo.lotNumbers.length > 0 && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-green-500 text-white text-xs text-center py-0.5">
-                          {photo.lotNumbers.length}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-        
-        <div className="p-4 bg-black flex gap-4">
-          <WarehouseButton
-            onClick={capturePhoto}
-            disabled={isProcessing}
-            variant="info"
-            size="xlarge"
-            fullWidth
-            haptic="light"
-            icon={<CameraIcon className="w-8 h-8" />}
-          >
-            {capturedPhotos.length === 0 ? 'CAPTURE' : 'CAPTURE MORE'}
-          </WarehouseButton>
-          <WarehouseButton
-            onClick={() => setCurrentStep(prev => prev + 1)}
-            variant="go"
-            size="xlarge"
-            haptic="success"
-          >
-            {capturedPhotos.length === 0 ? 'SKIP' : 'CONTINUE'}
-          </WarehouseButton>
-        </div>
-        
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileUpload}
-          className="hidden"
-        />
-        <canvas ref={canvasRef} className="hidden" />
-      </div>
+      <PreShipPhotoCapture
+        videoRef={videoRef}
+        canvasRef={canvasRef}
+        fileInputRef={fileInputRef}
+        showCamera={showCamera}
+        isProcessing={isProcessing}
+        capturedPhotos={capturedPhotos}
+        onCapture={capturePhoto}
+        onFileUpload={handleFileUpload}
+        onDeletePhoto={deletePhoto}
+        onContinue={skipToCompletion}
+      />
     );
   }
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Progress bar */}
-      <div className="bg-gray-900 p-4">
-        <ProgressBar
-          value={(currentStep / (inspectionItems.length + 1)) * 100}
-          label="Inspection Progress"
-          showPercentage={false}
-          variant={currentStep === inspectionItems.length + 1 ? "success" : "default"}
-          animated={true}
+      <PreShipProgress
+        progress={progress}
+        currentStep={currentStep}
+        items={inspectionItems}
+      />
+
+      {currentItem && (
+        <PreShipInspectionItem
+          icon={currentItem.icon}
+          label={currentItem.label}
+          orderId={orderId}
         />
-        {/* Progress dots for individual items */}
-        <div className="flex justify-center gap-2 mt-2">
-          {[...inspectionItems, { id: 'photo', label: 'PHOTO', icon: '📸' }].map((item, index) => (
-            <div 
-              key={item.id}
-              className={`w-3 h-3 rounded-full ${
-                index < currentStep ? 'bg-green-500' : 
-                index === currentStep ? 'bg-white' : 
-                'bg-gray-700'
-              }`}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Main inspection area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        {currentItem && (
-          <>
-            <div className="text-8xl mb-6">{currentItem.icon}</div>
-            <h1 className="text-4xl font-bold text-white text-center mb-12">
-              {currentItem.label}
-            </h1>
-            <p className="text-xl text-gray-400 mb-8">Order #{orderId}</p>
-          </>
-        )}
-      </div>
-
-      {/* Action buttons */}
-      <div className="p-4 flex gap-4">
-        <WarehouseButton
-          onClick={handleFail}
-          variant="stop"
-          size="xlarge"
-          fullWidth
-          haptic="error"
-          icon={<XMarkIcon className="w-12 h-12" />}
-        >
-          <span className="text-2xl font-bold">FAIL</span>
-        </WarehouseButton>
-        <WarehouseButton
-          onClick={handlePass}
-          variant="go"
-          size="xlarge"
-          fullWidth
-          haptic="success"
-          icon={<CheckIcon className="w-12 h-12" />}
-        >
-          <span className="text-2xl font-bold">PASS</span>
-        </WarehouseButton>
-      </div>
-      {noteError && (
-        <div className="p-4 text-center text-yellow-300">{noteError}</div>
       )}
+
+      <PreShipActionButtons
+        onPass={handlePass}
+        onFail={handleFail}
+        noteError={noteError}
+      />
     </div>
   );
 }

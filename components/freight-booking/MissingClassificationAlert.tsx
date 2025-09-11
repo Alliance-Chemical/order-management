@@ -1,7 +1,8 @@
 "use client";
 
 import { HiExclamation, HiLink } from "react-icons/hi";
-import { Alert, Button } from "flowbite-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 interface MissingClassificationAlertProps {
   skusWithNoClassification: string[];
@@ -21,12 +22,10 @@ export default function MissingClassificationAlert({
   );
 
   return (
-    <Alert
-      color="warning"
-      icon={HiExclamation}
-      className="mb-4"
-    >
-      <div className="flex flex-col gap-3">
+    <Alert className="mb-4 border-orange-500 bg-orange-50 dark:bg-orange-900/20">
+      <HiExclamation className="h-4 w-4 text-orange-600" />
+      <AlertDescription>
+        <div className="flex flex-col gap-3">
         <div className="font-semibold text-orange-800 dark:text-orange-200">
           {skusWithNoClassification.length === 1
             ? "1 product needs freight classification before booking"
@@ -50,7 +49,7 @@ export default function MissingClassificationAlert({
               
               <Button
                 size="sm"
-                color="blue"
+                variant="default"
                 onClick={() => onLinkClick(product.sku, product.name)}
                 className="ml-4"
               >
@@ -65,6 +64,7 @@ export default function MissingClassificationAlert({
           Link freight classifications to enable the "Book Freight" button
         </div>
       </div>
+      </AlertDescription>
     </Alert>
   );
 }

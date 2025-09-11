@@ -11,6 +11,7 @@ import {
   UserIcon
 } from '@heroicons/react/24/outline';
 import ProgressBar from '@/components/ui/ProgressBar';
+import { getWorkspaceActivity } from '@/app/actions/workspace';
 
 interface ActivityTimelineProps {
   orderId: string;
@@ -29,10 +30,9 @@ export default function ActivityTimeline({ orderId }: ActivityTimelineProps) {
 
   const fetchActivities = async () => {
     try {
-      const response = await fetch(`/api/activity/${orderId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setActivities(data.activities || []);
+      const result = await getWorkspaceActivity(orderId);
+      if (result.success) {
+        setActivities(result.activities || []);
       }
     } catch (error) {
       console.error('Failed to fetch activities:', error);

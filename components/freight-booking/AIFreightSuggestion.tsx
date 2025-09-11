@@ -1,8 +1,13 @@
 "use client";
 
 import { useFreightActionTracking } from "@/app/lib/telemetry/freight-telemetry";
-import { Badge, Button, Card, Progress, Spinner } from "flowbite-react";
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Spinner } from '@/components/ui/spinner';
 import { useCallback, useEffect, useState } from "react";
+import { suggestFreight } from '@/app/actions/freight';
 import {
   HiCheckCircle,
   HiClock,
@@ -74,19 +79,13 @@ export default function AIFreightSuggestion({
     setError(null);
 
     try {
-      const response = await fetch("/api/freight/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          orderId: orderNumber,
-          items: orderData.items || [],
-          customer: orderData.customer || {},
-          destination: orderData.destination || {},
-          origin: orderData.origin || { city: "River Grove", state: "IL", zip: "60171" }
-        }),
+      const data = await suggestFreight({
+        orderId: orderNumber,
+        items: orderData.items || [],
+        customer: orderData.customer || {},
+        destination: orderData.destination || {},
+        origin: orderData.origin || { city: "River Grove", state: "IL", zip: "60171" }
       });
-
-      const data = await response.json();
       
       if (data.success && data.suggestion) {
         // Transform the response to match our expected format

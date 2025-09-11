@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Modal, Button, Select, Label, Badge, Spinner, TextInput, Alert } from "flowbite-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { HiCheck, HiExclamation, HiSearch, HiInformationCircle } from "react-icons/hi";
 import { getFreightClassifications, searchFreightClassifications } from "@/helpers/getData";
 import type { SelectFreightClassification } from "@/types/db/types";

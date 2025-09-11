@@ -2,8 +2,10 @@
 
 import { useState, useRef } from 'react';
 import { MicrophoneIcon, CameraIcon, XMarkIcon } from '@heroicons/react/24/solid';
-import WarehouseButton from '@/components/ui/WarehouseButton';
+import { Button } from '@/components/ui/button';
 import ProgressBar from '@/components/ui/ProgressBar';
+import { useToast } from '@/hooks/use-toast';
+import { reportIssue } from '@/app/actions/ai';
 
 interface AIIssueReporterProps {
   orderId: string;
@@ -18,6 +20,7 @@ export default function AIIssueReporter({
   onClose, 
   onSuccess 
 }: AIIssueReporterProps) {
+  const { toast } = useToast()
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -47,7 +50,11 @@ export default function AIIssueReporter({
       mediaRecorder.current.start();
       setIsRecording(true);
     } catch (error) {
-      alert('Could not access microphone. Please check permissions.');
+      toast({
+        title: "Error",
+        description: "Could not access microphone. Please check permissions.",
+        variant: "destructive"
+      })
     }
   };
 
@@ -72,46 +79,60 @@ export default function AIIssueReporter({
   };
 
   const submitReport = async () => {
-    if (!audioBlob && !imageFile) {
-      alert('Please record audio or capture an image');
+    if (!audioBlob && !imageFile && !context) {
+      toast({
+        title: "Error",
+        description: "Please provide audio, image, or description",
+        variant: "destructive"
+      })
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const formData = new FormData();
-      formData.append('orderId', orderId);
-      formData.append('workerId', workerId);
-      formData.append('context', context);
-      
-      if (audioBlob) {
-        formData.append('audio', audioBlob, 'recording.webm');
-      }
+      // Convert image to base64 if present
+      let imageBase64: string | undefined;
+      let mimeType: string | undefined;
       
       if (imageFile) {
-        formData.append('image', imageFile);
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]); // Remove data:image/jpeg;base64, prefix
+          };
+        });
+        reader.readAsDataURL(imageFile);
+        imageBase64 = await base64Promise;
+        mimeType = imageFile.type;
       }
 
-      const response = await fetch('/api/ai/issue-report', {
-        method: 'POST',
-        body: formData
+      // Call server action
+      const result = await reportIssue({
+        issueType: 'warehouse_issue',
+        description: context || 'Issue reported via AI reporter',
+        severity: 'medium',
+        imageBase64,
+        mimeType,
+        workspaceId: orderId
       });
 
-      const result = await response.json();
-
       if (result.success) {
-        alert(
-          result.escalated 
-            ? 'Issue reported and escalated to supervisor!' 
-            : 'Issue reported successfully!'
-        );
+        toast({
+          title: "Success",
+          description: "Issue reported successfully! ID: " + result.issueId
+        })
         onSuccess();
       } else {
         throw new Error(result.error);
       }
     } catch (error) {
-      alert('Failed to submit report. Please try again.');
+      toast({
+        title: "Error",
+        description: "Failed to submit report. Please try again.",
+        variant: "destructive"
+      })
       console.error(error);
     } finally {
       setIsSubmitting(false);
@@ -122,7 +143,7 @@ export default function AIIssueReporter({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Report Issue with AI</h2>          <WarehouseButton
+          <h2 className="text-2xl font-bold">Report Issue with AI</h2>          <Button
             onClick={onClose}
             variant="neutral"
             size="base"
@@ -135,7 +156,7 @@ export default function AIIssueReporter({
           <div className="border-2 border-gray-200 rounded-lg p-4">
             <h3 className="text-lg font-semibold mb-3">Voice Description</h3>
             <div className="flex items-center space-x-4">
-              <WarehouseButton
+              <Button
                 onClick={isRecording ? stopRecording : startRecording}
                 variant={isRecording ? "stop" : "info"}
                 size="large"
@@ -143,7 +164,7 @@ export default function AIIssueReporter({
                 icon={<MicrophoneIcon className="h-6 w-6" />}
               >
                 {isRecording ? 'Stop Recording' : 'Start Recording'}
-              </WarehouseButton>
+              </Button>
               
               {audioBlob && !isRecording && (
                 <span className="text-green-600 font-medium">
@@ -212,7 +233,7 @@ export default function AIIssueReporter({
           </div>
 
           {/* Submit Button */}
-          <WarehouseButton
+          <Button
             onClick={submitReport}
             disabled={isSubmitting || (!audioBlob && !imageFile)}
             variant="info"
@@ -222,7 +243,7 @@ export default function AIIssueReporter({
             haptic="success"
           >
             {isSubmitting ? 'Analyzing with AI...' : 'Submit Report'}
-          </WarehouseButton>
+          </Button>
         </div>
       </div>
     </div>

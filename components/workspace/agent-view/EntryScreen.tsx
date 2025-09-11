@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
-import WarehouseButton from '@/components/ui/WarehouseButton';
+import { Button } from '@/components/ui/button';
 import StatusLight from '@/components/ui/StatusLight';
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {
@@ -120,7 +120,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
             </div>
             
             <div className="flex justify-center">
-              <WarehouseButton
+              <Button
                 onClick={onStart}
                 variant="go"
                 size="xlarge"
@@ -132,7 +132,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
                 }
               >
                 <span className="text-warehouse-3xl font-black">{getButtonText()}</span>
-              </WarehouseButton>
+              </Button>
             </div>
           </div>
         </div>

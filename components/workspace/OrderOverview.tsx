@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useFreightOrder } from '@/lib/swr/hooks';
+import { generateQR } from '@/app/actions/qr';
 // import { toast } from 'sonner';
 
 interface OrderOverviewProps {
@@ -30,18 +31,20 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
   const handleGenerateQR = async () => {
     setIsGeneratingQR(true);
     try {
-      const response = await fetch(`/api/workspace/${orderId}/qr/generate`, {
-        method: 'POST',
+      const result = await generateQR({
+        orderId: orderId,
+        orderNumber: workspace.orderNumber,
+        type: 'master'
       });
       
-      if (response.ok) {
+      if (result.success) {
         // toast.success('QR codes generated successfully');
         console.log('QR codes generated successfully');
         // Refresh the page or update state
         window.location.reload();
       } else {
         // toast.error('Failed to generate QR codes');
-        console.error('Failed to generate QR codes');
+        console.error('Failed to generate QR codes:', result.error);
       }
     } catch (error) {
       console.error('Error generating QR codes:', error);
