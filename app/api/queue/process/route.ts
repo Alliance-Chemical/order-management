@@ -14,22 +14,67 @@ const handlers = {
   async qr_generation(payload: any) {
     const validated = JobSchemas.qr_generation.parse(payload);
     console.log('Processing QR generation:', validated);
-    
-    // Your existing QR generation logic
-    if (validated.action === 'generate_qr_codes') {
-      // Generate QR codes based on strategy
-      const { workspaceId, orderId, orderNumber, items, strategy } = validated;
-      
-      // Log activity
+
+    // Handle different QR generation actions
+    if (validated.action === 'generate_qr_codes' || validated.action === 'generate_qr') {
+      const { workspaceId, orderId, orderNumber, items } = validated;
+
+      // Log activity start
       await workspaceService.repository.logActivity({
         workspaceId,
         activityType: 'qr_generation_started',
         performedBy: 'system',
-        metadata: { orderId, orderNumber, strategy, itemCount: items.length }
+        metadata: { orderId, orderNumber, itemCount: items?.length || 0 }
       });
-      
-      // Generate QRs (simplified - add your actual logic)
-      console.log(`Generated QRs for workspace ${workspaceId} with strategy ${strategy}`);
+
+      try {
+        // Call the actual QR generation endpoint
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
+        const response = await fetch(`${baseUrl}/api/workspace/${orderId}/qrcodes`, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'QueueProcessor/1.0'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`QR generation failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        console.log(`✅ Generated ${result.qrCodes?.length || 0} QR codes for workspace ${workspaceId}`);
+
+        // Log success
+        await workspaceService.repository.logActivity({
+          workspaceId,
+          activityType: 'qr_generation_completed',
+          performedBy: 'system',
+          metadata: {
+            orderId,
+            orderNumber,
+            qrCodesGenerated: result.qrCodes?.length || 0,
+            success: true
+          }
+        });
+
+      } catch (error) {
+        console.error(`❌ QR generation failed for workspace ${workspaceId}:`, error);
+
+        // Log failure
+        await workspaceService.repository.logActivity({
+          workspaceId,
+          activityType: 'qr_generation_failed',
+          performedBy: 'system',
+          metadata: {
+            orderId,
+            orderNumber,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            success: false
+          }
+        });
+
+        throw error; // Re-throw to mark job as failed
+      }
     }
   },
 
@@ -53,7 +98,7 @@ const handlers = {
     // Make webhook call
     const response = await fetch(validated.url, {
       method: validated.method,
-      headers: validated.headers,
+      headers: validated.headers as HeadersInit,
       body: validated.body ? JSON.stringify(validated.body) : undefined,
     });
     

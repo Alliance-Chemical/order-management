@@ -5,13 +5,12 @@
 
 import { joinUrl } from '../../shared/url';
 import type { QRPayload } from './qrCodec';
+import { encodeQRData } from './qrCodec';
 
 export function buildQRUrl(baseUrl: string, qrData: QRPayload): string {
-  const encoded = btoa(JSON.stringify(qrData))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-    
+  // Use a Node- and Edge-safe encoder that returns base64url
+  const encoded = encodeQRData(qrData);
+
   const path = `/workspace/${qrData.orderId}?qr=${encoded}`;
   return joinUrl(baseUrl.trim(), path);
 }

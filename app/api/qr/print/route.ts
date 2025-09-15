@@ -7,17 +7,35 @@ const repository = new WorkspaceRepository();
 
 export async function POST(request: NextRequest) {
   let browser = null;
-  
+
   try {
     const body = await request.json();
-    const { qrCodes, labelSize = '4x6', fulfillmentMethod = 'standard' } = body;
+    const { qrCodes, labelSize = '4x6', fulfillmentMethod = 'standard', orderId } = body;
     console.log(`[PRINT API] Received request to print ${qrCodes?.length || 0} labels with size: ${labelSize}`);
     console.log(`[PRINT API] Fulfillment method: ${fulfillmentMethod}`);
+    console.log(`[PRINT API] Order ID: ${orderId}`);
+    console.log(`[PRINT API] QR codes received:`, qrCodes?.map(qr => ({
+      id: qr.id,
+      shortCode: qr.shortCode,
+      hasShortCode: !!qr.shortCode
+    })));
 
     if (!qrCodes || !Array.isArray(qrCodes) || qrCodes.length === 0) {
       console.error('[PRINT API] Validation failed: qrCodes array is missing or empty.');
+      console.error('[PRINT API] Request body:', JSON.stringify(body, null, 2));
       return NextResponse.json(
-        { error: 'QR codes array is required' },
+        { error: 'QR codes array is required and cannot be empty' },
+        { status: 400 }
+      );
+    }
+
+    // Validate each QR code has required fields
+    const invalidQRs = qrCodes.filter(qr => !qr.shortCode);
+    if (invalidQRs.length > 0) {
+      console.error('[PRINT API] Validation failed: Some QR codes missing shortCode field');
+      console.error('[PRINT API] Invalid QRs:', invalidQRs);
+      return NextResponse.json(
+        { error: `${invalidQRs.length} QR codes are missing shortCode field` },
         { status: 400 }
       );
     }
@@ -26,15 +44,17 @@ export async function POST(request: NextRequest) {
     
     // Generate HTML for printing with QR codes and full record data
     const labelsData: { qrSvg: string; record: any }[] = [];
-    
+    const notFoundQRs: string[] = [];
+
     for (let i = 0; i < qrCodes.length; i++) {
       const qr = qrCodes[i];
       console.log(`[PRINT API] Processing QR ${i + 1}/${qrCodes.length} - shortCode: ${qr.shortCode}`);
-      
+
       // Fetch QR data from database
-      const qrRecord = await repository.findQRByShortCode(qr.shortCode);
+      const qrRecord = await repository.findQRByShortCode(qr.shortCode, orderId);
       if (!qrRecord) {
-        console.warn(`[PRINT API] QR record not found for shortCode: ${qr.shortCode}. Skipping.`);
+        console.warn(`[PRINT API] QR record not found for shortCode: ${qr.shortCode} (orderID: ${orderId}). Will skip.`);
+        notFoundQRs.push(qr.shortCode);
         continue;
       }
 
@@ -51,6 +71,23 @@ export async function POST(request: NextRequest) {
       console.log(`[PRINT API] Updating print count for QR: ${qrRecord.id}`);
       // Update print count
       await repository.updateQRPrintCount(qrRecord.id, 'system', { labelSize });
+    }
+
+    // Check if we have any valid labels to print
+    if (labelsData.length === 0) {
+      console.error('[PRINT API] No valid QR codes found to print');
+      console.error('[PRINT API] QR codes not found in database:', notFoundQRs);
+      return NextResponse.json(
+        {
+          error: 'No valid QR codes found to print',
+          details: `${notFoundQRs.length} QR codes not found in database: ${notFoundQRs.join(', ')}`
+        },
+        { status: 400 }
+      );
+    }
+
+    if (notFoundQRs.length > 0) {
+      console.warn(`[PRINT API] Warning: ${notFoundQRs.length} QR codes not found: ${notFoundQRs.join(', ')}`);
     }
 
     // Generate HTML page for printing with full data and fulfillment method

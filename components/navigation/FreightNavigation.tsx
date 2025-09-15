@@ -1,15 +1,17 @@
 'use client';
 
-import { useRouter, usePathname } from 'next/navigation';
-import { 
-  TruckIcon, 
-  BeakerIcon, 
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  TruckIcon,
+  BeakerIcon,
   LinkIcon,
   CubeIcon,
   HomeIcon,
   ChatBubbleLeftRightIcon,
   ClipboardDocumentCheckIcon,
-  ArchiveBoxIcon 
+  ArchiveBoxIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/solid';
 
 interface NavigationItem {
@@ -119,40 +121,57 @@ export default function FreightNavigation({
   className = '', 
   variant = 'horizontal' 
 }: FreightNavigationProps) {
-  const router = useRouter();
   const pathname = usePathname();
 
   if (variant === 'vertical') {
     return (
-      <nav className={`space-y-2 ${className}`}>
+      <nav aria-label="Primary" className={`space-y-2 ${className}`}>
         {navigationItems.map((item) => {
-          const isActive = !item.external && pathname === item.href;
+          const isActive = !item.external && (pathname === item.href || pathname?.startsWith(`${item.href}/`));
           const Icon = item.icon;
           
           return (
-            <button
-              key={item.name}
-              onClick={() => {
-                if (item.external) {
-                  window.open(item.href, '_blank', 'noopener,noreferrer');
-                } else {
-                  router.push(item.href);
-                }
-              }}
-              className={`w-full flex items-center px-4 py-3 text-left text-sm font-medium rounded-lg transition-colors ${
-                isActive 
-                  ? 'bg-blue-100 text-blue-700 border-l-4 border-blue-700' 
-                  : `text-gray-700 ${item.bgColor}`
-              }`}
-            >
-              <Icon className={`h-5 w-5 mr-3 ${isActive ? 'text-blue-700' : item.color}`} />
-              <div className="flex-1">
-                <div>{item.name}</div>
-                {item.description && !isActive && (
-                  <div className="text-xs text-gray-500 mt-1">{item.description}</div>
-                )}
-              </div>
-            </button>
+            <div key={item.name}>
+              {item.external ? (
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon className={`h-5 w-5 ${isActive ? 'text-blue-700' : 'text-gray-500'}`} />
+                  <div className="flex-1">
+                    <div className="font-medium">{item.name}</div>
+                    {item.description && !isActive && (
+                      <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>
+                    )}
+                  </div>
+                  <ArrowTopRightOnSquareIcon className="h-4 w-4 text-gray-400" />
+                </a>
+              ) : (
+                <Link
+                  href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon className={`h-5 w-5 ${isActive ? 'text-blue-700' : 'text-gray-500'}`} />
+                  <div className="flex-1">
+                    <div className="font-medium">{item.name}</div>
+                    {item.description && !isActive && (
+                      <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>
+                    )}
+                  </div>
+                </Link>
+              )}
+            </div>
           );
         })}
       </nav>
@@ -160,31 +179,39 @@ export default function FreightNavigation({
   }
 
   return (
-    <nav className={`flex items-center space-x-1 ${className}`}>
+    <nav aria-label="Primary" className={`flex items-center gap-1 overflow-x-auto ${className}`}>
       {navigationItems.map((item) => {
-        const isActive = pathname === item.href;
+        const isActive = !item.external && (pathname === item.href || pathname?.startsWith(`${item.href}/`));
         const Icon = item.icon;
-        
-        return (
-          <button
+
+        const baseClasses = 'group inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
+        const inactiveClasses = 'text-gray-600 hover:text-gray-900 hover:bg-gray-100';
+        const activeClasses = 'bg-blue-600 text-white shadow-sm hover:bg-blue-600';
+
+        return item.external ? (
+          <a
             key={item.name}
-            onClick={() => {
-              if (item.external) {
-                window.open(item.href, '_blank', 'noopener,noreferrer');
-              } else {
-                router.push(item.href);
-              }
-            }}
-            className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-              isActive 
-                ? 'bg-blue-100 text-blue-700' 
-                : `text-gray-700 ${item.bgColor}`
-            }`}
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
             title={item.description}
+            className={`${baseClasses} ${inactiveClasses}`}
           >
-            <Icon className={`h-4 w-4 mr-2 ${isActive ? 'text-blue-700' : item.color}`} />
-            {item.name}
-          </button>
+            <Icon className="h-4 w-4 opacity-80 group-hover:opacity-100" />
+            <span className="font-medium">{item.name}</span>
+            <ArrowTopRightOnSquareIcon className="h-4 w-4 text-gray-400" />
+          </a>
+        ) : (
+          <Link
+            key={item.name}
+            href={item.href}
+            aria-current={isActive ? 'page' : undefined}
+            title={item.description}
+            className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
+          >
+            <Icon className={`h-4 w-4 ${isActive ? 'text-white' : 'opacity-80 group-hover:opacity-100'}`} />
+            <span className="font-medium">{item.name}</span>
+          </Link>
         );
       })}
     </nav>

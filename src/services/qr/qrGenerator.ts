@@ -52,7 +52,11 @@ export class QRGenerator {
     try {
       const fixed = encodedData.replace(/-/g, '+').replace(/_/g, '/');
       const pad = fixed.length % 4 === 0 ? '' : '='.repeat(4 - (fixed.length % 4));
-      const decoded = atob ? atob(fixed + pad) : Buffer.from(fixed + pad, 'base64').toString();
+      // Use browser atob if available, otherwise fall back to Node Buffer
+      const hasAtob = typeof (globalThis as any).atob === 'function';
+      const decoded = hasAtob
+        ? (globalThis as any).atob(fixed + pad)
+        : Buffer.from(fixed + pad, 'base64').toString();
       return JSON.parse(decoded);
     } catch {
       return null;

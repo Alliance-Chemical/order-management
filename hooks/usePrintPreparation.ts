@@ -128,26 +128,77 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
   const handlePrint = async () => {
     setPrinting(true);
     warehouseFeedback.buttonPress();
-    
+
     try {
+      // Filter out any QR codes that are missing shortCode
+      const validQRs = qrCodes.filter(qr => qr.shortCode);
+
+      if (validQRs.length === 0) {
+        throw new Error('No valid QR codes found. Please regenerate QR codes first.');
+      }
+
+      console.log('[PRINT HOOK] Sending QR codes for printing:', validQRs.map(qr => ({
+        id: qr.id,
+        shortCode: qr.shortCode,
+        qrType: qr.qrType
+      })));
+
       // Call actual print API
       const response = await fetch(`/api/qr/print`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/pdf' },
         body: JSON.stringify({
           orderId: order.orderId,
-          qrCodes: qrCodes.map(qr => ({
+          qrCodes: validQRs.map(qr => ({
             id: qr.id,
             code: qr.code,
             shortCode: qr.shortCode
-          }))
+          })),
+          // Defaults used by API: labelSize '4x6', fulfillmentMethod 'standard'
+          // Explicitly pass to be clear and future-proof
+          labelSize: '4x6',
+          fulfillmentMethod: 'standard'
         })
       });
       
       if (!response.ok) {
-        throw new Error('Print failed');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[PRINT HOOK] Print API error response:', errorData);
+        throw new Error(errorData.error || `Print failed with status ${response.status}`);
       }
-      
+
+      // Consume the PDF response and open/download it
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error('Received empty PDF from server');
+      }
+
+      const blobUrl = window.URL.createObjectURL(blob);
+      // Try to open in a new tab first
+      const newTab = window.open(blobUrl, '_blank');
+
+      if (newTab) {
+        // Give the browser a moment to load before revoking
+        setTimeout(() => {
+          window.URL.revokeObjectURL(blobUrl);
+        }, 10000);
+      } else {
+        // Popup blocked; fall back to auto-download
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        // Try to respect filename from header; fallback to order number
+        const cd = response.headers.get('Content-Disposition') || '';
+        const match = cd.match(/filename\*=UTF-8''([^;\n]+)/) || cd.match(/filename="?([^";\n]+)"?/);
+        const filename = match && match[1] ? decodeURIComponent(match[1]) : `labels-${order.orderNumber}.pdf`;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => {
+          window.URL.revokeObjectURL(blobUrl);
+        }, 5000);
+      }
+
       warehouseFeedback.complete();
       onPrintComplete();
     } catch (error) {

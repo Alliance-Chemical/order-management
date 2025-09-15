@@ -308,7 +308,7 @@ export async function scanQR(qrCode: string, scannedBy?: string, location?: stri
 export async function getQRCodesForWorkspace(orderId: string) {
   try {
     const db = getOptimizedDb()
-    
+
     // Find workspace
     const workspace = await db.query.workspaces.findFirst({
       where: eq(workspaces.orderId, BigInt(orderId)),
@@ -321,6 +321,36 @@ export async function getQRCodesForWorkspace(orderId: string) {
       return {
         success: false,
         error: 'Workspace not found'
+      }
+    }
+
+    // If no QR codes exist, trigger generation
+    if (!workspace.qrCodes || workspace.qrCodes.length === 0) {
+      console.log(`[QR] No QR codes found for order ${orderId}, triggering generation...`);
+
+      try {
+        // Call the QR generation endpoint to create codes
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
+        const response = await fetch(`${baseUrl}/api/workspace/${orderId}/qrcodes`, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'QRFetch/1.0'
+          }
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log(`[QR] Generated ${result.qrCodes?.length || 0} QR codes for order ${orderId}`);
+
+          return {
+            success: true,
+            qrCodes: result.qrCodes || []
+          };
+        } else {
+          console.warn(`[QR] Failed to generate QR codes: ${response.status}`);
+        }
+      } catch (error) {
+        console.error('[QR] Error generating QR codes:', error);
       }
     }
 

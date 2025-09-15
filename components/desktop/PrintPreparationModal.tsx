@@ -6,7 +6,7 @@ import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import QRCodeSummary from './print-preparation/QRCodeSummary';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { useToast } from '@/hooks/use-toast';
-import { getQRCodesForWorkspace, regenerateQRCodes, printQR } from '@/app/actions/qr';
+import { getQRCodesForWorkspace } from '@/app/actions/qr';
 
 interface FreightOrder {
   orderId: number;
@@ -149,59 +149,105 @@ export default function PrintPreparationModal({
   const handleConfirmPrint = async () => {
     try { warehouseFeedback.buttonPress(); } catch {}
     setPrinting(true);
-    
+
     try {
       // If custom quantities are specified, we need to regenerate QR codes
       const hasCustomQuantities = Object.values(labelQuantities).some(qty => qty !== 1);
-      
+
       let qrCodesToPrint = qrCodes; // Default to existing QR codes
-      
+
       if (hasCustomQuantities) {
-        // First, regenerate QR codes with custom quantities
-        // Create items array from labelQuantities for server action
-        const items = order.items ? filterOutDiscounts(order.items).map(item => ({
-          ...item,
-          labelCount: labelQuantities[item.sku] || 1
-        })) : [];
-        
-        const regenResult = await regenerateQRCodes(order.orderId.toString(), items);
-        
-        if (regenResult.success && regenResult.qrCodes) {
-          qrCodesToPrint = regenResult.qrCodes; // Use the fresh QR codes
-          setQrCodes(regenResult.qrCodes); // Also update state for UI
+        // Call the API route to regenerate QR codes with custom quantities
+        const regenResponse = await fetch(`/api/workspace/${order.orderId}/qrcodes/regenerate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            labelQuantities
+          }),
+        });
+
+        if (regenResponse.ok) {
+          const regenResult = await regenResponse.json();
+          if (regenResult.success && regenResult.qrCodes) {
+            qrCodesToPrint = regenResult.qrCodes; // Use the fresh QR codes
+            setQrCodes(regenResult.qrCodes); // Also update state for UI
+          }
+        } else {
+          console.error('Failed to regenerate QR codes:', await regenResponse.text());
         }
       }
-      
+
       // Only print container QRs - use the correct array
       const containerQRs = qrCodesToPrint.filter(qr => qr.qrType === 'container');
-      
-      // Use server action for printing - extract QR codes for printing
-      const qrCodeStrings = containerQRs.map(qr => qr.shortCode || qr.code);
-      
-      const printResult = await printQR(qrCodeStrings);
 
-      if (!printResult.success) {
-        throw new Error('Print failed');
+      if (containerQRs.length === 0) {
+        throw new Error('No container QR codes found to print');
       }
 
-      // The server action returns print data - create PDF from the data
-      if (printResult.printData) {
-        // For now, we'll create a simple text download as the server action
-        // returns base64 images. In production, you might want to enhance
-        // the server action to return a PDF blob
-        const printContent = printResult.printData.map(item => 
-          `QR Code: ${item.code}\nImage: ${item.image}`
-        ).join('\n\n');
-        
-        const blob = new Blob([printContent], { type: 'text/plain' });
-        const url = window.URL.createObjectURL(blob);
+      console.log(`[PrintModal] Printing ${containerQRs.length} container QR codes`);
+
+      // Call the print API to get PDF
+      console.log('[PrintModal] Requesting PDF from server...');
+
+      const response = await fetch('/api/qr/print', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          qrCodes: containerQRs,
+          labelSize: '4x6',
+          fulfillmentMethod: 'standard',
+          orderId: order.orderId.toString()
+        }),
+      });
+
+      console.log(`[PrintModal] Response received: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[PrintModal] Error from server:', errorText);
+        throw new Error(`Print failed: ${response.status}`);
+      }
+
+      // Get the PDF as a blob
+      const pdfBlob = await response.blob();
+      console.log(`[PrintModal] PDF blob received: ${pdfBlob.size} bytes`);
+
+      // Create blob URL and open in new window/tab
+      const blobUrl = window.URL.createObjectURL(pdfBlob);
+      console.log('[PrintModal] Opening PDF in new tab...');
+
+      // Open the PDF in a new tab/window
+      const newTab = window.open(blobUrl, '_blank');
+
+      if (newTab) {
+        console.log('[PrintModal] PDF opened in new tab successfully');
+        // Clean up the blob URL after a delay
+        setTimeout(() => {
+          window.URL.revokeObjectURL(blobUrl);
+          console.log('[PrintModal] Blob URL cleaned up');
+        }, 10000); // 10 second delay to ensure PDF loads
+      } else {
+        console.error('[PrintModal] Failed to open new tab - popup blocker may be active');
+
+        // Fallback: Create a download link and auto-click it
+        console.log('[PrintModal] Falling back to download link...');
         const a = document.createElement('a');
-        a.href = url;
-        a.download = `labels-${order.orderNumber}.txt`;
+        a.href = blobUrl;
+        a.download = `labels-${order.orderNumber}.pdf`;
+        a.target = '_blank';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
+
+        // Clean up after download
+        setTimeout(() => {
+          window.URL.revokeObjectURL(blobUrl);
+          console.log('[PrintModal] Blob URL cleaned up after download');
+        }, 5000);
       }
 
       // Haptic + audio success feedback
@@ -218,7 +264,7 @@ export default function PrintPreparationModal({
       try { warehouseFeedback.error(); } catch {}
       toast({
         title: "Error",
-        description: "Failed to print labels",
+        description: error instanceof Error ? error.message : "Failed to print labels",
         variant: "destructive"
       })
     } finally {

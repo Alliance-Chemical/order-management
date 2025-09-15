@@ -95,7 +95,7 @@ export default function TaskListItem({
     }`}>
       {/* Job Ticket Number */}
       <div className="absolute -top-3 -right-3 bg-warehouse-caution text-warehouse-text-primary px-4 py-2 rounded-full font-black text-warehouse-lg shadow-warehouse-lg transform rotate-12">
-        JOB #{item.lineItemId?.slice(-4) || Math.floor(Math.random() * 9999)}
+        JOB #{item.lineItemId?.toString().slice(-4) || Math.floor(Math.random() * 9999)}
       </div>
       
       <div className="flex flex-col lg:flex-row gap-6">
