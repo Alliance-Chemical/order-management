@@ -43,7 +43,15 @@ export async function POST(request: NextRequest) {
     console.log('[PRINT API] Starting to process QR codes...');
     
     // Generate HTML for printing with QR codes and full record data
-    const labelsData: { qrSvg: string; record: any }[] = [];
+    const labelsData: {
+      qrSvg: string;
+      record: any;
+      override?: {
+        containerNumber?: number;
+        totalContainers?: number;
+        itemName?: string;
+      };
+    }[] = [];
     const notFoundQRs: string[] = [];
 
     for (let i = 0; i < qrCodes.length; i++) {
@@ -59,13 +67,27 @@ export async function POST(request: NextRequest) {
       }
 
       console.log(`[PRINT API] Found QR record. Generating QR SVG for: ${qr.shortCode}`);
-      // Generate QR code as raw SVG string
-      const qrSvg = await qrGenerator.generateQRCode(qrRecord.encodedData as any, { quietZoneModules: 8 });
+      // Generate QR code as raw SVG string using shortCode-first URL
+      const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '')?.trim() || 'http://localhost:3000';
+      const shortUrl = `${baseUrl}/qr/s/${qrRecord.shortCode}`;
+      const { renderQRSvg } = await import('@/src/services/qr/qrSvgRenderer');
+      const qrSvg = await renderQRSvg(shortUrl, { quietZoneModules: 8 });
       
       // Push both the QR SVG and the full record
+      const sequenceNumber = typeof qr.sequenceNumber === 'number' ? qr.sequenceNumber : undefined;
+      const sequenceTotal = typeof qr.sequenceTotal === 'number' ? qr.sequenceTotal : undefined;
+      const itemName = typeof qr.itemName === 'string' ? qr.itemName : undefined;
+
       labelsData.push({ 
         qrSvg, 
-        record: qrRecord 
+        record: qrRecord,
+        override: sequenceNumber || sequenceTotal || itemName
+          ? {
+              containerNumber: sequenceNumber,
+              totalContainers: sequenceTotal,
+              itemName,
+            }
+          : undefined,
       });
       
       console.log(`[PRINT API] Updating print count for QR: ${qrRecord.id}`);
@@ -200,7 +222,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSize: string, fulfillmentMethod: string = 'standard'): string {
+function generatePrintHTML(
+  labelsData: Array<{
+    qrSvg: string;
+    record: any;
+    override?: {
+      containerNumber?: number;
+      totalContainers?: number;
+      itemName?: string;
+    };
+  }>,
+  labelSize: string,
+  fulfillmentMethod: string = 'standard'
+): string {
   const isLetter = labelSize === '8.5x11';
   const is4x6 = labelSize === '4x6';
   
@@ -339,7 +373,19 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
   };
   
   // Helper function to get item info - ONLY information about the label itself
-  const getItemInfo = (record: any): string => {
+  const getItemInfo = (
+    record: any,
+    override?: { containerNumber?: number; totalContainers?: number }
+  ): string => {
+    const formatContainerTypeLabel = (type: string | undefined | null) => {
+      if (!type) return 'Container';
+      return type
+        .split(/[-_]/)
+        .filter(Boolean)
+        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+        .join(' ');
+    };
+
     // For source QRs created on-demand
     if (record.qrType === 'source') {
       // Show the container type and ID clearly
@@ -403,16 +449,18 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
         // Check if this is direct resell based on fulfillment method
         if (fulfillmentMethod === 'direct_resell') {
           // For direct resell, show it's ready
-          const containerType = record.encodedData?.containerType || 'Container';
+          const containerType = formatContainerTypeLabel(record.encodedData?.containerType);
           return `<div style="font-size: 14pt; color: #28a745; font-weight: bold;">✓ Pre-packaged ${containerType}</div>`;
         }
         // Container labels show proper numbering using encodedData values
-        const containerNum = record.encodedData?.containerNumber || 1;
-        const totalContainers = record.encodedData?.totalContainers || 1;
-        const containerType = record.encodedData?.containerType || 'Container';
+        const containerNum = override?.containerNumber ?? record.encodedData?.containerNumber ?? record.containerNumber ?? 1;
+        const totalContainers = override?.totalContainers ?? record.encodedData?.totalContainers ?? record.totalContainers ?? 1;
+        const rawContainerType = record.encodedData?.containerType || record.containerType || 'Container';
+        const containerType = formatContainerTypeLabel(rawContainerType);
+        const normalizedType = rawContainerType.toLowerCase();
         
         // For pallets and cases, show the actual quantity of items
-        if (containerType === 'pallet' || containerType === 'case') {
+        if (normalizedType.includes('pallet') || normalizedType.includes('case')) {
           const itemName = record.chemicalName || record.encodedData?.itemName || 'Product';
           
           // Try to parse quantity from the item name (e.g., "6x Isopropyl Alcohol")
@@ -422,7 +470,7 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
             itemQuantity = qtyMatch[1];
           }
           
-          const containerLabel = `${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}`;
+          const containerLabel = `${containerType} ${containerNum} of ${totalContainers}`;
           if (itemQuantity) {
             // PRIORITY: Look for container types FIRST (pail, drum, tote, box), then fall back to measurements (gallon)
             const containerMatch = itemName.match(/(pail|drum|tote|box)/i);
@@ -455,18 +503,18 @@ function generatePrintHTML(labelsData: { qrSvg: string; record: any }[], labelSi
           return `<div style="font-size: 14pt; color: #495057; font-weight: bold;">${containerLabel}</div>`;
         }
         
-        return `<div style="font-size: 14pt; color: #495057; font-weight: bold;">${containerType.charAt(0).toUpperCase() + containerType.slice(1)} ${containerNum} of ${totalContainers}</div>`;
+        return `<div style="font-size: 14pt; color: #495057; font-weight: bold;">${containerType} ${containerNum} of ${totalContainers}</div>`;
       default:
         return '';
     }
   };
   
   const labelHTML = labelsData.map((data) => {
-    const { qrSvg, record } = data;
+    const { qrSvg, record, override } = data;
     const orderNumber = record.orderNumber || record.orderId || 'N/A';
     const labelType = getLabelType(record);
     const productName = getProductName(record);
-    const itemInfo = getItemInfo(record);
+    const itemInfo = getItemInfo(record, override);
     const sourceInfo = getSourceInfo(record);
     const orderItemsList = getOrderItemsList(record);
     const shortCode = record.shortCode || '';

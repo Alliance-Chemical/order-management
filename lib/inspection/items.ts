@@ -7,21 +7,7 @@ interface WorkspaceLike {
 
 interface OrderItemLike { name?: string }
 
-export function buildInspectionItems(workspace: WorkspaceLike, selectedItem?: OrderItemLike | null) {
-  const sourceAssignments = (workspace.moduleStates as any)?.sourceAssignments || [];
-
-  let itemWorkflowType: string | null = null;
-  if (selectedItem) {
-    const itemAssignment = sourceAssignments.find((sa: any) => {
-      if (!sa.productName || !selectedItem.name) return false;
-      const productNameLower = String(sa.productName).toLowerCase();
-      const itemNameLower = String(selectedItem.name).toLowerCase();
-      return itemNameLower.includes(productNameLower) ||
-             productNameLower.includes(itemNameLower.split('-')[0].trim());
-    });
-    itemWorkflowType = itemAssignment?.workflowType ?? null;
-  }
-
+export function buildInspectionItems(workspace: WorkspaceLike, _selectedItem?: OrderItemLike | null) {
   let inspectionItems: Array<{ id: string; label: string; description: string }>;
   inspectionItems = [];
 
@@ -29,14 +15,12 @@ export function buildInspectionItems(workspace: WorkspaceLike, selectedItem?: Or
     inspectionItems.push(
       { id: 'basic_info', label: 'Basic Information', description: 'Enter Date Performed, Invoice #, and Inspector name' },
       { id: 'packing_slip', label: 'Packing Slip Verification', description: 'Verify ship to match, ship via, ship date, P.O. number, signature label, and freight' },
-      { id: 'lot_numbers', label: 'Lot Numbers', description: 'Enter lot numbers (last four digits)' },
-      { id: 'coa_status', label: 'C of A\'s Status', description: 'Select certificate of analysis status' },
-      { id: 'product_inspection', label: 'Product Inspection', description: 'Check label information, lid condition, and GHS labels' },
+      { id: 'lot_numbers', label: 'Lot Numbers', description: 'Enter lot numbers' },
+      { id: 'product_inspection', label: 'Product Inspection', description: 'Check label information, lid condition, and required GHS / hazmat markings' },
       { id: 'container_condition', label: 'Check Destination Containers', description: 'Inspect DESTINATION containers for damage, leaks, or contamination (containers going to customer)' },
       { id: 'label_verification', label: 'Verify Destination Labels', description: 'Verify labels on DESTINATION containers match order specifications' },
       { id: 'quantity_check', label: 'Count Destination Containers', description: 'Confirm correct quantity of DESTINATION containers' },
       { id: 'scan_destination_qr', label: 'Scan Destination QR', description: 'Scan QR code on each DESTINATION container' },
-      { id: 'hazmat_placards', label: 'Check Destination Hazmat', description: 'Verify proper hazmat labeling on DESTINATION containers if required' },
       { id: 'seal_integrity', label: 'Check Destination Seals', description: 'Check all seals on DESTINATION containers are intact' }
     );
   } else {
@@ -51,4 +35,3 @@ export function buildInspectionItems(workspace: WorkspaceLike, selectedItem?: Or
 
   return inspectionItems;
 }
-

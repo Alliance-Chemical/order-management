@@ -32,7 +32,7 @@ export async function generateQR(data: {
     const qrData = qrGenerator.createQRData(orderId, orderNumber, type, containerNumber, chemicalName)
     const qrCode = await qrGenerator.generateQRCode(qrData)
     const shortCode = qrGenerator.generateShortCode(orderId, containerNumber)
-    const qrUrl = qrGenerator.createQRUrl(qrData)
+    const qrUrl = qrGenerator.createShortCodeUrl(shortCode)
 
     // Find workspace
     const workspace = await repository.findByOrderId(orderId)
@@ -117,7 +117,7 @@ export async function regenerateQRCodes(orderId: string, items: any[]) {
         
         const qrCode = await qrGenerator.generateQRCode(qrData)
         const shortCode = qrGenerator.generateShortCode(orderId, containerNumber)
-        const qrUrl = qrGenerator.createQRUrl(qrData)
+        const qrUrl = qrGenerator.createShortCodeUrl(shortCode)
 
         // Save to database
         const savedQR = await db
@@ -159,6 +159,80 @@ export async function regenerateQRCodes(orderId: string, items: any[]) {
   }
 }
 
+// Add additional QR codes without deleting existing records.
+// Each item should include: { name, sku?, labelCount }
+export async function addQRCodes(orderId: string, items: Array<{ name: string; sku?: string; labelCount: number }>) {
+  try {
+    const db = getOptimizedDb()
+
+    // Find workspace
+    const workspace = await db.query.workspaces.findFirst({
+      where: eq(workspaces.orderId, BigInt(orderId))
+    })
+
+    if (!workspace) {
+      return { success: false, error: 'Workspace not found' }
+    }
+
+    // Determine next container number
+    const existing = await db.query.qrCodes.findMany({
+      where: eq(qrCodes.workspaceId, workspace.id)
+    })
+    let nextContainer = Math.max(0, ...existing.map((qr: any) => qr.containerNumber || 0)) + 1
+
+    const created: any[] = []
+
+    for (const item of items) {
+      const count = Math.max(0, Number(item.labelCount) || 0)
+      for (let i = 0; i < count; i++) {
+        const containerNumber = nextContainer++
+        const qrData = qrGenerator.createQRData(
+          Number(orderId),
+          workspace.orderNumber,
+          // Using 'container' to match downstream expectations
+          // even though low-level type union may not include it
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          'container',
+          containerNumber,
+          item.name
+        )
+        const shortCode = qrGenerator.generateShortCode(Number(orderId), containerNumber)
+        const qrUrl = qrGenerator.createShortCodeUrl(shortCode)
+
+        const saved = await db
+          .insert(qrCodes)
+          .values({
+            workspaceId: workspace.id,
+            qrType: 'container',
+            qrCode: shortCode,
+            shortCode,
+            orderId: BigInt(orderId),
+            orderNumber: workspace.orderNumber,
+            containerNumber,
+            chemicalName: item.name,
+            encodedData: qrData,
+            qrUrl,
+          })
+          .returning()
+
+        created.push(saved[0])
+      }
+    }
+
+    // Revalidate workspace page
+    revalidatePath(`/workspace/${orderId}`)
+
+    return { success: true, qrCodes: created }
+  } catch (error) {
+    console.error('Error adding QR codes:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add QR codes'
+    }
+  }
+}
+
 export async function printQR(qrCodes: string[]) {
   try {
     // Generate print-ready QR codes
@@ -193,17 +267,65 @@ export async function printQR(qrCodes: string[]) {
   }
 }
 
+function extractShortCodeOrLookupParams(raw: string): { shortCode?: string; orderId?: number; containerNumber?: number } {
+  const input = (raw || '').trim();
+  // Plain short code (alnum, 5-12)
+  if (/^[A-Za-z0-9]{5,12}$/.test(input)) {
+    return { shortCode: input };
+  }
+  // Try URL parse
+  try {
+    const url = new URL(input);
+    // /qr/s/{shortCode}
+    const m = url.pathname.match(/\/qr\/s\/([A-Za-z0-9-_.]+)/);
+    if (m && m[1]) {
+      return { shortCode: m[1] };
+    }
+    // ?sc=SHORTCODE
+    const sc = url.searchParams.get('sc');
+    if (sc) {
+      return { shortCode: sc };
+    }
+    // Legacy: ?qr=base64url(JSON)
+    const encoded = url.searchParams.get('qr');
+    if (encoded) {
+      try {
+        const fixed = encoded.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = fixed.length % 4 === 0 ? '' : '='.repeat(4 - (fixed.length % 4));
+        const json = JSON.parse(Buffer.from(fixed + pad, 'base64').toString());
+        const orderId = Number(json.orderId);
+        const containerNumber = json.containerNumber != null ? Number(json.containerNumber) : undefined;
+        if (!Number.isNaN(orderId)) {
+          return { orderId, containerNumber };
+        }
+      } catch {}
+    }
+  } catch {}
+  return {};
+}
+
 export async function validateQR(qrCode: string) {
   try {
     const db = getOptimizedDb()
-    
-    // Find QR code in database
-    const qr = await db.query.qrCodes.findFirst({
-      where: eq(qrCodes.shortCode, qrCode),
-      with: {
-        workspace: true
+    const { shortCode, orderId, containerNumber } = extractShortCodeOrLookupParams(qrCode);
+
+    let qr: any | null = null;
+    if (shortCode) {
+      qr = await db.query.qrCodes.findFirst({
+        where: eq(qrCodes.shortCode, shortCode),
+        with: { workspace: true }
+      });
+    } else if (orderId) {
+      // Try to find by orderId + containerNumber (legacy payload path)
+      const clauses: any[] = [eq(qrCodes.orderId, BigInt(orderId))];
+      if (typeof containerNumber === 'number') {
+        clauses.push(eq(qrCodes.containerNumber, containerNumber));
       }
-    })
+      qr = await db.query.qrCodes.findFirst({
+        where: and(...clauses),
+        with: { workspace: true }
+      });
+    }
 
     if (!qr) {
       return {
@@ -250,14 +372,25 @@ export async function validateQR(qrCode: string) {
 export async function scanQR(qrCode: string, scannedBy?: string, location?: string) {
   try {
     const db = getOptimizedDb()
+    const { shortCode, orderId, containerNumber } = extractShortCodeOrLookupParams(qrCode);
     
     // Find and validate QR code
-    const qr = await db.query.qrCodes.findFirst({
-      where: eq(qrCodes.shortCode, qrCode),
-      with: {
-        workspace: true
+    let qr: any | null = null;
+    if (shortCode) {
+      qr = await db.query.qrCodes.findFirst({
+        where: eq(qrCodes.shortCode, shortCode),
+        with: { workspace: true }
+      });
+    } else if (orderId) {
+      const clauses: any[] = [eq(qrCodes.orderId, BigInt(orderId))];
+      if (typeof containerNumber === 'number') {
+        clauses.push(eq(qrCodes.containerNumber, containerNumber));
       }
-    })
+      qr = await db.query.qrCodes.findFirst({
+        where: and(...clauses),
+        with: { workspace: true }
+      });
+    }
 
     if (!qr) {
       return {

@@ -14,3 +14,8 @@ export function buildQRUrl(baseUrl: string, qrData: QRPayload): string {
   const path = `/workspace/${qrData.orderId}?qr=${encoded}`;
   return joinUrl(baseUrl.trim(), path);
 }
+
+export function buildShortCodeUrl(baseUrl: string, shortCode: string): string {
+  const path = `/qr/s/${shortCode}`;
+  return joinUrl(baseUrl.trim(), path);
+}

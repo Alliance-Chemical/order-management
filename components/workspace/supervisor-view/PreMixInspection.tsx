@@ -20,10 +20,7 @@ const packingSlipItems = [
   { id: 'freight', label: 'Freight' },
 ];
 
-const coaOptions = [
-  { value: 'match', label: 'Match' },
-  { value: 'no_coas_needed', label: 'No C of A\'s needed' },
-];
+// COA handling is managed separately via Documents; no COA status in this form.
 
 const productInspectionItems = [
   { id: 'check_label_info', label: 'Check label information (ACS / Tech / UN # / PG)' },
@@ -39,7 +36,7 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
     inspector: initialState.inspector || '',
     packingSlip: initialState.packingSlip || {},
     lotNumbers: initialState.lotNumbers || '',
-    coaStatus: initialState.coaStatus || '',
+    // COA status removed from supervisor pre-mix form
     productInspection: initialState.productInspection || {},
     lidPhotos: initialState.lidPhotos || [],
     notes: initialState.notes || '',
@@ -126,20 +123,13 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
     if (!state.lotNumbers) {
       toast({
         title: "Error",
-        description: "Please enter the lot numbers (last four digits)",
+        description: "Please enter the lot numbers",
         variant: "destructive"
       })
       return;
     }
     
-    if (!state.coaStatus) {
-      toast({
-        title: "Error",
-        description: "Please select C of A status",
-        variant: "destructive"
-      })
-      return;
-    }
+    // COA status is no longer collected here
     
     // Check if lid inspection was selected and photos are required
     if (state.productInspection.lid_inspection && state.lidPhotos.length === 0) {
@@ -173,8 +163,8 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
   };
 
   const isComplete = state.completedAt !== null;
-  const requiredFieldsCount = 5; // datePerformed, invoiceNumber, inspector, lotNumbers, coaStatus
-  const completedRequiredFields = [state.datePerformed, state.invoiceNumber, state.inspector, state.lotNumbers, state.coaStatus].filter(field => field && field.length > 0).length;
+  const requiredFieldsCount = 4; // datePerformed, invoiceNumber, inspector, lotNumbers
+  const completedRequiredFields = [state.datePerformed, state.invoiceNumber, state.inspector, state.lotNumbers].filter(field => field && field.length > 0).length;
   const packingSlipProgress = Object.values(state.packingSlip).filter(Boolean).length / packingSlipItems.length;
   const productInspectionProgress = Object.values(state.productInspection).filter(Boolean).length / productInspectionItems.length;
   const overallProgress = ((completedRequiredFields / requiredFieldsCount) + packingSlipProgress + productInspectionProgress) / 3 * 100;
@@ -269,12 +259,12 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
         </div>
       </div>
 
-      {/* Lot Numbers and C of A's */}
+      {/* Lot Numbers */}
       <div className="bg-white rounded-lg shadow p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lot #'s (Last four digits) <span className="text-red-500">*</span>
+              Lot #'s <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -284,24 +274,6 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
               placeholder="Enter lot numbers"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              C of A's <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={state.coaStatus}
-              onChange={(e) => handleFieldChange('coaStatus', e.target.value)}
-              disabled={isComplete}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50"
-            >
-              <option value="">Select status</option>
-              {coaOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </div>
         </div>
       </div>

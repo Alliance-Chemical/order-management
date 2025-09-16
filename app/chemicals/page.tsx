@@ -98,10 +98,23 @@ export default function ChemicalsPage() {
     try {
       const params = new URLSearchParams();
       params.append('limit', '200');
-      
+
       const response = await fetch(`/api/freight-classifications?${params}`);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        console.error('Failed to load classifications:', error);
+        setClassifications([]);
+        return;
+      }
+
       const data = await response.json();
-      setClassifications(data || []);
+      if (Array.isArray(data)) {
+        setClassifications(data);
+      } else {
+        console.warn('Unexpected freight classification payload shape:', data);
+        setClassifications([]);
+      }
     } catch (error) {
       console.error('Error loading classifications:', error);
     } finally {

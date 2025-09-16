@@ -3,7 +3,7 @@
  * Single responsibility: Orchestrate QR generation workflow
  */
 
-import { buildQRUrl } from '../../domain/qr/qrUrlBuilder';
+import { buildQRUrl, buildShortCodeUrl } from '../../domain/qr/qrUrlBuilder';
 import { createQRData } from '../../domain/qr/qrDataFactory';
 import { renderQRSvg } from './qrSvgRenderer';
 import { renderQRPng } from './qrPngRenderer';
@@ -36,6 +36,10 @@ export class QRGenerator {
 
   createQRUrl(qrData: QRPayload): string {
     return buildQRUrl(this.baseUrl, qrData);
+  }
+
+  createShortCodeUrl(shortCode: string): string {
+    return buildShortCodeUrl(this.baseUrl, shortCode);
   }
 
   async generateQRCode(qrData: QRPayload, options?: QRGenerationOptions): Promise<string> {

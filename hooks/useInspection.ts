@@ -243,8 +243,7 @@ export function useInspection({
         return formData.packingSlipVerified
       case 'lot_numbers':
         return !!formData.lotNumbers.trim()
-      case 'coa_status':
-        return !!formData.coaStatus
+      // 'coa_status' step removed from worker flow
       case 'product_inspection':
         const hasSelection = Object.values(formData.productInspection).some(Boolean)
         const hasLidPhotos = !formData.productInspection.lid_inspection || formData.lidPhotos.length > 0

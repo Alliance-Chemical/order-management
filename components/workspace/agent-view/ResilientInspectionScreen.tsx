@@ -2,15 +2,11 @@
 
 import React from 'react'
 import { useInspection } from '@/hooks/useInspection'
-import { useToast } from '@/hooks/use-toast'
 import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner'
 import IssueModal from './IssueModal'
 import { InspectionItem } from '@/lib/types/agent-view'
 import { InspectionHeader } from '@/components/inspection/InspectionHeader'
-import { InspectionForm } from '@/components/inspection/InspectionForm'
-import { InspectionActions } from '@/components/inspection/InspectionActions'
-import { MeasurementsModal } from '@/components/inspection/MeasurementsModal'
-import { saveFinalMeasurements } from '@/app/actions/workspace'
+import { Button } from '@/components/ui/button'
 
 interface ResilientInspectionScreenProps {
   orderId: string
@@ -38,8 +34,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     onSwitchToSupervisor
   } = props
 
-  const { toast } = useToast()
-
   // Use the custom hook for all inspection logic
   const inspection = useInspection({
     orderId,
@@ -49,7 +43,45 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     onComplete
   })
 
-  if (!inspection.currentItem) {
+  // Destructure frequently used values from the inspection hook to match JSX usage
+  const {
+    currentItem,
+    formData,
+    updateFormField,
+    updateNestedField,
+    showScanner,
+    setShowScanner,
+    getExpectedQRType,
+    handleQRScan,
+    handleSkipQRScan,
+    issueModalOpen,
+    currentFailedItem,
+    setIssueModalOpen,
+    handleIssueSubmit,
+    requiresQRScan,
+    handleFormStepComplete,
+    handleResult,
+    handlePhotoUpload,
+    handleLotNumberPhotoCapture,
+    extractLotNumbersFromPhoto,
+    isProcessingLotNumbers,
+    showMeasurementsModal,
+    setShowMeasurementsModal,
+    savingMeasurements,
+    measurements,
+    setMeasurements,
+    saveFinalMeasurements,
+  } = inspection
+
+  // Local helpers to work with measurements in the existing JSX shape
+  const dims = measurements.dimensions
+  const wgt = measurements.weight
+  const setDims = (newDims: typeof measurements.dimensions) =>
+    setMeasurements({ ...measurements, dimensions: newDims })
+  const setWgt = (newWgt: typeof measurements.weight) =>
+    setMeasurements({ ...measurements, weight: newWgt })
+
+  if (!currentItem) {
     return <div>Loading...</div>
   }
 
@@ -243,7 +275,10 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
                       className="w-full max-h-48 object-cover rounded-lg"
                     />
                     <button
-                      onClick={() => setFormData(prev => ({ ...prev, lotNumberPhoto: null, extractedLotNumbers: [] }))}
+                      onClick={() => {
+                        updateFormField('lotNumberPhoto', null);
+                        updateFormField('extractedLotNumbers', []);
+                      }}
                       className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
                     >
                       ✕
@@ -296,30 +331,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
             
             <Button
               onClick={() => handleFormStepComplete('lot_numbers')}
-              variant="go"
-              size="xlarge"
-              fullWidth
-              haptic="success"
-            >
-              <span className="text-2xl">Continue</span>
-            </Button>
-          </div>
-        ) : currentItem.id === 'coa_status' ? (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xl font-bold text-gray-900 mb-2">C of A's Status *</label>
-              <select
-                value={formData.coaStatus}
-                onChange={(e) => updateFormField('coaStatus', e.target.value)}
-                className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Select status</option>
-                <option value="match">Match</option>
-                <option value="no_coas_needed">No C of A's needed</option>
-              </select>
-            </div>
-            <Button
-              onClick={() => handleFormStepComplete('coa_status')}
               variant="go"
               size="xlarge"
               fullWidth
@@ -517,42 +528,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
             <div className="flex gap-2 mt-6">
               <button
                 disabled={savingMeasurements}
-                onClick={async () => {
-                  if (!pendingCompletion) return;
-                  if (!dims.length || !dims.width || !dims.height || !wgt.value) {
-                    toast({
-                      title: "Error",
-                      description: "Please enter all dimensions and weight.",
-                      variant: "destructive"
-                    });
-                    return;
-                  }
-                  try {
-                    setSavingMeasurements(true);
-                    const result = await saveFinalMeasurements(orderId, {
-                      dimensions: {
-                        length: Number(dims.length),
-                        width: Number(dims.width),
-                        height: Number(dims.height),
-                        units: dims.units,
-                      },
-                      weight: {
-                        value: Number(wgt.value),
-                        units: wgt.units,
-                      },
-                    });
-                    
-                    if (!result.success) {
-                      throw new Error(result.error || 'Failed to save measurements');
-                    }
-                  } catch (e) {
-                    console.error('Failed to save measurements', e);
-                  } finally {
-                    setSavingMeasurements(false);
-                  }
-                  onComplete(pendingCompletion.results, pendingCompletion.notes);
-                  setShowMeasurementsModal(false);
-                }}
+                onClick={saveFinalMeasurements}
                 className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 {savingMeasurements ? 'Saving…' : 'Save & Complete'}

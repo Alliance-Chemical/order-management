@@ -33,6 +33,8 @@ export default function PrintPreparationModalSimplified({
     regenerating,
     filteredItems,
     totalLabels,
+    mode,
+    setMode,
     handleQuantityChange,
     handlePrint
   } = usePrintPreparation({ order, onPrintComplete });
@@ -93,6 +95,8 @@ export default function PrintPreparationModalSimplified({
           onPrint={handlePrint}
           printing={printing}
           loading={loading}
+          mode={mode}
+          onModeChange={setMode}
         />
       </div>
     </div>

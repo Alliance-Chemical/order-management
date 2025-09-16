@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
-import ErrorBoundary from '@/components/error-boundary';
 import { buildInspectionItems } from '@/lib/inspection/items';
 import { getWorkspace } from '@/app/actions/workspace';
 
@@ -18,6 +17,7 @@ import PreMixInspection from '@/components/workspace/supervisor-view/PreMixInspe
 import PreShipInspection from '@/components/workspace/supervisor-view/PreShipInspection';
 import DocumentsHub from '@/components/workspace/DocumentsHub';
 import ActivityTimeline from '@/components/workspace/ActivityTimeline';
+import PrintPreparationModalSimplified from '@/components/desktop/PrintPreparationModalSimplified';
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
@@ -25,13 +25,51 @@ function classNames(...classes: string[]) {
 
 export default function WorkspacePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const orderId = params.orderId as string;
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('worker'); // Default to worker view
+  const viewQuery = searchParams?.get('view');
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    viewQuery === 'supervisor' ? 'supervisor' : 'worker'
+  );
   const [workerStep, setWorkerStep] = useState<AgentStep>('entry');
   const [activeTab, setActiveTab] = useState('overview'); // For supervisor view
   const [selectedItem, setSelectedItem] = useState<any>(null); // Track which item is being inspected
+  const [showPrintModal, setShowPrintModal] = useState(false);
+
+  useEffect(() => {
+    const queryMode: ViewMode = viewQuery === 'supervisor' ? 'supervisor' : 'worker';
+    setViewMode((current) => (current === queryMode ? current : queryMode));
+  }, [viewQuery]);
+
+  const updateViewMode = useCallback(
+    (mode: ViewMode) => {
+      setViewMode(mode);
+      const params = new URLSearchParams(searchParams ? searchParams.toString() : '');
+
+      if (mode === 'worker') {
+        params.delete('view');
+      } else {
+        params.set('view', mode);
+      }
+
+      const queryString = params.toString();
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const switchToSupervisor = useCallback(() => {
+    updateViewMode('supervisor');
+  }, [updateViewMode]);
+
+  const switchToWorker = useCallback(() => {
+    setWorkerStep('entry');
+    updateViewMode('worker');
+  }, [updateViewMode]);
 
   useEffect(() => {
     fetchWorkspace();
@@ -188,7 +226,7 @@ export default function WorkspacePage() {
           <EntryScreen 
             workspace={workspace}
             onStart={() => setWorkerStep('inspection')}
-            onSwitchToSupervisor={() => setViewMode('supervisor')}
+            onSwitchToSupervisor={switchToSupervisor}
             onSelectItem={(item) => {
               setSelectedItem(item);
               setWorkerStep('inspection');
@@ -202,21 +240,8 @@ export default function WorkspacePage() {
         // Dynamically adjust inspection items based on workflow assignments
         const sourceAssignments = (workspace.moduleStates as any)?.sourceAssignments || [];
         
-        // If a specific item was selected, check its workflow type
-        let itemWorkflowType = null;
-        if (selectedItem) {
-          const itemAssignment = sourceAssignments.find((sa: any) => {
-            if (!sa.productName || !selectedItem.name) return false;
-            const productNameLower = sa.productName.toLowerCase();
-            const itemNameLower = selectedItem.name.toLowerCase();
-            return itemNameLower.includes(productNameLower) || 
-                   productNameLower.includes(itemNameLower.split('-')[0].trim());
-          });
-          itemWorkflowType = itemAssignment?.workflowType;
-        }
-        
         // Build inspection items via shared helper
-        const inspectionItems = buildInspectionItems(workspace as any, selectedItem);
+        const inspectionItems = buildInspectionItems(workspace as any);
 
         // If a specific item was selected, show only that item
         const itemsToInspect = selectedItem ? [selectedItem] : (workspace.shipstationData?.items || []);
@@ -238,7 +263,7 @@ export default function WorkspacePage() {
               setSelectedItem(null);
               setWorkerStep('entry');
             }}
-            onSwitchToSupervisor={() => setViewMode('supervisor')}
+            onSwitchToSupervisor={switchToSupervisor}
           />
           <ConnectionStatus />
           </>
@@ -291,10 +316,7 @@ export default function WorkspacePage() {
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <span className="text-sm font-medium">Current View: Supervisor</span>
           <button
-            onClick={() => {
-              setViewMode('worker');
-              setWorkerStep('entry');
-            }}
+            onClick={switchToWorker}
             className="text-sm underline hover:no-underline"
           >
             Switch to Worker View
@@ -335,6 +357,12 @@ export default function WorkspacePage() {
                 </div>
               </div>
               <div className="flex gap-2">
+                <button
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+                  onClick={() => setShowPrintModal(true)}
+                >
+                  Print Labels
+                </button>
                 <button className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium">
                   Export
                 </button>
@@ -378,6 +406,19 @@ export default function WorkspacePage() {
           onStateChange={(state: Record<string, any>) => handleModuleStateChange(activeTab, state)}
         />
       </main>
+
+      {/* Supervisor: Print Labels Modal */}
+      {showPrintModal && (
+        <PrintPreparationModalSimplified
+          order={{
+            orderId: workspace.orderId,
+            orderNumber: workspace.orderNumber,
+            items: workspace.shipstationData?.items || []
+          }}
+          onClose={() => setShowPrintModal(false)}
+          onPrintComplete={() => setShowPrintModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -105,9 +105,14 @@ export default function WorkQueueDashboard() {
     setExpandedOrders(newExpanded);
   };
 
-  const navigateToWorkspace = (orderId: number) => {
-    // Navigate to workspace with supervisor view
-    router.push(`/workspace/${orderId}?view=supervisor`);
+  const navigateToWorkspace = (orderId: number, view: 'worker' | 'supervisor' = 'worker') => {
+    // Provide direct links for worker and supervisor experiences
+    if (view === 'supervisor') {
+      router.push(`/workspace/${orderId}?view=supervisor`);
+      return;
+    }
+
+    router.push(`/workspace/${orderId}`);
   };
 
   // Calculate pagination
@@ -277,14 +282,26 @@ export default function WorkQueueDashboard() {
                             <Button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigateToWorkspace(order.orderId);
+                                navigateToWorkspace(order.orderId, 'worker');
                               }}
                               variant="warehouse-info"
                               size="warehouse"
-                              title="Open Workspace"
+                              title="Open Worker View"
                             >
                               <ArrowRightIcon className="mr-2 h-4 w-4" />
-                              Workspace
+                              Worker View
+                            </Button>
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigateToWorkspace(order.orderId, 'supervisor');
+                              }}
+                              variant="neutral"
+                              size="warehouse"
+                              title="Open Supervisor View"
+                            >
+                              <ArrowRightIcon className="mr-2 h-4 w-4" />
+                              Supervisor View
                             </Button>
                             <Button
                               onClick={(e) => {

@@ -15,14 +15,21 @@ export function detectContainer(itemName: string, sku: string | undefined, qty: 
   if (name.includes('ibc') || name.includes('intermediate bulk') || skuL.includes('ibc')) return { type: 'ibc', labels: Math.max(1, qty) };
 
   // Freight groupings: default to 1 freight label per line
-  if (name.includes('case') || name.includes('pack') || name.includes('kit')) return { type: 'freight-case', labels: 1 };
-  if (name.includes('pail')) return { type: 'freight-pail', labels: 1 };
-  if (name.includes('box') || skuL.includes('box')) return { type: 'freight-box', labels: 1 };
+  if (name.includes('case') || name.includes('pack') || name.includes('kit')) {
+    return { type: 'freight-case', labels: Math.max(1, qty) };
+  }
+  if (name.includes('pail')) {
+    return { type: 'freight-pail', labels: Math.max(1, qty) };
+  }
+  if (name.includes('box') || skuL.includes('box')) {
+    return { type: 'freight-box', labels: Math.max(1, qty) };
+  }
 
   // Gallon is guarded by not matching above terms
-  if (name.includes('gallon') || name.includes('gal')) return { type: 'freight-gallon', labels: 1 };
+  if (name.includes('gallon') || name.includes('gal')) {
+    return { type: 'freight-gallon', labels: Math.max(1, qty) };
+  }
 
   // Fallback: one label per each small container
   return { type: 'container', labels: Math.max(1, qty) };
 }
-

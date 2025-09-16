@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
 import { Button } from '@/components/ui/button';
-import StatusLight from '@/components/ui/StatusLight';
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {
   const [itemStatuses, setItemStatuses] = useState<Record<string, 'pending' | 'in_progress' | 'completed'>>({});
@@ -33,11 +32,6 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
   // Helper to get workflow type for an item (simplified - use workspace level)
   const getItemWorkflowType = (item: any) => {
     return workspace.workflowType || 'pump_and_fill';
-  };
-  
-  // Helper to check if dilution is required (placeholder - would need actual logic)
-  const requiresDilution = (item: any) => {
-    return false; // Placeholder
   };
   
   // Handle item selection
@@ -192,7 +186,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
                       unitPrice: item.unitPrice
                     }}
                     workflowType={workflowType}
-                    requiresDilution={requiresDilution(item)}
+                    requiresDilution={false}
                     status={status}
                     onStartInspection={() => handleSelectItem(item)}
                   />

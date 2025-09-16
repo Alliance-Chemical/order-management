@@ -32,6 +32,7 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
   const [printing, setPrinting] = useState(false);
   const [labelQuantities, setLabelQuantities] = useState<Record<string, number>>({});
   const [regenerating, setRegenerating] = useState<Record<string, boolean>>({});
+  const [mode, setMode] = useState<'reprint' | 'generate'>('reprint');
   
   // Store regenerated QR codes in ref to avoid async setState issues
   const regeneratedQRsRef = useRef<Record<string, QRCode[]>>({});
@@ -73,16 +74,7 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
     if (newQuantity < 1) return;
     
     setLabelQuantities(prev => ({ ...prev, [itemName]: newQuantity }));
-    
-    // Regenerate QR codes if quantity changed
-    const currentQRs = qrCodes.filter(qr => 
-      qr.encodedData?.itemName === itemName || 
-      qr.metadata?.itemName === itemName
-    );
-    
-    if (currentQRs.length !== newQuantity) {
-      await regenerateQRsForItem(itemName, newQuantity);
-    }
+    // Do not auto-regenerate; reprints are default. Generating new codes should be explicit.
   };
 
   const regenerateQRsForItem = async (itemName: string, quantity: number) => {
@@ -130,6 +122,38 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
     warehouseFeedback.buttonPress();
 
     try {
+      // If in generate mode, create any missing labels first (non-destructive)
+      if (mode === 'generate') {
+        const items = filterOutDiscounts(order.items || []);
+        // Compute additional counts needed per item: desired - existing
+        const byItem = new Map<string, QRCode[]>();
+        qrCodes.forEach(qr => {
+          const name = qr.encodedData?.itemName || qr.metadata?.itemName || 'UNKNOWN_ITEM';
+          if (!byItem.has(name)) byItem.set(name, []);
+          byItem.get(name)!.push(qr);
+        });
+
+        const additions: Array<{ name: string; labelCount: number; sku?: string }> = [];
+        items.forEach(item => {
+          const current = byItem.get(item.name)?.length || 0;
+          const desired = Math.max(1, labelQuantities[item.name] || current || 1);
+          const delta = desired - current;
+          if (delta > 0) {
+            additions.push({ name: item.name, sku: item.sku, labelCount: delta });
+          }
+        });
+
+        if (additions.length > 0) {
+          const { addQRCodes } = await import('@/app/actions/qr');
+          const result = await addQRCodes(order.orderId.toString(), additions);
+          if (result.success && result.qrCodes) {
+            setQrCodes(prev => [...prev, ...result.qrCodes]);
+          } else {
+            throw new Error(result.error || 'Failed to add labels');
+          }
+        }
+      }
+
       // Filter out any QR codes that are missing shortCode
       const validQRs = qrCodes.filter(qr => qr.shortCode);
 
@@ -143,17 +167,61 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
         qrType: qr.qrType
       })));
 
+      // Build list to print matching requested quantities by item name.
+      // In reprint mode, duplicates are reprinted; in generate mode, new labels should fill the gap now.
+      const byItem = new Map<string, QRCode[]>();
+      validQRs.forEach(qr => {
+        const name = qr.encodedData?.itemName || qr.metadata?.itemName || 'UNKNOWN_ITEM';
+        if (!byItem.has(name)) byItem.set(name, []);
+        byItem.get(name)!.push(qr);
+      });
+
+      const toPrint: Array<{
+        id: string;
+        code: string;
+        shortCode?: string;
+        sequenceNumber?: number;
+        sequenceTotal?: number;
+        itemName?: string;
+      }> = [];
+      const items = filterOutDiscounts(order.items || []);
+      if (items.length > 0) {
+        items.forEach(item => {
+          const pool = byItem.get(item.name) || [];
+          if (pool.length === 0) return;
+          const desired = Math.max(1, labelQuantities[item.name] ?? pool.length);
+          for (let i = 0; i < desired; i++) {
+            const pick = pool[i % pool.length];
+            toPrint.push({
+              id: pick.id,
+              code: pick.code,
+              shortCode: pick.shortCode,
+              sequenceNumber: i + 1,
+              sequenceTotal: desired,
+              itemName: item.name
+            });
+          }
+        });
+      } else {
+        // No items; print all existing once
+        validQRs.forEach((qr, index) =>
+          toPrint.push({
+            id: qr.id,
+            code: qr.code,
+            shortCode: qr.shortCode,
+            sequenceNumber: index + 1,
+            sequenceTotal: validQRs.length
+          })
+        );
+      }
+
       // Call actual print API
       const response = await fetch(`/api/qr/print`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/pdf' },
         body: JSON.stringify({
           orderId: order.orderId,
-          qrCodes: validQRs.map(qr => ({
-            id: qr.id,
-            code: qr.code,
-            shortCode: qr.shortCode
-          })),
+          qrCodes: toPrint,
           // Defaults used by API: labelSize '4x6', fulfillmentMethod 'standard'
           // Explicitly pass to be clear and future-proof
           labelSize: '4x6',
@@ -221,6 +289,8 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
     regenerating,
     filteredItems,
     totalLabels,
+    mode,
+    setMode,
     handleQuantityChange,
     handlePrint
   };

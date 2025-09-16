@@ -61,25 +61,68 @@ const buttonVariants = cva(
 )
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'size'>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
   loading?: boolean
+  fullWidth?: boolean
+  icon?: React.ReactNode
+  haptic?: 'light' | 'success' | 'warning' | 'error'
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, loading, ...props }, ref) => {
+  (
+    {
+      className,
+      variant,
+      size,
+      asChild = false,
+      loading,
+      fullWidth,
+      icon,
+      haptic,
+      ...props
+    },
+    ref
+  ) => {
     const Comp = asChild ? Slot : "button"
 
-    // Handle loading prop properly for DOM
-    const domProps = loading !== undefined ? { ...props, 'data-loading': loading } : props
+    // Separate children and onClick so we can wrap behavior and avoid double-render
+    const { children, onClick, ...rest } = props
+
+    // Handle loading prop properly for DOM and strip custom props
+    const domProps = loading !== undefined ? { ...rest, 'data-loading': loading } : rest
+
+    const handleClick: React.MouseEventHandler<HTMLButtonElement> = (e) => {
+      // Optional haptic feedback
+      if (haptic && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          const patterns: Record<string, number | number[]> = {
+            light: 10,
+            success: [10, 30, 10],
+            warning: [30, 40, 30],
+            error: [40, 60, 40],
+          }
+          // @ts-ignore - vibrate may not exist in some TS lib targets
+          navigator.vibrate?.(patterns[haptic] ?? 10)
+        } catch {}
+      }
+      onClick?.(e)
+    }
 
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(
+          buttonVariants({ variant, size, className }),
+          fullWidth && 'w-full'
+        )}
         ref={ref}
+        onClick={handleClick}
         {...domProps}
-      />
+      >
+        {icon ? <span className="mr-2 inline-flex items-center">{icon}</span> : null}
+        {children}
+      </Comp>
     )
   }
 )
