@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { kvQueue } from '@/lib/queue/kv-queue';
 
 export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Get stats for all queues
     const [jobs, alerts, webhooks] = await Promise.all([

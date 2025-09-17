@@ -4,6 +4,21 @@ import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
 import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
 
+type PalletItem = {
+  id: string;
+  name?: string;
+  quantity?: number;
+  addedAt: string;
+  [key: string]: unknown;
+};
+
+type PalletEntry = {
+  id: string;
+  items?: PalletItem[];
+  updatedAt?: string;
+  [key: string]: unknown;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string; palletId: string }> }
@@ -11,7 +26,7 @@ export async function POST(
   try {
     const { orderId, palletId } = await params;
     const orderIdBigInt = asBigInt(orderId);
-    const body = await request.json();
+    const body = await request.json() as Record<string, unknown>;
     
     const [workspace] = await db
       .select()
@@ -25,8 +40,8 @@ export async function POST(
     
     // Find pallet and add items
     const currentData = workspace.shipstationData || {};
-    const pallets = currentData.pallets || [];
-    const palletIndex = pallets.findIndex((p: any) => p.id === palletId);
+    const pallets: PalletEntry[] = currentData.pallets || [];
+    const palletIndex = pallets.findIndex((p) => p.id === palletId);
     
     if (palletIndex === -1) {
       return NextResponse.json({ error: 'Pallet not found' }, { status: 404 });
@@ -37,7 +52,7 @@ export async function POST(
       pallets[palletIndex].items = [];
     }
     
-    const newItem = {
+    const newItem: PalletItem = {
       id: crypto.randomUUID(),
       ...body,
       addedAt: new Date().toISOString()

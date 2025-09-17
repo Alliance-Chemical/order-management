@@ -1,23 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import QueryProcessor, { QueryIntent } from '@/lib/rag/query-processor';
-import HybridSearch, { Document, SlidingWindow } from '@/lib/rag/hybrid-search';
-import Reranker from '@/lib/rag/reranker';
+import QueryProcessor, { QueryContext, QueryIntent, ProcessedQuery } from '@/lib/rag/query-processor';
+import HybridSearch, { Document, SearchResult } from '@/lib/rag/hybrid-search';
+import Reranker, { RerankedResult } from '@/lib/rag/reranker';
 
 // Use Node.js runtime for file access
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Cache for index and search components
-let ragIndex: any = null;
+interface RagIndex {
+  documents: Document[];
+  model: string;
+  dimensions: number;
+  stats: {
+    sources: Record<string, number>;
+    [key: string]: unknown;
+  };
+}
+
+let ragIndex: RagIndex | null = null;
 let hybridSearch: HybridSearch | null = null;
 let reranker: Reranker | null = null;
+
+type HashingVectorFn = (text: string, dimensions?: number) => number[];
+
+async function loadHashingVector(): Promise<HashingVectorFn> {
+  const embeddingsModule = (await import('../../../../lib/rag/embeddings.js')) as {
+    default?: { hashingVector: HashingVectorFn };
+    hashingVector?: HashingVectorFn;
+  };
+  const resolvedModule = embeddingsModule.default ?? embeddingsModule;
+  if (!resolvedModule.hashingVector) {
+    throw new Error('hashingVector implementation not found');
+  }
+  return resolvedModule.hashingVector;
+}
 
 /**
  * Load and initialize RAG components
  */
-async function initializeComponents() {
+async function initializeComponents(): Promise<{
+  ragIndex: RagIndex;
+  hybridSearch: HybridSearch;
+  reranker: Reranker;
+}> {
   if (ragIndex && hybridSearch && reranker) {
     return { ragIndex, hybridSearch, reranker };
   }
@@ -31,7 +59,7 @@ async function initializeComponents() {
   
   console.log('Loading RAG index...');
   const indexData = fs.readFileSync(indexPath, 'utf8');
-  ragIndex = JSON.parse(indexData);
+  ragIndex = JSON.parse(indexData) as RagIndex;
   
   console.log(`Loaded ${ragIndex.documents.length} documents`);
   
@@ -45,6 +73,10 @@ async function initializeComponents() {
   // Initialize reranker
   reranker = new Reranker();
   
+  if (!ragIndex || !hybridSearch || !reranker) {
+    throw new Error('Failed to initialize RAG components');
+  }
+
   return { ragIndex, hybridSearch, reranker };
 }
 
@@ -55,8 +87,8 @@ async function generateEmbedding(text: string): Promise<number[]> {
   const apiKey = process.env.OPENAI_API_KEY;
   
   if (!apiKey) {
-    // Fallback to hash-based embedding
-    const { hashingVector } = require('../../../../lib/rag/embeddings');
+    // Fallback to hash-based embedding when no API key is configured
+    const hashingVector = await loadHashingVector();
     return hashingVector(text, ragIndex?.dimensions || 512);
   }
   
@@ -77,11 +109,11 @@ async function generateEmbedding(text: string): Promise<number[]> {
       throw new Error(`OpenAI API error: ${response.status}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as { data: Array<{ embedding: number[] }> };
     return data.data[0].embedding;
   } catch (error) {
     console.error('OpenAI embedding failed, using fallback:', error);
-    const { hashingVector } = require('../../../../lib/rag/embeddings');
+    const hashingVector = await loadHashingVector();
     return hashingVector(text, ragIndex?.dimensions || 512);
   }
 }
@@ -89,18 +121,32 @@ async function generateEmbedding(text: string): Promise<number[]> {
 /**
  * Advanced search with all enhancements
  */
+type SearchOptions = {
+  limit?: number;
+  sources?: string[];
+  minScore?: number;
+  useReranking?: boolean;
+  useWindowing?: boolean;
+  explainScores?: boolean;
+  context?: QueryContext;
+};
+
+interface SearchExecution {
+  query: ProcessedQuery;
+  results: Array<SearchResult | RerankedResult>;
+  context: string;
+  stats: {
+    totalMatches: number;
+    reranked: boolean;
+    topScore: number;
+    processingTime: number;
+  };
+}
+
 async function performAdvancedSearch(
   query: string,
-  options: {
-    limit?: number;
-    sources?: string[];
-    minScore?: number;
-    useReranking?: boolean;
-    useWindowing?: boolean;
-    explainScores?: boolean;
-    context?: any;
-  } = {}
-) {
+  options: SearchOptions = {}
+): Promise<SearchExecution> {
   const {
     limit = 10,
     sources = ['hmt', 'cfr', 'erg', 'products'],
@@ -142,7 +188,7 @@ async function performAdvancedSearch(
   );
 
   // Apply re-ranking if enabled
-  let finalResults = searchResults;
+  let finalResults: Array<SearchResult | RerankedResult> = searchResults;
   if (useReranking && searchResults.length > 0) {
     finalResults = reranker.rerank(
       processedQuery,
@@ -212,7 +258,7 @@ export async function POST(request: NextRequest) {
     searchResult.stats.processingTime = Date.now() - startTime;
 
     // Format response
-    const formattedResults = searchResult.results.map((result: any) => ({
+    const formattedResults = searchResult.results.map((result) => ({
       id: result.id,
       source: result.source,
       text: result.text.substring(0, 200) + '...',
@@ -261,8 +307,14 @@ export async function POST(request: NextRequest) {
 /**
  * Generate insights from search results
  */
-function generateInsights(searchResult: any): any {
-  const insights: any = {
+interface SearchInsights {
+  summary: string[];
+  recommendations: string[];
+  warnings: string[];
+}
+
+function generateInsights(searchResult: SearchExecution): SearchInsights {
+  const insights: SearchInsights = {
     summary: [],
     recommendations: [],
     warnings: []
@@ -274,7 +326,7 @@ function generateInsights(searchResult: any): any {
   // Intent-based insights
   switch (query.intent) {
     case QueryIntent.EMERGENCY_RESPONSE:
-      if (results.some((r: any) => r.source === 'erg')) {
+      if (results.some((r) => r.source === 'erg')) {
         insights.summary.push('Found emergency response guidance');
       } else {
         insights.recommendations.push('Consider checking ERG guides for emergency procedures');
@@ -285,13 +337,13 @@ function generateInsights(searchResult: any): any {
       if (query.entities.unNumbers.length > 0) {
         insights.summary.push(`Classification found for ${query.entities.unNumbers.join(', ')}`);
       }
-      if (!results.some((r: any) => r.metadata?.freightClass)) {
+      if (!results.some((r) => r.metadata?.freightClass)) {
         insights.recommendations.push('May need to determine freight class for shipping');
       }
       break;
     
     case QueryIntent.SHIPPING_REQUIREMENTS:
-      if (!results.some((r: any) => r.source === 'cfr')) {
+      if (!results.some((r) => r.source === 'cfr')) {
         insights.warnings.push('No specific CFR regulations found - verify compliance requirements');
       }
       break;
@@ -299,7 +351,7 @@ function generateInsights(searchResult: any): any {
 
   // Entity-based insights
   if (query.entities.unNumbers.length > 0) {
-    const foundUN = results.some((r: any) => 
+    const foundUN = results.some((r) => 
       query.entities.unNumbers.includes(r.metadata?.unNumber)
     );
     if (foundUN) {
@@ -311,7 +363,7 @@ function generateInsights(searchResult: any): any {
 
   // Hazmat insights
   if (query.context?.needsHazmatData) {
-    const hasHazmat = results.some((r: any) => 
+    const hasHazmat = results.some((r) => 
       r.metadata?.isHazardous || r.metadata?.hazardClass
     );
     if (hasHazmat) {
@@ -322,7 +374,7 @@ function generateInsights(searchResult: any): any {
 
   // Freight booking insights
   if (query.context?.isFreightBooking) {
-    const hasFreightInfo = results.some((r: any) => 
+    const hasFreightInfo = results.some((r) => 
       r.metadata?.freightClass || r.metadata?.nmfcCode
     );
     if (hasFreightInfo) {
@@ -341,7 +393,7 @@ function generateInsights(searchResult: any): any {
   }
 
   // Source diversity
-  const sources = new Set(results.map((r: any) => r.source));
+  const sources = new Set(results.map((r) => r.source));
   if (sources.size >= 3) {
     insights.summary.push('Information from multiple authoritative sources');
   }

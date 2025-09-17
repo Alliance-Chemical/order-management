@@ -32,8 +32,8 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
   const handleWorkerInspectionComplete = async (results: InspectionResults) => {
-    const module = workspace.workflowPhase === 'pre_mix' ? 'pre_mix' : 'pre_ship';
-    await onModuleStateChange(module, results as unknown as Record<string, any>);
+    const workflowModule = workspace.workflowPhase === 'pre_mix' ? 'pre_mix' : 'pre_ship';
+    await onModuleStateChange(workflowModule, results as unknown as Record<string, any>);
     setWorkerStep('complete');
   };
 

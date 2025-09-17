@@ -1,10 +1,11 @@
 import { WorkspaceRepository } from './repository';
-import { ShipStationClient } from '../shipstation/client';
+import { ShipStationClient, type ShipStationOrder } from '../shipstation/client';
 import { QRGenerator } from '../qr/generator';
 import { getS3BucketName, createOrderFolderPath } from '@/lib/aws/s3-client';
-import { v4 as uuidv4 } from 'uuid';
-import { markFreightStaged, markFreightReady, clearFreightStaged } from '../shipstation/tags';
-import { qrGenerationQueue, alertQueue } from '../kv-queue';
+import { markFreightStaged, markFreightReady } from '../shipstation/tags';
+
+type ModuleState = Record<string, unknown>;
+type ActivityMetadata = Record<string, unknown>;
 
 export class WorkspaceService {
   public repository: WorkspaceRepository;
@@ -25,7 +26,7 @@ export class WorkspaceService {
         console.log(`Workspace already exists for order ${orderNumber}`);
         return existing;
       }
-    } catch (error) {
+    } catch {
       console.log(`No existing workspace for order ${orderNumber}, creating new one`);
     }
 
@@ -62,7 +63,7 @@ export class WorkspaceService {
     return workspace;
   }
 
-  private async fetchShipStationData(orderId: number, orderNumber: string) {
+  private async fetchShipStationData(orderId: number, orderNumber: string): Promise<ShipStationOrder | null> {
     try {
       const order = await this.shipstation.getOrder(orderId);
       return order;
@@ -72,7 +73,12 @@ export class WorkspaceService {
     }
   }
 
-  private async queueQRGeneration(workspaceId: string, orderId: number, orderNumber: string, shipstationData: any) {
+  private async queueQRGeneration(
+    workspaceId: string,
+    orderId: number,
+    orderNumber: string,
+    shipstationData: ShipStationOrder | null
+  ) {
     // Queue QR generation using improved KV queue with deduplication
     const { kvQueue } = await import('@/lib/queue/kv-queue');
     await kvQueue.enqueue(
@@ -104,16 +110,19 @@ export class WorkspaceService {
     return order;
   }
 
-  async updateModuleState(orderIdStr: string, module: string, state: any, userId: string) {
+  async updateModuleState(orderIdStr: string, module: string, state: ModuleState, userId: string) {
     const orderId = parseInt(orderIdStr);
     const workspace = await this.repository.findByOrderId(orderId);
     if (!workspace) throw new Error('Workspace not found');
 
-    const currentStates = workspace.moduleStates || {};
-    currentStates[module] = state;
+    const currentStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {};
+    const updatedStates = {
+      ...currentStates,
+      [module]: state,
+    };
 
     await this.repository.update(workspace.id, {
-      moduleStates: currentStates,
+      moduleStates: updatedStates,
       updatedBy: userId,
     });
 
@@ -123,13 +132,17 @@ export class WorkspaceService {
     await this.checkStatusTriggers(workspace.id, workspace.orderId, module, state);
   }
 
-  private async checkStatusTriggers(workspaceId: string, orderId: number, module: string, state: any) {
+  private async checkStatusTriggers(workspaceId: string, orderId: number, module: string, state: ModuleState) {
     // We already have both workspaceId (UUID) and orderId (number)
     
+    const completed = typeof state === 'object' && state !== null && 'completed' in state
+      ? Boolean((state as { completed?: boolean }).completed)
+      : false;
+
     // Check if we need to send alerts based on module state changes
-    if (module === 'pre_mix' && state.completed) {
+    if (module === 'pre_mix' && completed) {
       await this.queueAlert(workspaceId, 'ready_to_pump');
-    } else if (module === 'pre_ship' && state.completed) {
+    } else if (module === 'pre_ship' && completed) {
       await this.queueAlert(workspaceId, 'ready_to_ship');
       // Mark freight as ready when pre-ship inspection passes
       try {
@@ -145,7 +158,11 @@ export class WorkspaceService {
     }
     
     // Check for planning locked state
-    if (module === 'planning' && state.locked === true) {
+    const locked = typeof state === 'object' && state !== null && 'locked' in state
+      ? (state as { locked?: boolean }).locked === true
+      : false;
+
+    if (module === 'planning' && locked) {
       try {
         await markFreightStaged(orderId);
         await this.logActivity(workspaceId, 'shipstation_tag_added', 'system', {
@@ -183,7 +200,7 @@ export class WorkspaceService {
     });
   }
 
-  private async logActivity(workspaceId: string, type: string, userId: string, metadata?: any) {
+  private async logActivity(workspaceId: string, type: string, userId: string, metadata?: ActivityMetadata) {
     await this.repository.logActivity({
       workspaceId,
       activityType: type,

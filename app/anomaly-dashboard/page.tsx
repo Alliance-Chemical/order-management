@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   ExclamationTriangleIcon, 
   ChartBarIcon,
@@ -9,13 +9,49 @@ import {
 } from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 
+type HighRiskCombination = {
+  product: string;
+  customer: string;
+  predicted_failure_rate: number;
+  common_issues?: string[];
+};
+
+type RiskPattern = {
+  pattern: string;
+  risk_score: number;
+  affected_products?: string[];
+  recommendation?: string;
+};
+
+type AlertEntry = {
+  product?: string;
+  customer?: string;
+  risk?: number;
+  action?: string;
+};
+
+type AnalysisSummary = {
+  period: string;
+  dataPoints: number;
+  uniqueProducts: number;
+  uniqueCustomers: number;
+};
+
+type AnomalyDashboardResponse = {
+  success: boolean;
+  analysis?: AnalysisSummary;
+  riskPatterns?: RiskPattern[];
+  highRiskCombinations?: HighRiskCombination[];
+  alerts?: AlertEntry[];
+};
+
 export default function AnomalyDashboard() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false);
-  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [analysisData, setAnalysisData] = useState<AnomalyDashboardResponse | null>(null);
   const [selectedDays, setSelectedDays] = useState(30);
 
-  const runAnalysis = async () => {
+  const runAnalysis = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await fetch('/api/ai/anomaly-detection', {
@@ -24,7 +60,7 @@ export default function AnomalyDashboard() {
         body: JSON.stringify({ days: selectedDays, runAnalysis: true })
       });
       
-      const data = await response.json();
+      const data = await response.json() as AnomalyDashboardResponse;
       if (data.success) {
         setAnalysisData(data);
       }
@@ -38,11 +74,11 @@ export default function AnomalyDashboard() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedDays, toast]);
 
   useEffect(() => {
     runAnalysis();
-  }, []);
+  }, [runAnalysis]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -143,7 +179,7 @@ export default function AnomalyDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {analysisData.highRiskCombinations.map((combo: any, i: number) => (
+                      {(analysisData.highRiskCombinations ?? []).map((combo, i) => (
                         <tr key={i} className="border-t">
                           <td className="px-4 py-3">{combo.product}</td>
                           <td className="px-4 py-3">{combo.customer}</td>
@@ -174,7 +210,7 @@ export default function AnomalyDashboard() {
               <div className="bg-white rounded-lg shadow-md p-6 mb-6">
                 <h2 className="text-xl font-semibold mb-4">Identified Risk Patterns</h2>
                 <div className="space-y-4">
-                  {analysisData.riskPatterns.map((pattern: any, i: number) => (
+                  {(analysisData.riskPatterns ?? []).map((pattern, i) => (
                     <div key={i} className="border-l-4 border-blue-500 pl-4 py-2">
                       <div className="flex justify-between items-start">
                         <div>

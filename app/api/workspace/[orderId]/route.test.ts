@@ -17,7 +17,7 @@ describe('/api/workspace/[orderId]', () => {
   describe('GET /api/workspace/[orderId]', () => {
     it('should fetch a workspace successfully', async () => {
       // Seed test data
-      const workspace = await seedTestWorkspace(testDb, '12345')
+      await seedTestWorkspace(testDb, '12345')
       
       // Mock the database connection in the route handler
       vi.mock('@/lib/db', () => ({
@@ -63,7 +63,7 @@ describe('/api/workspace/[orderId]', () => {
   describe('PUT /api/workspace/[orderId]', () => {
     it('should update workspace module status', async () => {
       // Seed test data
-      const workspace = await seedTestWorkspace(testDb, '12345')
+      await seedTestWorkspace(testDb, '12345')
       
       // Mock the database connection
       vi.mock('@/lib/db', () => ({

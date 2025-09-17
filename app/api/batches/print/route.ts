@@ -4,6 +4,9 @@ import { batchHistory, qrCodes } from '@/lib/db/schema/qr-workspace';
 import { eq, inArray } from 'drizzle-orm';
 
 // Import PDF generation utilities based on environment
+type BatchHistoryRecord = typeof batchHistory.$inferSelect;
+type QrCodeRecord = typeof qrCodes.$inferSelect;
+
 let generatePDF: (htmlContent: string) => Promise<Buffer>;
 
 if (process.env.VERCEL) {
@@ -49,7 +52,7 @@ if (process.env.VERCEL) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body: { batchId?: string } = await request.json();
     const { batchId } = body;
 
     if (!batchId) {
@@ -73,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch linked destination QR codes if any
-    let destinationContainers: any[] = [];
+    let destinationContainers: QrCodeRecord[] = [];
     if (batch.destinationQrIds && batch.destinationQrIds.length > 0) {
       destinationContainers = await db
         .select()
@@ -104,7 +107,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateElegantHTML(batch: any, destinationContainers: any[]): string {
+function generateElegantHTML(
+  batch: BatchHistoryRecord,
+  destinationContainers: QrCodeRecord[],
+): string {
   const totalWeight = parseFloat(batch.chemicalWeightLbs) + parseFloat(batch.waterWeightLbs);
   const chemicalPercent = (parseFloat(batch.chemicalVolumeGallons) / parseFloat(batch.totalVolumeGallons)) * 100;
   const waterPercent = (parseFloat(batch.waterVolumeGallons) / parseFloat(batch.totalVolumeGallons)) * 100;

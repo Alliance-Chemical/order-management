@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kvQueue, withLock } from '@/lib/queue/kv-queue';
-import { JobSchemas } from '@/lib/queue/schemas';
+import { JobSchemas, type JobType } from '@/lib/queue/schemas';
 import { WorkspaceService } from '@/lib/services/workspace/service';
-import { QRGenerator } from '@/src/services/qr/qrGenerator';
 
 export const runtime = 'nodejs'; // Required for database access
 
 const workspaceService = new WorkspaceService();
-const qrGenerator = new QRGenerator();
 
 // Job handlers
-const handlers = {
-  async qr_generation(payload: any) {
+const handlers: Record<JobType, (payload: unknown) => Promise<void>> = {
+  async qr_generation(payload) {
     const validated = JobSchemas.qr_generation.parse(payload);
     console.log('Processing QR generation:', validated);
 
@@ -78,7 +76,7 @@ const handlers = {
     }
   },
 
-  async alert(payload: any) {
+  async alert(payload) {
     const validated = JobSchemas.alert.parse(payload);
     console.log('Processing alert:', validated);
     
@@ -91,7 +89,7 @@ const handlers = {
     });
   },
 
-  async webhook(payload: any) {
+  async webhook(payload) {
     const validated = JobSchemas.webhook.parse(payload);
     console.log('Processing webhook:', validated);
     
@@ -107,7 +105,7 @@ const handlers = {
     }
   },
 
-  async tag_sync(payload: any) {
+  async tag_sync(payload) {
     const validated = JobSchemas.tag_sync.parse(payload);
     console.log('Processing tag sync:', validated);
     
@@ -121,7 +119,7 @@ const handlers = {
   },
 };
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     // Prevent concurrent processing with distributed lock
     const result = await withLock('jobs-processor', 55, async () => {

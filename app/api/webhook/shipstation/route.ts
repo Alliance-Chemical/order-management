@@ -1,9 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { tagSyncService } from '@/lib/services/shipstation/tag-sync';
-import { qrGenerationQueue, webhookQueue } from '@/lib/services/kv-queue';
 
 const workspaceService = new WorkspaceService();
+
+interface ShipStationOrderItem {
+  name?: string;
+  quantity?: number;
+  sku?: string;
+  unitPrice?: number;
+  lineItemKey?: string;
+  orderItemId?: number;
+  options?: unknown[];
+}
+
+interface ShipStationOrder {
+  orderId: number;
+  orderNumber?: string;
+  tagIds?: number[];
+  items?: ShipStationOrderItem[];
+}
 
 // ShipStation webhook handler
 export async function POST(request: NextRequest) {
@@ -36,7 +52,15 @@ export async function POST(request: NextRequest) {
     if (resource_type === 'ORDER_NOTIFY' && action === 'ORDER_UPDATED') {
       // Fetch the actual order data from ShipStation
       const orderId = extractOrderIdFromUrl(resource_url);
+      if (!orderId) {
+        console.warn('Unable to determine order ID from webhook URL:', resource_url);
+        return NextResponse.json({ success: false, message: 'Order ID not found' }, { status: 400 });
+      }
+
       const orderData = await fetchShipStationOrder(orderId);
+      if (!orderData) {
+        return NextResponse.json({ success: false, message: 'Order data unavailable' }, { status: 502 });
+      }
       
       // Check if order has the freight tag (19844 from your .env)
       const freightTagId = parseInt(process.env.FREIGHT_ORDER_TAG || '19844');
@@ -75,16 +99,22 @@ export async function POST(request: NextRequest) {
           metadata: {
             orderId: orderData.orderId,
             orderNumber: orderData.orderNumber,
-            items: orderData.items?.map((item: any) => ({
-              name: item.name,
-              quantity: item.quantity,
-              sku: item.sku,
-              unitPrice: item.unitPrice,
-              isDiscount: item.name?.toLowerCase().includes('discount') || 
-                         item.unitPrice < 0 || 
-                         item.lineItemKey?.includes('discount'),
-              customAttributes: item.options || [],
-            })) || [],
+            items: (orderData.items ?? []).map((item) => {
+              const name = item.name ?? 'Unknown Item';
+              const unitPrice = item.unitPrice ?? 0;
+              const lineItemKey = item.lineItemKey ?? '';
+              return {
+                name,
+                quantity: item.quantity ?? 0,
+                sku: item.sku ?? 'N/A',
+                unitPrice,
+                isDiscount:
+                  name.toLowerCase().includes('discount') ||
+                  unitPrice < 0 ||
+                  lineItemKey.includes('discount'),
+                customAttributes: item.options ?? [],
+              };
+            }),
           }
         });
         
@@ -99,7 +129,15 @@ export async function POST(request: NextRequest) {
     // Handle tag update events
     if (resource_type === 'TAG_UPDATE' || action === 'TAG_ADDED' || action === 'TAG_REMOVED') {
       const orderId = extractOrderIdFromUrl(resource_url);
+      if (!orderId) {
+        console.warn('Unable to determine order ID for tag update:', resource_url);
+        return NextResponse.json({ success: false, message: 'Order ID not found' }, { status: 400 });
+      }
+
       const orderData = await fetchShipStationOrder(orderId);
+      if (!orderData) {
+        return NextResponse.json({ success: false, message: 'Order data unavailable' }, { status: 502 });
+      }
       
       // Sync tags to workflow
       await tagSyncService.handleTagUpdate({
@@ -126,7 +164,7 @@ function extractOrderIdFromUrl(url: string): number {
   return match ? parseInt(match[1]) : 0;
 }
 
-async function fetchShipStationOrder(orderId: number) {
+async function fetchShipStationOrder(orderId: number): Promise<ShipStationOrder | null> {
   // Trim any whitespace from environment variables
   const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
   const apiSecret = process.env.SHIPSTATION_API_SECRET?.trim() || '';
@@ -143,19 +181,71 @@ async function fetchShipStationOrder(orderId: number) {
     throw new Error(`Failed to fetch order: ${response.statusText}`);
   }
   
-  return response.json();
+  const raw = (await response.json()) as Record<string, unknown>;
+  const items = Array.isArray(raw.items)
+    ? raw.items.map((item) => {
+        if (!item || typeof item !== 'object') {
+          return {} as ShipStationOrderItem;
+        }
+        const entry = item as Record<string, unknown>;
+        return {
+          name: typeof entry.name === 'string' ? entry.name : undefined,
+          quantity: typeof entry.quantity === 'number' ? entry.quantity : undefined,
+          sku: typeof entry.sku === 'string' ? entry.sku : undefined,
+          unitPrice: typeof entry.unitPrice === 'number'
+            ? entry.unitPrice
+            : typeof entry.unit_price === 'number'
+              ? entry.unit_price
+              : undefined,
+          lineItemKey: typeof entry.lineItemKey === 'string'
+            ? entry.lineItemKey
+            : typeof entry.line_item_key === 'string'
+              ? entry.line_item_key
+              : undefined,
+          orderItemId: typeof entry.orderItemId === 'number'
+            ? entry.orderItemId
+            : typeof entry.order_item_id === 'number'
+              ? entry.order_item_id
+              : undefined,
+          options: Array.isArray(entry.options) ? entry.options : undefined,
+        } satisfies ShipStationOrderItem;
+      })
+    : [];
+
+  const orderIdValue = raw.orderId ?? raw.order_id;
+  const normalizedOrderId = typeof orderIdValue === 'number'
+    ? orderIdValue
+    : typeof orderIdValue === 'string'
+      ? Number.parseInt(orderIdValue, 10)
+      : orderId;
+
+  if (!Number.isFinite(normalizedOrderId)) {
+    return null;
+  }
+
+  const tagIds = Array.isArray(raw.tagIds)
+    ? (raw.tagIds as unknown[]).filter((id): id is number => typeof id === 'number')
+    : undefined;
+
+  return {
+    orderId: normalizedOrderId,
+    orderNumber: typeof raw.orderNumber === 'string' ? raw.orderNumber : undefined,
+    tagIds,
+    items,
+  };
 }
 
-async function queueQRGeneration(workspaceId: string, orderData: any) {
-  const items = orderData.items || [];
+async function queueQRGeneration(workspaceId: string, orderData: ShipStationOrder) {
+  const items = orderData.items ?? [];
   
   // Filter out discount line items (they have no SKU and typically quantity of 1)
-  const physicalItems = items.filter((item: any) => {
+  const physicalItems = items.filter((item) => {
     // Discount items typically have no SKU and name contains 'discount' or starts with negative price
     const hasNoSku = !item.sku || item.sku === '';
-    const isDiscount = item.name?.toLowerCase().includes('discount') || 
-                       item.unitPrice < 0 || 
-                       item.lineItemKey?.includes('discount');
+    const name = item.name?.toLowerCase() ?? '';
+    const unitPrice = item.unitPrice ?? 0;
+    const lineKey = item.lineItemKey ?? '';
+    const isDiscount = name.includes('discount') || unitPrice < 0 || lineKey.includes('discount');
     
     // Exclude if it's a discount item
     if (hasNoSku && isDiscount) {
@@ -170,9 +260,9 @@ async function queueQRGeneration(workspaceId: string, orderData: any) {
   let containerCount = 0;
   
   // Count drums and totes
-  physicalItems.forEach((item: any) => {
+  physicalItems.forEach((item) => {
     const name = item.name?.toLowerCase() || '';
-    const qty = item.quantity || 1;
+    const qty = item.quantity ?? 1;
     
     if (name.includes('drum') || name.includes('tote')) {
       containerCount += qty;
@@ -195,10 +285,10 @@ async function queueQRGeneration(workspaceId: string, orderData: any) {
       orderId: orderData.orderId,
       orderNumber: orderData.orderNumber,
       strategy: qrStrategy,
-      items: physicalItems.map((item: any) => ({
-        name: item.name,
-        sku: item.sku,
-        quantity: item.quantity,
+      items: physicalItems.map((item) => ({
+        name: item.name ?? 'Unknown Item',
+        sku: item.sku ?? 'N/A',
+        quantity: item.quantity ?? 0,
         itemId: item.orderItemId,
       })),
       containerCount,

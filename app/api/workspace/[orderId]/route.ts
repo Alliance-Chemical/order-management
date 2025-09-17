@@ -41,9 +41,13 @@ export async function PUT(
 ) {
   try {
     const { orderId: orderIdStr } = await params;
-    const orderId = parseInt(orderIdStr);
+    const orderId = Number.parseInt(orderIdStr, 10);
     const body = await request.json();
     const { module, state, userId = 'system' } = body;
+
+    if (Number.isNaN(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
+    }
 
     await workspaceService.updateModuleState(orderIdStr, module, state, userId);
 

@@ -4,14 +4,32 @@ import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 
 const repository = new WorkspaceRepository();
 
+type NotificationPayload = {
+  type: string;
+  status?: string;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+};
+
+type WorkspaceSummary = {
+  id: string;
+  orderId: number;
+  orderNumber: string;
+  status: string;
+};
+
+type NotificationMessage = {
+  subject: string;
+  body: string;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
     const { orderId } = await params;
-    const body = await request.json();
-    const { type, status, notes, metadata } = body;
+    const { type, status, notes, metadata } = await request.json() as NotificationPayload;
 
     if (!type) {
       return NextResponse.json(
@@ -51,11 +69,9 @@ export async function POST(
       }
     }
 
-    // Build notification message
-    const message = buildNotificationMessage(type, workspace, status, notes, metadata);
-    
-    // Log notification (SNS removed)
+    const message = buildNotificationMessage(type, workspace as WorkspaceSummary, status, notes, metadata);
     const messageId = `notify-${Date.now()}`;
+
     console.log('Notification sent:', {
       subject: message.subject,
       body: message.body,
@@ -65,24 +81,21 @@ export async function POST(
       alertType: type
     });
 
-    // Update alert config
     await repository.updateAlertConfig(alertConfig.id, {
       lastTriggeredAt: new Date(),
       triggerCount: (alertConfig.triggerCount || 0) + 1,
     });
 
-    // Log to alert history
     await repository.logAlertHistory({
       workspaceId: workspace.id,
       alertConfigId: alertConfig.id,
       alertType: type,
-      triggeredBy: 'system', // Replace with actual user
+      triggeredBy: 'system',
       messageContent: message.body,
       recipientsNotified: alertConfig.recipients || [],
       snsMessageId: messageId,
     });
 
-    // Log activity
     await repository.logActivity({
       workspaceId: workspace.id,
       activityType: 'notification_sent',
@@ -105,15 +118,15 @@ export async function POST(
 
 function buildNotificationMessage(
   type: string,
-  workspace: any,
+  workspace: WorkspaceSummary,
   status?: string,
   notes?: string,
-  metadata?: any
-) {
+  metadata?: Record<string, unknown>
+): NotificationMessage {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const workspaceUrl = `${baseUrl}/workspace/${workspace.orderId}`;
 
-  const messages: Record<string, any> = {
+  const messages: Record<string, NotificationMessage> = {
     pre_mix_complete: {
       subject: `Pre-Mix Inspection Complete - Order ${workspace.orderNumber}`,
       body: `Pre-Mix inspection has been completed for order ${workspace.orderNumber}.
@@ -163,10 +176,10 @@ View workspace: ${workspaceUrl}`,
   };
 
   return messages[type] || {
-    subject: `Notification - Order ${workspace.orderNumber}`,
-    body: `Event: ${type}
-Order: ${workspace.orderNumber}
-${notes ? `\nDetails: ${notes}` : ''}
+    subject: `Workspace Notification - Order ${workspace.orderNumber}`,
+    body: `Notification Type: ${type}
+Status: ${status || 'n/a'}
+${notes ? `\nNotes: ${notes}` : ''}
 
 View workspace: ${workspaceUrl}`,
   };

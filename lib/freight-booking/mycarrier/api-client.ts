@@ -72,6 +72,74 @@ export const MyCarrierShipmentSchema = z.object({
 
 export type MyCarrierShipment = z.infer<typeof MyCarrierShipmentSchema>;
 
+type BasicAuthGlobal = typeof globalThis & {
+  btoa?: (data: string) => string;
+};
+
+export interface MyCarrierOrderStop {
+  companyName?: string | null;
+  streetLine1?: string | null;
+  streetLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  country?: string | null;
+  locationType?: string | null;
+  contactFirstName?: string | null;
+  contactLastName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+}
+
+export interface MyCarrierOrderQuoteCommodity {
+  productID?: string | null;
+  commodityDescription?: string | null;
+  commodityPieces?: string;
+  commodityWeight?: string;
+  commodityClass?: string | null;
+  commodityHazMat: 'YES' | 'NO';
+  hazmatIDNumber?: string | null;
+  hazmatProperShippingName?: string | null;
+  hazmatHazardClass?: string | null;
+  hazmatPackingGroup?: string | null;
+  nmfc?: string;
+}
+
+export interface MyCarrierOrderQuoteUnit {
+  shippingUnitType: string;
+  shippingUnitCount: string;
+  unitStackable: string;
+  quoteCommodities: MyCarrierOrderQuoteCommodity[];
+}
+
+export interface MyCarrierOrderPayload {
+  quoteReferenceID: string;
+  serviceType: string;
+  pickupDate: string;
+  paymentDirection: string;
+  carrier?: string | null;
+  carrierService?: string | null;
+  specialInstructions: string;
+  readyToDispatch: 'YES' | 'NO';
+  originStop: MyCarrierOrderStop;
+  destinationStop: MyCarrierOrderStop;
+  originAccessorials: Record<string, 'YES' | 'NO'>;
+  destinationAccessorials: Record<string, 'YES' | 'NO'>;
+  quoteUnits: MyCarrierOrderQuoteUnit[];
+  proNumber?: string | null;
+}
+
+export interface MyCarrierOrderResponse {
+  isSuccess?: boolean;
+  proNumber?: string | null;
+  orderId?: string | null;
+  confirmationNumber?: string | null;
+  trackingNumber?: string | null;
+  totalCost?: number | null;
+  errorMessages?: unknown;
+  [key: string]: unknown;
+}
+
 export class MyCarrierAPIClient {
   private baseUrl: string;
   private apiKey: string;
@@ -97,10 +165,13 @@ export class MyCarrierAPIClient {
 
   private getAuthHeaders() {
     // Edge-safe Basic Auth encoding
-    const toBase64 = (s: string) =>
-      typeof (globalThis as any).btoa === 'function'
-        ? (globalThis as any).btoa(s)
-        : Buffer.from(s, 'utf8').toString('base64');
+    const toBase64 = (s: string) => {
+      const globalBtoa = (globalThis as BasicAuthGlobal).btoa;
+      if (typeof globalBtoa === 'function') {
+        return globalBtoa(s);
+      }
+      return Buffer.from(s, 'utf8').toString('base64');
+    };
 
     const basicAuth = toBase64(`${this.username}:${this.apiKey}`);
     return {
@@ -137,7 +208,7 @@ export class MyCarrierAPIClient {
 
   // Note: MyCarrier API is for creating orders, not fetching historical shipments
   // We'll need to get historical data from a different source or database
-  async createOrder(orderData: any): Promise<any> {
+  async createOrder(orderData: MyCarrierOrderPayload): Promise<MyCarrierOrderResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/api/Orders`, {
         method: "POST",
@@ -156,7 +227,7 @@ export class MyCarrierAPIClient {
       }
 
       const data = await response.json();
-      return data;
+      return data as MyCarrierOrderResponse;
     } catch (error) {
       console.error("Error creating order:", error);
       throw error;
@@ -167,7 +238,7 @@ export class MyCarrierAPIClient {
   async getShipmentHistory(
     startDate: Date,
     endDate: Date,
-    limit = 1000,
+    _limit = 1000,
   ): Promise<MyCarrierShipment[]> {
     console.log(
       `Note: MyCarrier API is for order placement, not historical data retrieval`,

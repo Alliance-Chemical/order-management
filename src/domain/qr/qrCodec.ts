@@ -6,7 +6,7 @@
 export interface QRPayload {
   orderId: number;
   orderNumber: string;
-  type: 'order_master' | 'source' | 'destination' | 'batch';
+  type: 'order_master' | 'source' | 'destination' | 'batch' | 'container';
   containerNumber?: number;
   chemicalName?: string;
   timestamp: string;

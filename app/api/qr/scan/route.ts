@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 import { db } from '@/lib/db';
 import { activityLog, qrCodes } from '@/lib/db/schema/qr-workspace';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 const repo = new WorkspaceRepository();
 
@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
 
     // Resolve QR by either shortCode, full qrCode, or qrData.shortCode
     const effectiveShort = (shortCode || qrData?.shortCode || '').toString().toUpperCase();
-    let qrRecord: any | null = null;
+    type QRCodeRecord = Awaited<ReturnType<WorkspaceRepository['findQRByShortCode']>>;
+    let qrRecord: QRCodeRecord = undefined;
 
     if (effectiveShort) {
       qrRecord = await repo.findQRByShortCode(effectiveShort, orderId);
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     // If nothing resolvable, accept and log as generic event (still useful operationally)
     if (!qrRecord) {
       await db.insert(activityLog).values({
-        workspaceId: undefined as any, // unknown
+        workspaceId: null,
         activityType: 'qr_scan_unresolved',
         performedBy: userId,
         metadata: { qrCode, shortCode: effectiveShort || undefined, qrData, orderId, scanType, stepId, timestamp },
@@ -73,4 +74,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

@@ -15,7 +15,7 @@ export const freightEvents = pgTable('freight_events', {
   eventDescription: varchar('event_description', { length: 500 }),
   
   // Event Data
-  eventData: jsonb('event_data').$type<any>().default({}),
+  eventData: jsonb('event_data').$type<Record<string, unknown>>().default({}),
   
   // Tracking
   performedBy: varchar('performed_by', { length: 255 }),

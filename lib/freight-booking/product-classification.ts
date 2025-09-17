@@ -23,7 +23,15 @@ export async function getApprovedClassificationBySku(sku: string): Promise<Appro
     JOIN freight_classifications fc ON pfl.classification_id = fc.id
     WHERE p.sku = ${sku} AND pfl.is_approved = true
     LIMIT 1
-  ` as any[];
+  ` as Array<{
+    nmfc_code: string | null;
+    freight_class: string;
+    is_hazmat: boolean;
+    hazmat_class: string | null;
+    packing_group: string | null;
+    un_number: string | null;
+    classification_description: string | null;
+  }>;
   if (!rows.length) return null;
   const r = rows[0];
   return {
@@ -36,4 +44,3 @@ export async function getApprovedClassificationBySku(sku: string): Promise<Appro
     description: r.classification_description,
   };
 }
-

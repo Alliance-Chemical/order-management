@@ -28,7 +28,7 @@ export class WorkspaceRepository {
     return updated;
   }
 
-  async updateAccessTime(id: string, userId: string) {
+  async updateAccessTime(id: string, _userId: string) {
     const [updated] = await db
       .update(workspaces)
       .set({

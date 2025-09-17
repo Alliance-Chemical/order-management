@@ -63,9 +63,11 @@ export async function processDocumentOCR(data: {
   }
 }
 
+type GenericRecord = Record<string, unknown>;
+
 export async function detectAnomalies(data: {
-  orderData: any
-  inspectionData: any
+  orderData: GenericRecord;
+  inspectionData: GenericRecord;
 }) {
   try {
     const { orderData, inspectionData } = data
@@ -102,7 +104,7 @@ Return a JSON object with:
       } else {
         analysis = { anomalies: [text], severity: 'medium', recommendations: [] }
       }
-    } catch (e) {
+    } catch {
       analysis = { anomalies: [text], severity: 'medium', recommendations: [] }
     }
     
@@ -157,7 +159,7 @@ If no codes are found, return an empty array: []`
       if (jsonMatch) {
         lotNumbers = JSON.parse(jsonMatch[0])
       }
-    } catch (e) {
+    } catch {
       // Fallback: extract any alphanumeric codes that look like lot numbers
       const matches = text.match(/[A-Z0-9]{4,}/gi) || []
       lotNumbers = matches
@@ -224,7 +226,7 @@ Return JSON with:
           confidence: 0
         }
       }
-    } catch (e) {
+    } catch {
       classification = {
         un_number: null,
         hazard_class: null,
@@ -291,9 +293,9 @@ export async function reportIssue(data: {
   workspaceId?: string
 }) {
   try {
-    const { issueType, description, severity, imageBase64, mimeType, workspaceId } = data
+    const { issueType, description, severity, imageBase64, mimeType } = data
     
-    let prompt = `Analyze this warehouse issue report:
+    const prompt = `Analyze this warehouse issue report:
 Type: ${issueType}
 Severity: ${severity}
 Description: ${description}
@@ -306,7 +308,7 @@ Provide:
 
 Format as JSON with keys: riskLevel, immediateActions, rootCauses, preventionSteps`
     
-    const content: any[] = [prompt]
+    const content: Array<string | { inlineData: { mimeType: string; data: string } }> = [prompt]
     
     if (imageBase64 && mimeType) {
       content.push({
@@ -335,7 +337,7 @@ Format as JSON with keys: riskLevel, immediateActions, rootCauses, preventionSte
           preventionSteps: ['Follow up required']
         }
       }
-    } catch (e) {
+    } catch {
       analysis = {
         riskLevel: severity,
         immediateActions: ['Review issue with supervisor'],

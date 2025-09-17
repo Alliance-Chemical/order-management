@@ -10,14 +10,19 @@ export type CFRHazmat = {
 
 // Pulls authoritative CFR-backed hazmat attributes from DB.
 // Currently reads products.is_hazardous + products.un_number; extend as your schema grows.
+type ProductHazmatRow = {
+  is_hazardous: boolean | null;
+  un_number: string | null;
+};
+
 export async function getCfrHazmatBySku(sku: string): Promise<CFRHazmat | null> {
   const sql = getEdgeSql();
-  const rows = await sql`
+  const rows = await sql<ProductHazmatRow[]>`
     SELECT is_hazardous, un_number
     FROM products
     WHERE sku = ${sku}
     LIMIT 1
-  ` as any[];
+  `;
 
   if (!rows.length) return null;
 
@@ -30,4 +35,3 @@ export async function getCfrHazmatBySku(sku: string): Promise<CFRHazmat | null> 
     packingGroup: null,
   };
 }
-

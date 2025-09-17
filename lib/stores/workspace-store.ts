@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { OrderWorkspace, WorkspaceModule, DocumentFile, Activity } from '@/lib/types/workspace';
+import { OrderWorkspace, DocumentFile, Activity, WorkspaceDocuments } from '@/lib/types/workspace';
+
+type ModuleState = OrderWorkspace['modules'][number]['state'];
 
 interface WorkspaceState {
   workspace: OrderWorkspace | null;
@@ -9,7 +11,7 @@ interface WorkspaceState {
   isSyncing: boolean;
   setWorkspace: (workspace: OrderWorkspace) => void;
   setCurrentModule: (module: string) => void;
-  updateModuleState: (module: string, state: any) => void;
+  updateModuleState: (module: string, state: ModuleState) => void;
   addActivity: (activity: Activity) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
@@ -54,9 +56,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   addDocument: (document) => set((prev) => {
     if (!prev.workspace) return prev;
     
-    const docs = { ...prev.workspace.documents };
-    if (document.type in docs) {
-      (docs as any)[document.type] = [...(docs as any)[document.type], document];
+    const docs: WorkspaceDocuments = { ...prev.workspace.documents };
+    const type = document.type;
+    if (type in docs) {
+      const key = type as keyof WorkspaceDocuments;
+      docs[key] = [...docs[key], document];
     }
     
     return {

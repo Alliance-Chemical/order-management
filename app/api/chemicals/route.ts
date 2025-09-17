@@ -3,6 +3,14 @@ import { db } from '@/lib/db';
 import { chemicals } from '@/lib/db/schema/qr-workspace';
 import { eq, ilike, or, and } from 'drizzle-orm';
 
+type ShopifyProduct = {
+  id: number;
+  title: string;
+  variants: Array<{ sku?: string | null }>;
+};
+
+type ChemicalUpdate = Partial<typeof chemicals.$inferInsert>;
+
 export async function GET(request: NextRequest) {
   try {
     // Get query parameters
@@ -82,14 +90,14 @@ export async function GET(request: NextRequest) {
           );
           
           if (shopifyResponse.ok) {
-            const shopifyData = await shopifyResponse.json();
-            const shopifyProducts = shopifyData.products || [];
+            const shopifyData = await shopifyResponse.json() as { products?: ShopifyProduct[] };
+            const shopifyProducts = shopifyData.products ?? [];
             
             // Match chemicals with Shopify products
             for (const chemical of formattedChemicals) {
               if (!chemical.shopifyProductId) {
                 // Try to find matching Shopify product
-                const matchingProduct = shopifyProducts.find((product: any) => {
+                const matchingProduct = shopifyProducts.find((product) => {
                   const title = product.title.toLowerCase();
                   const chemName = chemical.name.toLowerCase();
                   
@@ -209,7 +217,7 @@ export async function PATCH(request: NextRequest) {
     }
     
     // Build update object
-    const updateData: any = {};
+    const updateData: ChemicalUpdate = {};
     if (body.name !== undefined) updateData.name = body.name;
     if (body.alternateNames !== undefined) updateData.alternateNames = body.alternateNames;
     if (body.specificGravity !== undefined) updateData.specificGravity = body.specificGravity.toString();

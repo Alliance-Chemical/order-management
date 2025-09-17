@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PrinterIcon, ClipboardDocumentCheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ArrowRightIcon } from '@heroicons/react/24/solid';
+import {
+  PrinterIcon,
+  ClipboardDocumentCheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ArrowRightIcon
+} from '@heroicons/react/24/solid';
 import PrintPreparationModalSimplified from '@/components/desktop/PrintPreparationModalSimplified';
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { Button } from '@/components/ui/button';
-import ProgressBar from '@/components/ui/ProgressBar';
 
 interface OrderItem {
   name: string;
@@ -35,38 +40,31 @@ export default function WorkQueueDashboard() {
   const [selectedOrder, setSelectedOrder] = useState<FreightOrder | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
-  const [currentPage, setCurrentPage] = useState(1);
-  const [ordersPerPage] = useState(25); // Show 25 orders per page
+  const [activeFilter, setActiveFilter] = useState<'all' | 'under24' | '24to48' | '48to72' | 'over72'>('all');
+  const [search, setSearch] = useState('');
 
   const fetchFreightOrders = async () => {
     setLoading(true);
     try {
       const response = await fetch('/api/freight-orders/poll');
-      
-      // Check if response is ok and is JSON
       if (!response.ok) {
         const errorText = await response.text();
         console.error('API Error:', response.status, errorText);
         return;
       }
-      
+
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
         console.error('Non-JSON response received:', text);
         return;
       }
-      
+
       const data = await response.json();
-      
       if (data.success) {
-        // Combine created and existing orders that have workspaces
-        const ordersWithWorkspaces = [
-          ...data.created,
-          ...data.existing,
-        ].filter(order => order.workspaceId);
-        
-        console.log('Orders received:', ordersWithWorkspaces);
+        const ordersWithWorkspaces = [...data.created, ...data.existing].filter(
+          (order: FreightOrder) => order.workspaceId
+        );
         setOrders(ordersWithWorkspaces);
       }
     } catch (error) {
@@ -78,7 +76,6 @@ export default function WorkQueueDashboard() {
 
   useEffect(() => {
     fetchFreightOrders();
-    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchFreightOrders, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -91,22 +88,22 @@ export default function WorkQueueDashboard() {
   const handlePrintComplete = () => {
     setShowPrintModal(false);
     setSelectedOrder(null);
-    // Refresh the list
     fetchFreightOrders();
   };
 
   const toggleOrderExpanded = (orderId: number) => {
-    const newExpanded = new Set(expandedOrders);
-    if (newExpanded.has(orderId)) {
-      newExpanded.delete(orderId);
-    } else {
-      newExpanded.add(orderId);
-    }
-    setExpandedOrders(newExpanded);
+    setExpandedOrders((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
   };
 
   const navigateToWorkspace = (orderId: number, view: 'worker' | 'supervisor' = 'worker') => {
-    // Provide direct links for worker and supervisor experiences
     if (view === 'supervisor') {
       router.push(`/workspace/${orderId}?view=supervisor`);
       return;
@@ -115,336 +112,351 @@ export default function WorkQueueDashboard() {
     router.push(`/workspace/${orderId}`);
   };
 
-  // Calculate pagination
-  const indexOfLastOrder = currentPage * ordersPerPage;
-  const indexOfFirstOrder = indexOfLastOrder - ordersPerPage;
-  const currentOrders = orders.slice(indexOfFirstOrder, indexOfLastOrder);
-  const totalPages = Math.ceil(orders.length / ordersPerPage);
+  const enrichedOrders = orders
+    .map((order) => {
+      const orderItems = filterOutDiscounts(order.items || []);
+      const orderDateValue = order.orderDate ? new Date(order.orderDate) : null;
+      const ageHours = orderDateValue ? (Date.now() - orderDateValue.getTime()) / (1000 * 60 * 60) : null;
+      const agingBadge = ageHours == null
+        ? null
+        : ageHours >= 72
+          ? { label: '72+ hrs', className: 'bg-rose-100 text-rose-600' }
+          : ageHours >= 48
+            ? { label: '48 hrs', className: 'bg-amber-100 text-amber-700' }
+            : ageHours >= 24
+              ? { label: '24 hrs', className: 'bg-slate-100 text-slate-600' }
+              : null;
 
-  const paginate = (pageNumber: number) => {
-    setCurrentPage(pageNumber);
-    // Reset expanded orders when changing pages
-    setExpandedOrders(new Set());
-  };
+      return {
+        order,
+        orderItems,
+        orderDateValue,
+        ageHours,
+        agingBadge,
+      };
+    })
+    .sort((a, b) => {
+      if (a.orderDateValue && b.orderDateValue) {
+        return a.orderDateValue.getTime() - b.orderDateValue.getTime();
+      }
+      if (a.orderDateValue) return -1;
+      if (b.orderDateValue) return 1;
+      return 0;
+    });
+
+  const totalOrders = enrichedOrders.length;
+  const under24Count = enrichedOrders.filter(({ ageHours }) => ageHours != null && ageHours < 24).length;
+  const between24And48Count = enrichedOrders.filter(({ ageHours }) => ageHours != null && ageHours >= 24 && ageHours < 48).length;
+  const between48And72Count = enrichedOrders.filter(({ ageHours }) => ageHours != null && ageHours >= 48 && ageHours < 72).length;
+  const over72Count = enrichedOrders.filter(({ ageHours }) => ageHours != null && ageHours >= 72).length;
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const filteredOrders = enrichedOrders.filter(({ order, orderItems, ageHours }) => {
+    const matchesAge = (() => {
+      if (activeFilter === 'under24') {
+        return ageHours != null && ageHours < 24;
+      }
+      if (activeFilter === '24to48') {
+        return ageHours != null && ageHours >= 24 && ageHours < 48;
+      }
+      if (activeFilter === '48to72') {
+        return ageHours != null && ageHours >= 48 && ageHours < 72;
+      }
+      if (activeFilter === 'over72') {
+        return ageHours != null && ageHours >= 72;
+      }
+      return true;
+    })();
+
+    if (!matchesAge) {
+      return false;
+    }
+
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    return [
+      order.orderNumber,
+      order.orderId?.toString(),
+      order.customerName,
+      ...orderItems.map((item) => `${item.name} ${item.sku}`)
+    ]
+      .filter(Boolean)
+      .some((value) =>
+        value!
+          .toString()
+          .toLowerCase()
+          .includes(normalizedSearch)
+      );
+  });
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+    <div className="min-h-screen bg-slate-50">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Work Queue Dashboard
-              </h1>
-              <p className="mt-1 text-sm text-gray-600">
-                Available orders ready for label printing and processing
-              </p>
+              <h1 className="text-2xl font-semibold text-slate-900">Work Queue</h1>
+              <p className="text-sm text-slate-500">Freight orders awaiting labels or inspection</p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               <FreightNavigation />
-              <button
+              <Button
+                variant="outline"
                 onClick={fetchFreightOrders}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                className="h-10 px-4"
               >
                 Refresh
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
-          <div className="px-6 py-4 bg-blue-600">
-            <h2 className="text-xl font-semibold text-white flex items-center">
-              <ClipboardDocumentCheckIcon className="h-6 w-6 mr-2" />
-              Available Orders {orders.length > 0 && `(${orders.length} total)`}
-            </h2>
-          </div>
-
-          {loading ? (
-            <div className="p-12">
-              <ProgressBar
-                value={33}
-                label="Loading orders"
-                showPercentage={false}
-                variant="default"
-                animated={true}
-                className="max-w-md mx-auto"
-              />
-              <p className="mt-4 text-gray-600 text-center">Loading available orders...</p>
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              <ClipboardDocumentCheckIcon className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-              <p className="text-lg">No orders available for processing</p>
-              <p className="text-sm mt-2">Orders will appear here when tagged for freight processing</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Order Number
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Order Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Freight Status
-                    </th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {currentOrders.map((order) => (
-                    <Fragment key={order.orderId}>
-                      <tr className="hover:bg-gray-50 transition-colors" data-testid="order-card">
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              console.log('Toggling order:', order.orderId, 'Items:', order.items);
-                              toggleOrderExpanded(order.orderId);
-                            }}
-                            className="p-1 hover:bg-gray-200 rounded transition-colors"
-                            disabled={!order.items || order.items.length === 0}
-                            title={order.items && order.items.length > 0 ? `View ${order.items.length} items` : 'No items'}
-                          >
-                            {order.items && order.items.length > 0 ? (
-                              expandedOrders.has(order.orderId) ? (
-                                <ChevronDownIcon className="h-5 w-5 text-gray-600" />
-                              ) : (
-                                <ChevronRightIcon className="h-5 w-5 text-gray-600" />
-                              )
-                            ) : (
-                              <span className="inline-block w-5 h-5 text-gray-400" title="No items">—</span>
-                            )}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900" data-testid="order-number">
-                            {order.orderNumber}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            ID: {order.orderId}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 min-w-0">
-                          <div className="text-sm text-gray-900 truncate max-w-xs" data-testid="customer-name" title={order.customerName || 'Unknown Customer'}>
-                            {order.customerName || 'Unknown Customer'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {order.orderDate 
-                              ? new Date(order.orderDate).toLocaleDateString()
-                              : 'N/A'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm">
-                            {order.freightStatus ? (
-                              <div className="flex flex-col">
-                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  order.freightStatus === 'delivered' ? 'bg-green-100 text-green-800' :
-                                  order.freightStatus === 'shipped' ? 'bg-blue-100 text-blue-800' :
-                                  order.freightStatus === 'booked' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {order.freightStatus.toUpperCase()}
-                                </span>
-                                {order.carrierName && (
-                                  <span className="text-xs text-gray-500 mt-1">{order.carrierName}</span>
-                                )}
-                                {order.trackingNumber && (
-                                  <span className="text-xs text-gray-500">{order.trackingNumber}</span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-gray-400">No freight booking</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <div className="flex flex-wrap items-center justify-center gap-2">
-                            <Button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigateToWorkspace(order.orderId, 'worker');
-                              }}
-                              variant="warehouse-info"
-                              size="warehouse"
-                              title="Open Worker View"
-                            >
-                              <ArrowRightIcon className="mr-2 h-4 w-4" />
-                              Worker View
-                            </Button>
-                            <Button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigateToWorkspace(order.orderId, 'supervisor');
-                              }}
-                              variant="neutral"
-                              size="warehouse"
-                              title="Open Supervisor View"
-                            >
-                              <ArrowRightIcon className="mr-2 h-4 w-4" />
-                              Supervisor View
-                            </Button>
-                            <Button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePrepareAndPrint(order);
-                              }}
-                              variant="warehouse-go"
-                              size="warehouse"
-                            >
-                              <PrinterIcon className="mr-2 h-4 w-4" />
-                              Print Labels
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedOrders.has(order.orderId) && order.items && order.items.length > 0 && (
-                        <tr>
-                          <td colSpan={7} className="px-6 py-4 bg-gray-50">
-                            <div className="ml-8">
-                              {(() => {
-                                const physicalItems = filterOutDiscounts(order.items);
-                                return (
-                                  <>
-                                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Order Items ({physicalItems.length})</h4>
-                                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                      <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-50">
-                                          <tr>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product Name</th>
-                                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200">
-                                          {physicalItems.map((item, idx) => (
-                                            <tr key={idx}>
-                                              <td className="px-4 py-2 text-sm text-gray-900">{item.sku || 'N/A'}</td>
-                                              <td className="px-4 py-2 text-sm text-gray-900">{item.name}</td>
-                                              <td className="px-4 py-2 text-sm text-gray-900 text-center">{item.quantity}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-              
-              {/* Pagination Controls */}
-              {orders.length > ordersPerPage && (
-                <div className="bg-gray-50 px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-                  <div className="flex-1 flex justify-between sm:hidden">
-                    <button
-                      onClick={() => paginate(currentPage - 1)}
-                      disabled={currentPage === 1}
-                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      onClick={() => paginate(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                      className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </button>
-                  </div>
-                  <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm text-gray-700">
-                        Showing <span className="font-medium">{indexOfFirstOrder + 1}</span> to{' '}
-                        <span className="font-medium">
-                          {Math.min(indexOfLastOrder, orders.length)}
-                        </span>{' '}
-                        of <span className="font-medium">{orders.length}</span> orders
-                      </p>
-                    </div>
-                    <div>
-                      <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                        <button
-                          onClick={() => paginate(currentPage - 1)}
-                          disabled={currentPage === 1}
-                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <span className="sr-only">Previous</span>
-                          <ChevronLeftIcon className="h-5 w-5" />
-                        </button>
-                        
-                        {/* Page numbers */}
-                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                          let pageNum;
-                          if (totalPages <= 5) {
-                            pageNum = i + 1;
-                          } else if (currentPage <= 3) {
-                            pageNum = i + 1;
-                          } else if (currentPage >= totalPages - 2) {
-                            pageNum = totalPages - 4 + i;
-                          } else {
-                            pageNum = currentPage - 2 + i;
-                          }
-                          
-                          return (
-                            <button
-                              key={pageNum}
-                              onClick={() => paginate(pageNum)}
-                              className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                                currentPage === pageNum
-                                  ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                                  : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                              }`}
-                            >
-                              {pageNum}
-                            </button>
-                          );
-                        })}
-                        
-                        <button
-                          onClick={() => paginate(currentPage + 1)}
-                          disabled={currentPage === totalPages}
-                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <span className="sr-only">Next</span>
-                          <ChevronRightIcon className="h-5 w-5" />
-                        </button>
-                      </nav>
-                    </div>
-                  </div>
-                </div>
-              )}
+          {loading && (
+            <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-blue-100">
+              <div className="h-full w-full animate-pulse rounded-full bg-blue-500" />
             </div>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* Print Preparation Modal */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {totalOrders > 0 && (
+          <section className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-6 py-5 text-white shadow-lg">
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl font-semibold">{totalOrders}</span>
+                <span className="text-xs uppercase tracking-wide text-white/70">Total Freight Orders</span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {!loading && totalOrders > 0 && (
+          <section className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {([
+                { id: 'all', label: 'All Orders', count: totalOrders },
+                { id: 'under24', label: '< 24 hrs', count: under24Count },
+                { id: '24to48', label: '24 - 48 hrs', count: between24And48Count },
+                { id: '48to72', label: '48 - 72 hrs', count: between48And72Count },
+                { id: 'over72', label: '72+ hrs', count: over72Count }
+              ] as const).map((option) => (
+                <Button
+                  key={option.id}
+                  variant={activeFilter === option.id ? 'default' : 'outline'}
+                  className={`${activeFilter === option.id ? 'bg-blue-600 text-white hover:bg-blue-500' : 'border-slate-300 text-slate-600 hover:bg-slate-100'} h-9 rounded-full px-4 text-sm`}
+                  onClick={() => setActiveFilter(option.id)}
+                >
+                  {option.label}
+                  <span className="ml-2 rounded-full bg-black/10 px-2 py-0.5 text-xs font-semibold">
+                    {option.count}
+                  </span>
+                </Button>
+              ))}
+            </div>
+            <div className="relative w-full md:w-72">
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search order #, customer, SKU"
+                className="w-full rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute inset-y-0 right-3 inline-flex items-center text-xs font-semibold text-slate-400 hover:text-slate-600"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
+        {loading ? (
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-52 rounded-2xl border border-slate-200 bg-white shadow-sm animate-pulse"
+              />
+            ))}
+          </section>
+        ) : totalOrders === 0 ? (
+          <section className="rounded-3xl border border-dashed border-slate-300 bg-white py-16 text-center shadow-sm">
+            <ClipboardDocumentCheckIcon className="mx-auto h-12 w-12 text-slate-300" />
+            <h2 className="mt-4 text-lg font-semibold text-slate-800">All clear</h2>
+            <p className="mt-2 text-sm text-slate-500">Tag an order for freight processing to see it here.</p>
+          </section>
+        ) : filteredOrders.length === 0 ? (
+          <section className="rounded-3xl border border-dashed border-slate-300 bg-white py-16 text-center shadow-sm">
+            <ClipboardDocumentCheckIcon className="mx-auto h-12 w-12 text-slate-300" />
+            <h2 className="mt-4 text-lg font-semibold text-slate-800">No matches</h2>
+            <p className="mt-2 text-sm text-slate-500">Adjust your filters to see additional orders.</p>
+          </section>
+        ) : (
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredOrders.map(({ order, orderItems, agingBadge }) => {
+              const previewItems = orderItems.slice(0, 2);
+              const isExpanded = expandedOrders.has(order.orderId);
+
+              return (
+                <article
+                  key={order.orderId}
+                  className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <div className="px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Order</span>
+                        <h2 className="text-lg font-semibold text-slate-900">{order.orderNumber || `Order ${order.orderId}`}</h2>
+                        <p className="text-xs text-slate-500">ID: {order.orderId}</p>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {order.freightStatus ? (
+                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                            {order.freightStatus.toUpperCase()}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                            AWAITING FREIGHT
+                          </span>
+                        )}
+                        {orderItems.length > 6 && (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                            HIGH VOLUME
+                          </span>
+                        )}
+                        {agingBadge && (
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${agingBadge.className}`}>
+                            {agingBadge.label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-4 pb-4 text-sm text-slate-600">
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-xs uppercase tracking-wide text-slate-400">Customer</span>
+                        <p className="text-sm font-medium text-slate-800">
+                          {order.customerName || 'Unknown Customer'}
+                        </p>
+                      </div>
+                      <div className="flex gap-6 text-xs">
+                        <div>
+                          <span className="block text-[11px] uppercase tracking-wide text-slate-400">Order Date</span>
+                          <span className="text-sm text-slate-700">
+                            {order.orderDate ? new Date(order.orderDate).toLocaleDateString() : 'N/A'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-[11px] uppercase tracking-wide text-slate-400">Items</span>
+                          <span className="text-sm text-slate-700">{orderItems.length}</span>
+                        </div>
+                        {order.carrierName && (
+                          <div>
+                            <span className="block text-[11px] uppercase tracking-wide text-slate-400">Carrier</span>
+                            <span className="text-sm text-slate-700">{order.carrierName}</span>
+                          </div>
+                        )}
+                        {order.trackingNumber && (
+                          <div>
+                            <span className="block text-[11px] uppercase tracking-wide text-slate-400">Tracking #</span>
+                            <span className="text-sm text-slate-700">{order.trackingNumber}</span>
+                          </div>
+                        )}
+                      </div>
+                      {orderItems.length > 0 && (
+                        <div>
+                          <span className="text-xs uppercase tracking-wide text-slate-400">Line Items</span>
+                          <ul className="mt-1 space-y-1">
+                            {previewItems.map((item, idx) => (
+                              <li key={idx} className="text-sm text-slate-700">
+                                {item.quantity}× {item.name}
+                              </li>
+                            ))}
+                          </ul>
+                          {orderItems.length > previewItems.length && (
+                            <button
+                              onClick={() => toggleOrderExpanded(order.orderId)}
+                              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-500"
+                            >
+                              {isExpanded ? 'Hide all items' : `View all ${orderItems.length} items`}
+                              {isExpanded ? (
+                                <ChevronDownIcon className="h-4 w-4" />
+                              ) : (
+                                <ChevronRightIcon className="h-4 w-4" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {isExpanded && orderItems.length > 0 && (
+                    <div className="px-4 pb-4">
+                      <div className="overflow-hidden rounded-xl border border-slate-200">
+                        <table className="min-w-full divide-y divide-slate-200 text-sm">
+                          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2 text-left">SKU</th>
+                              <th className="px-3 py-2 text-left">Product</th>
+                              <th className="px-3 py-2 text-center">Qty</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {orderItems.map((item, idx) => (
+                              <tr key={`${item.sku || item.name}-${idx}`} className="bg-white">
+                                <td className="px-3 py-2 text-slate-700">{item.sku || 'N/A'}</td>
+                                <td className="px-3 py-2 text-slate-700">{item.name}</td>
+                                <td className="px-3 py-2 text-center text-slate-700">{item.quantity}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-auto px-4 pb-4">
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        onClick={() => navigateToWorkspace(order.orderId, 'worker')}
+                        className="h-11 justify-center gap-2 bg-blue-600 text-white hover:bg-blue-500"
+                        fullWidth
+                      >
+                        Worker View
+                      </Button>
+                      <Button
+                        onClick={() => navigateToWorkspace(order.orderId, 'supervisor')}
+                        variant="outline"
+                        className="h-11 justify-center gap-2 border-slate-300 text-slate-700 hover:bg-slate-100"
+                        fullWidth
+                      >
+                        <ArrowRightIcon className="h-4 w-4" />
+                        Supervisor View
+                      </Button>
+                      <Button
+                        onClick={() => handlePrepareAndPrint(order)}
+                        className="h-11 justify-center gap-2 bg-emerald-600 text-white hover:bg-emerald-500"
+                        fullWidth
+                      >
+                        <PrinterIcon className="h-4 w-4" />
+                        Print Labels
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </section>
+        )}
+      </main>
+
       {showPrintModal && selectedOrder && (
         <PrintPreparationModalSimplified
           order={selectedOrder}

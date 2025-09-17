@@ -2,14 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { getDb } from '@/src/data/db/client';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
-import { freightOrders } from '@/lib/db/schema/freight';
-import { eq, and, isNotNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+
+interface ShipStationAddress {
+  name?: string | null;
+}
+
+interface ShipStationItem {
+  name?: string | null;
+  quantity?: number;
+  sku?: string | null;
+  unitPrice?: number;
+  options?: Array<Record<string, unknown>>;
+  lineItemKey?: string | null;
+}
+
+interface ShipStationOrder {
+  orderId: number;
+  orderNumber: string;
+  orderDate?: string;
+  orderTotal?: number;
+  shipTo?: ShipStationAddress;
+  items?: ShipStationItem[];
+}
 
 const db = getDb();
 
 const workspaceService = new WorkspaceService();
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const freightTagId = parseInt(process.env.FREIGHT_ORDER_TAG || '19844');
     
@@ -20,7 +41,7 @@ export async function GET(request: NextRequest) {
     const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
     
     // Fetch ALL orders with the freight tag - paginate through all pages
-    let allFreightOrders = [];
+    let allFreightOrders: ShipStationOrder[] = [];
     let page = 1;
     let hasMorePages = true;
     
@@ -53,9 +74,13 @@ export async function GET(request: NextRequest) {
         throw new Error('ShipStation API returned non-JSON response');
       }
       
-      const data = await response.json();
-      const orders = data.orders || [];
-      allFreightOrders = [...allFreightOrders, ...orders];
+      const data = await response.json() as { orders?: ShipStationOrder[]; pages?: number };
+      const orders = data.orders ?? [];
+      const normalizedOrders = orders.map((order) => ({
+        ...order,
+        orderId: typeof order.orderId === 'number' ? order.orderId : Number(order.orderId),
+      }));
+      allFreightOrders = [...allFreightOrders, ...normalizedOrders];
       
       console.log(`[Pagination] Page ${page}/${data.pages || 1}: Found ${orders.length} orders. Total so far: ${allFreightOrders.length}`);
       
@@ -92,7 +117,7 @@ export async function GET(request: NextRequest) {
           customerName: order.shipTo?.name || 'Unknown Customer',
           orderDate: order.orderDate,
           orderTotal: order.orderTotal,
-          items: order.items?.map((item: any) => ({
+          items: order.items?.map((item) => ({
             name: item.name,
             quantity: item.quantity,
             sku: item.sku,
@@ -120,7 +145,7 @@ export async function GET(request: NextRequest) {
           customerName: order.shipTo?.name || 'Unknown Customer',
           orderDate: order.orderDate,
           orderTotal: order.orderTotal,
-          items: order.items?.map((item: any) => ({
+          items: order.items?.map((item) => ({
             name: item.name,
             quantity: item.quantity,
             sku: item.sku,
@@ -128,7 +153,7 @@ export async function GET(request: NextRequest) {
             customAttributes: item.options || [],
           })) || [],
         });
-      } catch (error: any) {
+      } catch (error) {
         // Handle duplicate key error - workspace may have been created by another process
         if (error?.message?.includes('duplicate key')) {
           console.log(`Workspace already exists for order ${order.orderNumber}, checking again`);
@@ -144,17 +169,21 @@ export async function GET(request: NextRequest) {
               customerName: order.shipTo?.name || 'Unknown Customer',
               orderDate: order.orderDate,
               orderTotal: order.orderTotal,
-              items: order.items?.filter((item: any) => 
-                !item.name?.toLowerCase().includes('discount') && 
-                item.unitPrice >= 0 && 
-                !item.lineItemKey?.includes('discount')
-              ).map((item: any) => ({
-                name: item.name,
-                quantity: item.quantity,
-                sku: item.sku,
-                unitPrice: item.unitPrice,
-                customAttributes: item.options || [],
-              })) || [],
+              items:
+                order.items
+                  ?.filter((item) => {
+                    const itemName = item.name?.toLowerCase() ?? '';
+                    const hasDiscountKey = item.lineItemKey?.includes('discount');
+                    const unitPrice = item.unitPrice ?? 0;
+                    return !itemName.includes('discount') && unitPrice >= 0 && !hasDiscountKey;
+                  })
+                  .map((item) => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    sku: item.sku,
+                    unitPrice: item.unitPrice,
+                    customAttributes: item.options || [],
+                  })) || [],
             });
           }
         } else {

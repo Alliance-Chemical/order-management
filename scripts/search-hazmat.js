@@ -4,7 +4,7 @@ const { embed } = require('../lib/rag/embeddings');
 const { localRerank } = require('../lib/rag/rerank');
 
 async function run(query, filters) {
-  const idx = loadIndex(path.join(process.cwd(), 'data', 'index-hmt-local.json'));
+  const idx = await loadIndex(path.join(process.cwd(), 'data', 'index-hmt-local.json'));
   const [qvec] = await embed([query], { provider: 'local-hash', dim: idx.dim || 512 });
   const prelim = search(idx, qvec, { k: 20, queryText: query, alpha: 0.7, filters });
   const results = localRerank(query, prelim).slice(0, 5);

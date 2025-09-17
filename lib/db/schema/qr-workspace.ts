@@ -1,5 +1,10 @@
-import { pgTable, uuid, bigint, varchar, jsonb, timestamp, integer, boolean, index, pgSchema, decimal } from 'drizzle-orm/pg-core';
+import { uuid, bigint, varchar, jsonb, timestamp, integer, boolean, index, pgSchema, decimal } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+
+type JsonObject = Record<string, unknown>;
+type JsonObjectMap = Record<string, JsonObject>;
+type JsonObjectArray = JsonObject[];
+type AlertRecipient = { type: 'sms' | 'email'; value: string };
 
 export const qrWorkspaceSchema = pgSchema('qr_workspace');
 
@@ -20,7 +25,7 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
     documents: boolean;
     freight?: boolean;
   }>().default({ preMix: true, warehouse: true, documents: true }),
-  moduleStates: jsonb('module_states').$type<Record<string, any>>().default({}),
+  moduleStates: jsonb('module_states').$type<JsonObjectMap>().default({}),
   
   // Real-time tracking
   currentUsers: jsonb('current_users').$type<string[]>().default([]),
@@ -29,7 +34,7 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
   
   // ShipStation Integration (orderId is the ShipStation order ID)
   lastShipstationSync: timestamp('last_shipstation_sync'),
-  shipstationData: jsonb('shipstation_data').$type<any>(),
+  shipstationData: jsonb('shipstation_data').$type<JsonObject>(),
   shipstationTags: jsonb('shipstation_tags').$type<string[]>().default([]),
   syncStatus: varchar('sync_status', { length: 50 }).default('pending'),
   
@@ -103,7 +108,7 @@ export const qrCodes = qrWorkspaceSchema.table('qr_codes', {
   chemicalName: varchar('chemical_name', { length: 255 }),
   
   // QR Content
-  encodedData: jsonb('encoded_data').$type<any>().notNull(),
+  encodedData: jsonb('encoded_data').$type<JsonObject>().notNull(),
   qrUrl: varchar('qr_url', { length: 500 }).notNull(),
   
   // Tracking
@@ -142,13 +147,10 @@ export const alertConfigs = qrWorkspaceSchema.table('alert_configs', {
   
   // Recipients
   snsTopicArn: varchar('sns_topic_arn', { length: 500 }),
-  recipients: jsonb('recipients').$type<Array<{
-    type: 'sms' | 'email';
-    value: string;
-  }>>().default([]),
+  recipients: jsonb('recipients').$type<AlertRecipient[]>().default([]),
   
   // Conditions
-  triggerConditions: jsonb('trigger_conditions').$type<any>().default({}),
+  triggerConditions: jsonb('trigger_conditions').$type<JsonObject>().default({}),
   cooldownMinutes: integer('cooldown_minutes').default(30),
   
   // History
@@ -174,11 +176,11 @@ export const alertHistory = qrWorkspaceSchema.table('alert_history', {
   
   // Message Content
   messageContent: varchar('message_content', { length: 1000 }).notNull(),
-  recipientsNotified: jsonb('recipients_notified').$type<any>().notNull(),
+  recipientsNotified: jsonb('recipients_notified').$type<AlertRecipient[]>().notNull(),
   
   // Delivery Status
   snsMessageId: varchar('sns_message_id', { length: 255 }),
-  deliveryStatus: jsonb('delivery_status').$type<any>().default({}),
+  deliveryStatus: jsonb('delivery_status').$type<JsonObject>().default({}),
   
   // Response Tracking
   acknowledgedBy: varchar('acknowledged_by', { length: 255 }),
@@ -234,10 +236,10 @@ export const activityLog = qrWorkspaceSchema.table('activity_log', {
   
   // Context
   module: varchar('module', { length: 50 }),
-  metadata: jsonb('metadata').$type<any>().default({}),
+  metadata: jsonb('metadata').$type<JsonObject>().default({}),
   
   // Changes
-  changes: jsonb('changes').$type<any>().default({}),
+  changes: jsonb('changes').$type<JsonObject>().default({}),
 }, (table) => ({
   workspaceIdx: index('idx_activity_workspace').on(table.workspaceId),
   performedIdx: index('idx_activity_performed').on(table.performedAt),
@@ -438,4 +440,4 @@ export const containerTypes = qrWorkspaceSchema.table('container_types', {
   containerTypeIdx: index('container_types_type_idx').on(table.containerType),
 }));
 
-export const containerTypesRelations = relations(containerTypes, ({ one }) => ({}));
+export const containerTypesRelations = relations(containerTypes, () => ({}));

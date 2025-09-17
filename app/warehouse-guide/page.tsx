@@ -143,7 +143,7 @@ export default function WarehouseGuide() {
             </li>
             <li className="flex items-start">
               <span className="font-bold mr-2">6.</span>
-              <span>Mark as "Ready to Ship"</span>
+              <span>Mark as &quot;Ready to Ship&quot;</span>
             </li>
           </ol>
         </div>
@@ -161,7 +161,7 @@ export default function WarehouseGuide() {
               <p className="text-gray-600">→ Check container type, ask supervisor</p>
             </div>
             <div className="border-l-4 border-warehouse-caution pl-4">
-              <p className="font-bold">Can't find product?</p>
+              <p className="font-bold">Can&apos;t find product?</p>
               <p className="text-gray-600">→ Check alternate SKU in system</p>
             </div>
             <div className="border-l-4 border-warehouse-caution pl-4">

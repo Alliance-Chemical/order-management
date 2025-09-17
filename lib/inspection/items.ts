@@ -2,7 +2,7 @@ export type WorkflowPhase = 'pre_mix' | 'pre_ship' | string;
 
 interface WorkspaceLike {
   workflowPhase: WorkflowPhase;
-  moduleStates?: Record<string, any>;
+  moduleStates?: Record<string, unknown>;
 }
 
 interface OrderItemLike { name?: string }

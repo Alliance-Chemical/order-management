@@ -2,6 +2,9 @@ import { pgTable, uuid, bigint, varchar, jsonb, timestamp, integer, boolean, ind
 import { relations } from 'drizzle-orm';
 import { workspaces } from './qr-workspace';
 
+type JsonObject = Record<string, unknown>;
+type JsonRecordArray = JsonObject[];
+
 // Freight Orders - linked to workspaces for unified tracking
 export const freightOrders = pgTable('freight_orders', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -54,13 +57,13 @@ export const freightOrders = pgTable('freight_orders', {
   deliveredAt: timestamp('delivered_at'),
   
   // AI Decision Data
-  aiSuggestions: jsonb('ai_suggestions').$type<any>().default([]),
+  aiSuggestions: jsonb('ai_suggestions').$type<JsonRecordArray>().default([]),
   confidenceScore: decimal('confidence_score', { precision: 3, scale: 2 }),
   decisionSource: varchar('decision_source', { length: 50 }), // 'ai', 'manual', 'hybrid'
   
   // Telemetry
   sessionId: uuid('session_id'),
-  telemetryData: jsonb('telemetry_data').$type<any>().default({}),
+  telemetryData: jsonb('telemetry_data').$type<JsonObject>().default({}),
   
   // Metadata
   createdAt: timestamp('created_at').defaultNow(),
@@ -94,7 +97,7 @@ export const freightQuotes = pgTable('freight_quotes', {
   validUntil: timestamp('valid_until'),
   
   // MyCarrier Response Data
-  rawQuoteData: jsonb('raw_quote_data').$type<any>(),
+  rawQuoteData: jsonb('raw_quote_data').$type<JsonObject>(),
   
   // Selection Status
   isSelected: boolean('is_selected').default(false),
@@ -118,7 +121,7 @@ export const freightEvents = pgTable('freight_events', {
   eventDescription: varchar('event_description', { length: 500 }),
   
   // Event Data
-  eventData: jsonb('event_data').$type<any>().default({}),
+  eventData: jsonb('event_data').$type<JsonObject>().default({}),
   
   // Tracking
   performedBy: varchar('performed_by', { length: 255 }),

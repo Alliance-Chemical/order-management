@@ -4,13 +4,26 @@ import { workspaces, qrCodes } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 
+interface WorkspaceItem {
+  orderItemId?: string;
+  sku?: string | null;
+  name?: string | null;
+  quantity?: number;
+}
+
+interface WorkspaceShipStationData {
+  items?: WorkspaceItem[];
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ orderId: string }> }
 ) {
   try {
     const params = await context.params;
-    const { labelQuantities } = await request.json();
+    const { labelQuantities } = (await request.json()) as {
+      labelQuantities: Record<string, number>;
+    };
     const orderId = Number(params.orderId);
     
     if (Number.isNaN(orderId)) {
@@ -39,7 +52,7 @@ export async function POST(
     const workspaceRecord = workspace[0];
     const workspaceId = workspaceRecord.id;
     const orderNumber = workspaceRecord.orderNumber;
-    const shipstationData = workspaceRecord.shipstationData as any;
+    const shipstationData = (workspaceRecord.shipstationData ?? {}) as WorkspaceShipStationData;
 
     // Delete existing QR codes for items that have custom quantities
     const skusToRegenerate = Object.keys(labelQuantities);
@@ -67,10 +80,10 @@ export async function POST(
         const itemId = item.orderItemId || item.sku || `item-${items.indexOf(item)}`;
         const itemName = item.name || 'Unknown Product';
         const quantity = item.quantity || 1;
-        const sku = item.sku;
+        const sku = item.sku ?? undefined;
         
         // Determine how many labels to create for this item
-        const labelsToCreate = labelQuantities[sku] || 1;
+        const labelsToCreate = sku ? labelQuantities[sku] ?? 1 : 1;
         
         console.log(`[QR] Creating ${labelsToCreate} custom labels for: "${itemName}" (SKU: ${sku}, Qty: ${quantity})`);
         

@@ -2,12 +2,42 @@ import { NextRequest, NextResponse } from 'next/server';
 import { geminiService } from '@/lib/services/ai/gemini-service';
 import { db } from '@/lib/db';
 import { workspaces, activityLog } from '@/lib/db/schema/qr-workspace';
-import { eq, and, gte, sql } from 'drizzle-orm';
+import { gte, sql } from 'drizzle-orm';
 // AWS SNS removed - log notifications instead
+
+type HistoricalRecord = {
+  orderId: number;
+  customer: string | null;
+  product: string;
+  status: string | null;
+  createdAt: Date | null;
+  failureCount: number;
+  failureTypes: string[] | null;
+};
+
+type AggregatedInspection = {
+  product: string;
+  customer: string | null;
+  failures: Array<{
+    type: string;
+    date: Date | null;
+    severity: string;
+  }>;
+  total_inspections: number;
+};
+
+type AnomalyReport = Awaited<ReturnType<typeof geminiService.detectAnomalies>>;
+type RiskPattern = AnomalyReport['risk_patterns'][number];
+type AlertEntry = {
+  product: string;
+  customer: string | null;
+  risk: number;
+  action: string;
+};
 
 export async function POST(request: NextRequest) {
   try {
-    const { days = 30, runAnalysis = true } = await request.json();
+    const { days = 30, runAnalysis = true } = await request.json() as { days?: number; runAnalysis?: boolean };
 
     // Fetch historical inspection data
     const startDate = new Date();
@@ -34,10 +64,10 @@ export async function POST(request: NextRequest) {
         `
       })
       .from(workspaces)
-      .where(gte(workspaces.createdAt, startDate));
+      .where(gte(workspaces.createdAt, startDate)) as HistoricalRecord[];
 
     // Transform data for AI analysis
-    const aggregatedData = historicalData.reduce((acc: any, record) => {
+    const aggregatedData = historicalData.reduce<Record<string, AggregatedInspection>>((acc, record) => {
       const key = `${record.product}_${record.customer}`;
       
       if (!acc[key]) {
@@ -62,7 +92,7 @@ export async function POST(request: NextRequest) {
       return acc;
     }, {});
 
-    const dataForAnalysis = Object.values(aggregatedData);
+    const dataForAnalysis: AggregatedInspection[] = Object.values(aggregatedData);
 
     if (!runAnalysis) {
       // Just return the raw data without AI analysis
@@ -78,7 +108,7 @@ export async function POST(request: NextRequest) {
     const anomalyReport = await geminiService.detectAnomalies(dataForAnalysis);
 
     // Process high-risk combinations
-    const alerts: any[] = [];
+    const alerts: AlertEntry[] = [];
     
     for (const combo of anomalyReport.high_risk_combinations) {
       if (combo.predicted_failure_rate > 0.3) { // 30% failure rate threshold
@@ -120,15 +150,15 @@ export async function POST(request: NextRequest) {
       analysis: {
         period: `${days} days`,
         dataPoints: historicalData.length,
-        uniqueProducts: [...new Set(dataForAnalysis.map((d: any) => d.product))].length,
-        uniqueCustomers: [...new Set(dataForAnalysis.map((d: any) => d.customer))].length
+        uniqueProducts: [...new Set(dataForAnalysis.map((d) => d.product))].length,
+        uniqueCustomers: [...new Set(dataForAnalysis.map((d) => d.customer))].length
       },
       riskPatterns: anomalyReport.risk_patterns,
       highRiskCombinations: anomalyReport.high_risk_combinations,
       alerts,
       recommendations: anomalyReport.risk_patterns
-        .filter(p => p.risk_score > 70)
-        .map(p => p.recommendation)
+        .filter((p: RiskPattern) => p.risk_score > 70)
+        .map((p) => p.recommendation)
     });
 
   } catch (error) {

@@ -6,11 +6,11 @@ export function asBigInt(v: number | string | bigint): bigint {
   return typeof v === 'bigint' ? v : BigInt(v);
 }
 
-export function bigIntReplacer(_key: string, value: any): any {
+export function bigIntReplacer(_key: string, value: unknown): unknown {
   return typeof value === 'bigint' ? value.toString() : value;
 }
 
-export function jsonStringifyWithBigInt(obj: any): string {
+export function jsonStringifyWithBigInt(obj: unknown): string {
   return JSON.stringify(obj, bigIntReplacer);
 }
 

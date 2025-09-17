@@ -2,7 +2,7 @@
 
 import { WorkspaceService } from '@/lib/services/workspace/service'
 import { getOptimizedDb } from '@/lib/db/neon'
-import { documents, workspaces } from '@/lib/db/schema/qr-workspace'
+import { documents } from '@/lib/db/schema/qr-workspace'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
@@ -19,11 +19,13 @@ const s3Client = process.env.AWS_ACCESS_KEY_ID ? new S3Client({
   }
 }) : null
 
+type DocumentMetadata = Record<string, unknown>;
+
 export async function uploadDocument(data: {
   file: File
   orderId: string
   documentType: string
-  metadata?: any
+  metadata?: DocumentMetadata
 }) {
   try {
     const { file, orderId, documentType, metadata } = data
@@ -128,7 +130,7 @@ export async function addWorkspaceDocument(data: {
   fileName: string
   documentUrl?: string
   content?: string
-  metadata?: any
+  metadata?: DocumentMetadata
 }) {
   try {
     const { orderId, documentType, fileName, documentUrl, content, metadata } = data

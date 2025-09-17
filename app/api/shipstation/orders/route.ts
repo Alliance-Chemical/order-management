@@ -1,11 +1,57 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+interface ShipStationOrderItem {
+  name: string;
+  quantity: number;
+  sku?: string;
+  unitPrice?: number;
+  options?: Array<Record<string, unknown>>;
+}
+
+interface ShipStationAddress {
+  name?: string;
+  [key: string]: unknown;
+}
+
+interface ShipStationOrder {
+  orderId: number;
+  orderNumber: string;
+  customerEmail?: string;
+  orderDate: string;
+  orderTotal: number;
+  orderStatus: string;
+  tagIds?: number[];
+  shipTo?: ShipStationAddress;
+  billTo?: ShipStationAddress;
+  items?: ShipStationOrderItem[];
+}
+
+interface ShipStationOrderResponse {
+  orders: ShipStationOrder[];
+  pages?: number;
+}
+
+interface FormattedOrder {
+  orderId: number;
+  orderNumber: string;
+  customerName: string;
+  orderDate: string;
+  orderTotal: number;
+  orderStatus: string;
+  tagIds: number[];
+  shipTo: ShipStationAddress;
+  billTo: ShipStationAddress;
+  items: Array<{
+    name: string;
+    quantity: number;
+    sku?: string;
+    unitPrice?: number;
+    customAttributes: Array<Record<string, unknown>>;
+  }>;
+}
+
+export async function GET() {
   try {
-    // Get filter from query params
-    const searchParams = request.nextUrl.searchParams;
-    const filter = searchParams.get('filter');
-    
     // Get freight order tag ID from environment - show all freight orders
     const freightTagId = parseInt(process.env.FREIGHT_ORDER_TAG || '19844');
     
@@ -15,13 +61,13 @@ export async function GET(request: NextRequest) {
     const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
     
     // Fetch ALL freight-tagged orders using listbytag endpoint
-    let allFreightOrders = [];
+    const allFreightOrders: ShipStationOrder[] = [];
     let page = 1;
     let hasMorePages = true;
     
     while (hasMorePages) {
       // Retry logic for network issues
-      let response;
+      let response: Response | undefined;
       let retries = 3;
       while (retries > 0) {
         try {
@@ -40,7 +86,7 @@ export async function GET(request: NextRequest) {
             }
           );
           break; // Success, exit retry loop
-        } catch (error: any) {
+        } catch (error) {
           retries--;
           if (retries === 0) throw error;
           console.log(`ShipStation request failed, retrying... (${retries} retries left)`);
@@ -52,12 +98,13 @@ export async function GET(request: NextRequest) {
         throw new Error(`ShipStation API error: ${response?.statusText || 'Unknown error'}`);
       }
       
-      const data = await response.json();
+      const data = await response.json() as ShipStationOrderResponse;
       const orders = data.orders || [];
-      allFreightOrders = [...allFreightOrders, ...orders];
+      allFreightOrders.push(...orders);
       
       // Check if there are more pages
-      hasMorePages = data.pages && page < data.pages;
+      const totalPages = typeof data.pages === 'number' ? data.pages : 0;
+      hasMorePages = totalPages > 0 && page < totalPages;
       page++;
       
       // Add a small delay to avoid rate limiting
@@ -67,7 +114,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Format orders for display - filter out discount items
-    const formattedOrders = allFreightOrders.map((order: any) => ({
+    const formattedOrders: FormattedOrder[] = allFreightOrders.map(order => ({
       orderId: order.orderId,
       orderNumber: order.orderNumber,
       customerName: order.shipTo?.name || 'Unknown Customer',
@@ -77,13 +124,13 @@ export async function GET(request: NextRequest) {
       tagIds: order.tagIds || [],
       shipTo: order.shipTo || {},
       billTo: order.billTo || {},
-      items: order.items?.map((item: any) => ({
+      items: (order.items || []).map(item => ({
         name: item.name,
         quantity: item.quantity,
         sku: item.sku,
         unitPrice: item.unitPrice,
         customAttributes: item.options || [],
-      })) || [],
+      })),
     }));
     
     return NextResponse.json({

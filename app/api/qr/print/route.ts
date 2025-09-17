@@ -1,8 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
-import { QRGenerator } from '@/src/services/qr/qrGenerator';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 
-const qrGenerator = new QRGenerator();
 const repository = new WorkspaceRepository();
 
 export async function POST(request: NextRequest) {
@@ -239,14 +239,6 @@ function generatePrintHTML(
   const is4x6 = labelSize === '4x6';
   
   // Helper function to determine if item is direct resell based on fulfillment method
-  const isDirectResell = (record: any): boolean => {
-    if (fulfillmentMethod === 'direct_resell') return true;
-    if (fulfillmentMethod === 'pump_and_fill') return false;
-    // Default to checking the record itself for clues
-    const name = (record.chemicalName || record.encodedData?.itemName || '').toLowerCase();
-    return name.includes('ready to ship') || name.includes('pre-packaged');
-  };
-  
   // Helper function to get label type badge text
   const getLabelType = (record: any): string => {
     // For container labels, check fulfillment method

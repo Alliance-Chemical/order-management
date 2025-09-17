@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 // AWS SNS removed - log alerts instead
-import { alertHistory } from '@/lib/db/schema/qr-workspace';
-
 const repository = new WorkspaceRepository();
 
 export async function POST(
@@ -46,7 +44,7 @@ export async function POST(
     const formattedMessage = message || `Alert: ${alertType} for Order ${workspace.orderNumber}\n\nWorkspace: ${process.env.NEXT_PUBLIC_APP_URL}${workspace.workspaceUrl}\nOrder ID: ${workspace.orderId}`;
 
     // Log alert (SNS removed)
-    let snsMessageId = null;
+    const snsMessageId = null;
     console.log('Alert triggered:', {
       alertType,
       orderNumber: workspace.orderNumber,

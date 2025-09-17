@@ -4,6 +4,14 @@ import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
 import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
 
+type LotAssignment = {
+  id: string;
+  qrCodeId?: string;
+  lotNumber?: string;
+  assignedAt: string;
+  assignedBy: string;
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
@@ -41,7 +49,11 @@ export async function POST(
   try {
     const { orderId } = await params;
     const orderIdBigInt = asBigInt(orderId);
-    const body = await request.json();
+    const body = await request.json() as {
+      qrCodeId?: string;
+      lotNumber?: string;
+      userId?: string;
+    };
     
     const [workspace] = await db
       .select()
@@ -54,7 +66,7 @@ export async function POST(
     }
     
     // Create lot assignment
-    const lotAssignment = {
+    const lotAssignment: LotAssignment = {
       id: crypto.randomUUID(),
       qrCodeId: body.qrCodeId,
       lotNumber: body.lotNumber,
@@ -64,7 +76,7 @@ export async function POST(
     
     // Update workspace with lot assignment
     const currentData = workspace.shipstationData || {};
-    const lots = currentData.lots || [];
+    const lots: LotAssignment[] = currentData.lots || [];
     lots.push(lotAssignment);
     
     await db
@@ -111,7 +123,7 @@ export async function DELETE(
     
     // Remove lot assignment
     const currentData = workspace.shipstationData || {};
-    const lots = (currentData.lots || []).filter((lot: any) => lot.id !== lotId);
+    const lots: LotAssignment[] = (currentData.lots || []).filter((lot: LotAssignment) => lot.id !== lotId);
     
     await db
       .update(workspaces)

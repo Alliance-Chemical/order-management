@@ -190,8 +190,8 @@ export default function WorkspacePage() {
     if (!workspace) return;
     
     // Save inspection results
-    const module = workspace.workflowPhase === 'pre_mix' ? 'pre_mix' : 'pre_ship';
-    await handleModuleStateChange(module, results as unknown as Record<string, any>);
+    const workflowModule = workspace.workflowPhase === 'pre_mix' ? 'pre_mix' : 'pre_ship';
+    await handleModuleStateChange(workflowModule, results as unknown as Record<string, any>);
     
     // Move to complete state
     setWorkerStep('complete');

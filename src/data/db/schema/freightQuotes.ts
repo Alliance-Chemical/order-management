@@ -21,7 +21,7 @@ export const freightQuotes = pgTable('freight_quotes', {
   validUntil: timestamp('valid_until'),
   
   // MyCarrier Response Data
-  rawQuoteData: jsonb('raw_quote_data').$type<any>(),
+  rawQuoteData: jsonb('raw_quote_data').$type<Record<string, unknown>>(),
   
   // Selection Status
   isSelected: boolean('is_selected').default(false),

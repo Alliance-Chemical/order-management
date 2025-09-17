@@ -3,6 +3,29 @@ import { geminiService } from '@/lib/services/ai/gemini-service';
 import { workspaceService } from '@/lib/services/workspace/service';
 // AWS SNS removed - log notifications instead
 
+type VoiceAnalysis = {
+  severity?: string;
+  issueType?: string;
+  [key: string]: unknown;
+};
+
+type ImageAnalysis = {
+  detected_issues?: string[];
+  requires_supervisor?: boolean;
+  recommendations?: string[];
+  confidence?: number;
+  [key: string]: unknown;
+};
+
+type IssueReportAnalysis = {
+  orderId: string;
+  workerId?: string;
+  timestamp: string;
+  context?: string;
+  voiceAnalysis?: VoiceAnalysis;
+  imageAnalysis?: ImageAnalysis;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -16,11 +39,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Order ID required' }, { status: 400 });
     }
 
-    let issueReport: any = {
+    const issueReport: IssueReportAnalysis = {
       orderId,
-      workerId,
+      workerId: workerId || undefined,
       timestamp: new Date().toISOString(),
-      context
+      context: context || undefined,
     };
 
     // Process voice note if provided
@@ -29,7 +52,7 @@ export async function POST(request: NextRequest) {
       const audioBase64 = Buffer.from(audioBuffer).toString('base64');
       
       const voiceAnalysis = await geminiService.processVoiceNote(audioBase64);
-      issueReport.voiceAnalysis = voiceAnalysis;
+      issueReport.voiceAnalysis = voiceAnalysis as VoiceAnalysis;
     }
 
     // Process image if provided
@@ -41,7 +64,7 @@ export async function POST(request: NextRequest) {
         imageBase64,
         context || 'Inspection failure'
       );
-      issueReport.imageAnalysis = imageAnalysis;
+      issueReport.imageAnalysis = imageAnalysis as ImageAnalysis;
 
       // Auto-escalate if supervisor required
       if (imageAnalysis.requires_supervisor) {
@@ -56,8 +79,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine overall severity
-    const severity = issueReport.voiceAnalysis?.severity || 
-                    (issueReport.imageAnalysis?.requires_supervisor ? 'high' : 'medium');
+    const severity = issueReport.voiceAnalysis?.severity
+      || (issueReport.imageAnalysis?.requires_supervisor ? 'high' : 'medium');
 
     // Log to activity
     await workspaceService.addActivity(orderId, {

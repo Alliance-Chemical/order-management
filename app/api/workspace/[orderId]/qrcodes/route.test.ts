@@ -44,12 +44,12 @@ describe('/api/workspace/[orderId]/qrcodes', () => {
       expect(data.qrCodes.length).toBeGreaterThan(0)
       
       // Check that Master QR was created
-      const masterQR = data.qrCodes.find((qr: any) => qr.type === 'master')
+      const masterQR = data.qrCodes.find((qr: { type: string }) => qr.type === 'master')
       expect(masterQR).toBeDefined()
       expect(masterQR.label).toBe('MASTER-12345')
       
       // Check that Container QRs were created (2 drums as per test data)
-      const containerQRs = data.qrCodes.filter((qr: any) => qr.type === 'container')
+      const containerQRs = data.qrCodes.filter((qr: { type: string }) => qr.type === 'container')
       expect(containerQRs.length).toBe(2)
       expect(containerQRs[0].label).toContain('DRUM-1-12345')
       expect(containerQRs[1].label).toContain('DRUM-2-12345')

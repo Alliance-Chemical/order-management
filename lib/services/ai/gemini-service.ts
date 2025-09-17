@@ -90,7 +90,7 @@ export class GeminiService {
   }
 
   async extractDocumentData(documentBase64: string, documentType: 'BOL' | 'COA'): Promise<{
-    extracted_data: Record<string, any>;
+    extracted_data: Record<string, unknown>;
     confidence_scores: Record<string, number>;
     validation_errors: string[];
   }> {

@@ -90,6 +90,10 @@ export async function withRetry<T>(
 }
 
 // Connection health check
+type HealthCheckResult = {
+  health: number;
+};
+
 export async function checkDatabaseHealth(): Promise<boolean> {
   try {
     const connectionString = getConnectionString();
@@ -103,7 +107,7 @@ export async function checkDatabaseHealth(): Promise<boolean> {
     }
     
     if (sql) {
-      const result = await sql`SELECT 1 as health` as any[];
+      const result = await sql`SELECT 1 as health` as HealthCheckResult[];
       return result?.[0]?.health === 1;
     }
     

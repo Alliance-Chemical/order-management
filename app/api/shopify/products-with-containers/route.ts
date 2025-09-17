@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { containerTypes } from '@/lib/db/schema/qr-workspace';
-import { eq } from 'drizzle-orm';
 
 export const runtime = 'edge';
 
@@ -107,7 +106,7 @@ async function fetchShopifyProducts(): Promise<ShopifyProduct[]> {
   return allProducts;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     console.log('[SHOPIFY CONTAINERS] Fetching products with container data...');
     

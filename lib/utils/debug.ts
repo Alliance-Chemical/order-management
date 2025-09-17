@@ -14,7 +14,7 @@ export interface DebugOptions {
 /**
  * Debug logger that only outputs in development mode
  */
-export function debug(message: string, data?: any, options: DebugOptions = {}) {
+export function debug(message: string, data?: unknown, options: DebugOptions = {}) {
   const { module = 'APP', level = 'log', force = false } = options;
   
   if (!isDevelopment && !force) return;
@@ -24,37 +24,37 @@ export function debug(message: string, data?: any, options: DebugOptions = {}) {
   
   switch (level) {
     case 'warn':
-      console.warn(prefix, message, data || '');
+      console.warn(prefix, message, data ?? '');
       break;
     case 'error':
-      console.error(prefix, message, data || '');
+      console.error(prefix, message, data ?? '');
       break;
     case 'info':
-      console.info(prefix, message, data || '');
+      console.info(prefix, message, data ?? '');
       break;
     default:
-      console.log(prefix, message, data || '');
+      console.log(prefix, message, data ?? '');
   }
 }
 
 /**
  * Debug logger specifically for QR code operations
  */
-export function debugQR(message: string, data?: any) {
+export function debugQR(message: string, data?: unknown) {
   debug(message, data, { module: 'QR' });
 }
 
 /**
  * Debug logger for API operations
  */
-export function debugAPI(message: string, data?: any) {
+export function debugAPI(message: string, data?: unknown) {
   debug(message, data, { module: 'API' });
 }
 
 /**
  * Debug logger for database operations
  */
-export function debugDB(message: string, data?: any) {
+export function debugDB(message: string, data?: unknown) {
   debug(message, data, { module: 'DB' });
 }
 
@@ -96,13 +96,17 @@ export function debugAssert(condition: boolean, message: string) {
 /**
  * Normalize inconsistent data structures (for debugging data issues)
  */
-export function debugDataStructure(data: any, context: string) {
+export function debugDataStructure(data: unknown, context: string) {
   if (!isDevelopment) return;
-  
+  const isObject = typeof data === 'object' && data !== null;
+  const arrayData: unknown[] | undefined = Array.isArray(data) ? data : undefined;
+  const keys = isObject ? Object.keys(data as Record<string, unknown>) : null;
+  const sample = arrayData && arrayData.length > 0 ? arrayData[0] : data;
+
   debug(`Data structure for ${context}:`, {
     type: typeof data,
-    isArray: Array.isArray(data),
-    keys: data && typeof data === 'object' ? Object.keys(data) : null,
-    sample: data && Array.isArray(data) && data.length > 0 ? data[0] : data
+    isArray: Boolean(arrayData),
+    keys,
+    sample
   }, { module: 'DATA' });
 }

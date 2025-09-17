@@ -4,7 +4,7 @@ import { workspaces, qrCodes, activityLog } from '@/lib/db/schema/qr-workspace';
 import { sql } from 'drizzle-orm';
 import { seedDemoData } from '@/lib/demo/seed-data';
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     // Check for demo mode or development environment
     if (process.env.NODE_ENV === 'production' && !process.env.DEMO_MODE) {
@@ -20,8 +20,6 @@ export async function POST(request: NextRequest) {
     await db.delete(activityLog).where(sql`order_id >= 99000`);
     await db.delete(qrCodes).where(sql`order_id >= 99000`);
     await db.delete(workspaces).where(sql`order_id >= 99000`);
-    await db.delete(sourceContainers).where(sql`container_number LIKE 'DEMO-%'`);
-    
     // Re-seed demo data
     await seedDemoData();
     
@@ -40,7 +38,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   // Health check for demo status
   try {
     const demoWorkspaces = await db.select()
@@ -54,6 +52,7 @@ export async function GET(request: NextRequest) {
       ready: demoWorkspaces.length > 0
     });
   } catch (error) {
+    console.error('Demo status check failed:', error);
     return NextResponse.json(
       { error: 'Failed to check demo status' },
       { status: 500 }

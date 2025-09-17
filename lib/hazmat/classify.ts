@@ -1,30 +1,57 @@
 import fs from 'fs';
 import path from 'path';
+import type { ClassificationResult } from '@/lib/services/rag/database-rag';
 
-type Classification = {
-  un_number: string | null;
-  proper_shipping_name: string | null;
-  hazard_class: string | null;
-  packing_group: 'I' | 'II' | 'III' | 'NONE' | null;
-  labels?: string;
-  erg_guide?: string | null;
-  citations?: any[];
-  confidence: number;
-  source: string;
-  explanation?: string;
-  packaging?: any;
-  quantity_limitations?: any;
-  vessel_stowage?: any;
-  special_provisions?: any;
-};
+type Classification = ClassificationResult;
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+type JsonMap = Record<string, JsonValue>;
 
-let cachedIndex: any | null = null;
+interface HmtIndex extends JsonMap {
+  dim?: number;
+}
+
+interface HmtRow extends JsonMap {
+  id_number?: string;
+  base_name?: string;
+  qualifier?: string;
+  packing_group?: string | null;
+  class_or_division?: string | null;
+  class?: string | null;
+  label_codes?: string[] | null;
+}
+
+interface HistoricalRecord extends JsonMap {
+  sku?: string;
+  product_name?: string;
+  chosen_un?: string;
+}
+
+interface RerankDocument {
+  metadata?: JsonMap;
+  text?: string;
+}
+
+interface RerankResult {
+  doc: RerankDocument;
+  score?: number;
+}
+
+interface FilterCondition {
+  regex: string;
+}
+
+interface GatingFilters {
+  base_name: FilterCondition;
+  class?: FilterCondition;
+}
+
+let cachedIndex: HmtIndex | null = null;
 let cachedErg: Record<string, string> | null = null;
-let cachedHist: any[] | null = null;
-let cachedHmtRows: any[] | null = null;
+let cachedHist: HistoricalRecord[] | null = null;
+let cachedHmtRows: HmtRow[] | null = null;
 
-function loadJSON(p: string) {
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+function loadJSON<T>(p: string): T {
+  return JSON.parse(fs.readFileSync(p, 'utf8')) as T;
 }
 
 export async function classifyWithRAG(sku: string | null, productName: string): Promise<Classification> {
@@ -44,7 +71,7 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
       'hexane': ['hexanes', 'n-hexane'],
       'sodium hypochlorite': ['bleach', 'hypochlorite solution', 'liquid bleach'],
     };
-    let extra: string[] = [];
+    const extra: string[] = [];
     for (const [canon, alts] of Object.entries(synonyms)) {
       if (s.includes(canon) || alts.some(a => s.includes(a))) {
         extra.push([canon, ...alts].join(' '));
@@ -63,7 +90,7 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
     return extra.length ? `${q}${proofPct} ${extra.join(' ')}` : `${q}${proofPct}`;
   }
 
-  function detectGatingFilters(q: string): any | null {
+  function detectGatingFilters(q: string): GatingFilters | null {
     const s = (q || '').toLowerCase();
     const fam: Array<{ match: RegExp; baseRegex: string; classRegex?: string }> = [
       { match: /(\bnitric\b|aqua\s+fortis|rfna|red\s+fuming)/, baseRegex: 'nitric acid|nitrating acid' },
@@ -88,7 +115,7 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
     ];
     for (const f of fam) {
       if (f.match.test(s)) {
-        const filters: any = { base_name: { regex: f.baseRegex } };
+        const filters: GatingFilters = { base_name: { regex: f.baseRegex } };
         if (f.classRegex) filters.class = { regex: f.classRegex };
         return filters;
       }
@@ -130,7 +157,7 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   const hmtRowsPath = path.join(process.cwd(), 'data', 'hmt-172101.json');
 
   try {
-    if (!cachedIndex) cachedIndex = loadJSON(idxPath);
+    if (!cachedIndex) cachedIndex = loadJSON<HmtIndex>(idxPath);
   } catch {
     return {
       un_number: null,
@@ -142,14 +169,21 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
       explanation: 'HMT index missing. Run scripts/extract-hmt-from-cfr.js and scripts/build-hmt-index.js.',
     };
   }
-  try { if (!cachedHmtRows) cachedHmtRows = loadJSON(hmtRowsPath); } catch {}
+  try { if (!cachedHmtRows) cachedHmtRows = loadJSON<HmtRow[]>(hmtRowsPath); } catch {}
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { embed } = require('../rag/embeddings.js');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { search } = require('../rag/vectorStore.js');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { localRerank } = require('../rag/rerank.js');
+  const { embed } = require('../rag/embeddings.js') as {
+    embed: (input: string[], options: Record<string, unknown>) => Promise<number[][]>;
+  };
+  const { search } = require('../rag/vectorStore.js') as {
+    search: (
+      index: HmtIndex,
+      vector: number[],
+      options: Record<string, unknown>,
+    ) => RerankResult[];
+  };
+  const { localRerank } = require('../rag/rerank.js') as {
+    localRerank: (query: string, results: RerankResult[]) => RerankResult[];
+  };
 
   const nonhaz = nonHazardCheck(productName);
   if (nonhaz) {
@@ -210,26 +244,40 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   }
 
   const top = reranked[0].doc;
-  const meta = top.metadata || {};
+  const meta = (top.metadata ?? {}) as JsonMap;
+  const metaIdNumber = typeof meta.id_number === 'string' ? meta.id_number : '';
+  const metaBaseName = typeof meta.base_name === 'string' ? meta.base_name : '';
+  const metaQualifier = typeof meta.qualifier === 'string' ? meta.qualifier : '';
+  const metaClass = typeof meta.class === 'string'
+    ? meta.class
+    : typeof meta.class_or_division === 'string'
+      ? meta.class_or_division
+      : null;
+  const metaLabelCodes = Array.isArray(meta.label_codes)
+    ? meta.label_codes.filter((label): label is string => typeof label === 'string')
+    : undefined;
 
-  try { if (!cachedErg) cachedErg = loadJSON(ergPath); } catch {}
-  try { if (!cachedHist) cachedHist = loadJSON(histPath); } catch {}
+  try { if (!cachedErg) cachedErg = loadJSON<Record<string, string>>(ergPath); } catch {}
+  try { if (!cachedHist) cachedHist = loadJSON<HistoricalRecord[]>(histPath); } catch {}
 
-  const ergGuide = cachedErg ? cachedErg[meta.id_number] || null : null;
+  const ergGuide = cachedErg ? cachedErg[metaIdNumber] ?? null : null;
   let historyCount = 0;
   if (cachedHist) {
     const needle = (productName || '').toLowerCase();
-    historyCount = cachedHist.filter((h: any) =>
-      (sku && h.sku === sku) ||
-      (h.product_name && String(h.product_name).toLowerCase().includes(needle))
-    ).filter((h: any) => h.chosen_un && h.chosen_un.toUpperCase() === meta.id_number).length;
+    historyCount = cachedHist
+      .filter((record) =>
+        (sku && record.sku === sku) ||
+        (record.product_name && String(record.product_name).toLowerCase().includes(needle))
+      )
+      .filter((record) => record.chosen_un && record.chosen_un.toUpperCase() === metaIdNumber)
+      .length;
   }
 
-  const baseScore = (reranked[0] as any).score || 0.5;
+  const baseScore = reranked[0].score ?? 0.5;
   let confidence = Math.max(0.3, Math.min(0.99, 0.6 + (baseScore - 0.5) * 0.8 + (historyCount > 0 ? 0.1 : 0)));
   // Heuristic confidence floors for exact families
   const qLower = productName.toLowerCase();
-  if ((/ethyl\s+acetate|ethyl\s+ethanoate|\betoac\b|acetic\s+acid\s+ethyl\s+ester/i).test(productName) && meta.base_name?.toLowerCase() === 'ethyl acetate') {
+  if ((/ethyl\s+acetate|ethyl\s+ethanoate|\betoac\b|acetic\s+acid\s+ethyl\s+ester/i).test(productName) && metaBaseName.toLowerCase() === 'ethyl acetate') {
     confidence = Math.max(confidence, 0.8);
   }
   if ((/denatured\s+alcohol|ethyl\s+alcohol|ethanol/i).test(productName) && (/proof/i).test(productName) && (/^UN(1170|1987)$/.test(meta.id_number || ''))) {
@@ -238,34 +286,40 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   if ((/sulfuric/i).test(productName) && (/drain/i).test(productName) && (meta.id_number === 'UN1830')) {
     confidence = Math.max(confidence, 0.75);
   }
-  if ((/\bn-?hexane\b|\bhexanes?\b/i).test(productName) && /hexane/i.test(meta.base_name || '')) {
+  if ((/\bn-?hexane\b|\bhexanes?\b/i).test(productName) && /hexane/i.test(metaBaseName)) {
     confidence = Math.max(confidence, 0.8);
   }
 
   const explanation = [
-    `Matched '${productName}' to '${meta.base_name}${meta.qualifier ? ' — ' + meta.qualifier : ''}' in 49 CFR 172.101 (HMT).`,
-    meta.qualifier ? 'Concentration/qualifier aligned via numeric-aware reranker.' : null,
+    `Matched '${productName}' to '${metaBaseName}${metaQualifier ? ' — ' + metaQualifier : ''}' in 49 CFR 172.101 (HMT).`,
+    metaQualifier ? 'Concentration/qualifier aligned via numeric-aware reranker.' : null,
     ergGuide ? `ERG Guide ${ergGuide} added for emergency reference.` : null,
-    historyCount > 0 ? `Historical shipments confirm ${historyCount} prior use of ${meta.id_number}.` : null,
+    historyCount > 0 ? `Historical shipments confirm ${historyCount} prior use of ${metaIdNumber}.` : null,
   ].filter(Boolean).join(' ');
 
-  const pg = (meta.packing_group || '').toUpperCase();
-  const normalizedPG = (pg === 'I' || pg === 'II' || pg === 'III') ? pg as 'I'|'II'|'III' : pg ? 'NONE' : null;
+  const pgValue = typeof meta.packing_group === 'string' ? meta.packing_group : '';
+  const pg = pgValue.toUpperCase();
+  const normalizedPG: Classification['packing_group'] =
+    pg === 'I' || pg === 'II' || pg === 'III'
+      ? pg
+      : pg
+      ? 'NONE'
+      : null;
 
   return {
-    un_number: meta.id_number || null,
-    proper_shipping_name: `${meta.base_name}${meta.qualifier ? ' — ' + meta.qualifier : ''}`,
-    hazard_class: meta.class || meta.class_or_division || null,
+    un_number: metaIdNumber || null,
+    proper_shipping_name: `${metaBaseName}${metaQualifier ? ' — ' + metaQualifier : ''}`,
+    hazard_class: metaClass,
     packing_group: normalizedPG,
-    labels: Array.isArray(meta.label_codes) ? meta.label_codes.join(', ') : (top.text || '').match(/Labels ([^—]+)/)?.[1]?.trim(),
+    labels: metaLabelCodes?.join(', ') ?? (top.text || '').match(/Labels ([^—]+)/)?.[1]?.trim(),
     // enrich with full CFR cell metadata
-    packaging: meta.packaging,
-    quantity_limitations: meta.quantity_limitations,
-    vessel_stowage: meta.vessel_stowage,
-    special_provisions: meta.special_provisions,
+    packaging: meta.packaging as Record<string, unknown> | undefined,
+    quantity_limitations: meta.quantity_limitations as Record<string, unknown> | undefined,
+    vessel_stowage: meta.vessel_stowage as Record<string, unknown> | undefined,
+    special_provisions: meta.special_provisions as Record<string, unknown> | undefined,
     erg_guide: ergGuide,
     citations: [
-      { type: 'CFR', ref: '49 CFR 172.101', entry: { id_number: meta.id_number, base_name: meta.base_name, qualifier: meta.qualifier } },
+      { type: 'CFR', ref: '49 CFR 172.101', entry: { id_number: metaIdNumber, base_name: metaBaseName, qualifier: metaQualifier || undefined } },
       ergGuide ? { type: 'ERG', ref: 'ERG 2024', guide: ergGuide } : null,
     ].filter(Boolean),
     confidence,

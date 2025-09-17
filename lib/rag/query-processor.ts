@@ -70,7 +70,10 @@ const INTENT_PATTERNS = {
   [QueryIntent.PRODUCT_LOOKUP]: /\b(product|sku|cas|un\d{4}|lookup|find|search)\b/i
 };
 
-export interface ExtractedEntities {
+type QuantityMeasurement = { value: number; unit: string };
+type EntityCollection = string[] | QuantityMeasurement[] | number[];
+
+export interface ExtractedEntities extends Record<string, EntityCollection | undefined> {
   unNumbers: string[];
   casNumbers: string[];
   packingGroups: string[];
@@ -80,10 +83,16 @@ export interface ExtractedEntities {
   ergGuides: string[];
   cfrSections: string[];
   chemicals: string[];
-  quantities: Array<{ value: number; unit: string }>;
-  temperatures: Array<{ value: number; unit: string }>;
+  quantities: QuantityMeasurement[];
+  temperatures: QuantityMeasurement[];
   percentages: number[];
-  [key: string]: any;
+}
+
+export interface QueryContext extends Record<string, unknown> {
+  isFreightBooking?: boolean;
+  needsHazmatData?: boolean;
+  requiresClassification?: boolean;
+  needsEmergencyInfo?: boolean;
 }
 
 export interface ProcessedQuery {
@@ -95,12 +104,7 @@ export interface ProcessedQuery {
   keywords: string[];
   isStructured: boolean;
   confidence: number;
-  context: {
-    isFreightBooking?: boolean;
-    needsHazmatData?: boolean;
-    requiresClassification?: boolean;
-    needsEmergencyInfo?: boolean;
-  };
+  context: QueryContext;
 }
 
 export class QueryProcessor {
@@ -273,7 +277,7 @@ export class QueryProcessor {
   /**
    * Process a query comprehensively
    */
-  static process(query: string, context?: any): ProcessedQuery {
+  static process(query: string, context: QueryContext = {}): ProcessedQuery {
     const entities = this.extractEntities(query);
     const intent = this.detectIntent(query);
     const expandedTerms = this.expandQuery(query);

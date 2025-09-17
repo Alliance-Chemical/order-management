@@ -1,15 +1,15 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { useQRScanner } from '@/hooks/useQRScanner';
+import { useQRScanner, type ValidatedQRData } from '@/hooks/useQRScanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { XMarkIcon, CameraIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon } from '@heroicons/react/24/solid';
 
 interface UnifiedQRScannerProps {
   onScan: (data: string) => void;
-  onValidatedScan?: (data: any) => void;
+  onValidatedScan?: (data: ValidatedQRData) => void;
   onClose: () => void;
   continuous?: boolean;
   autoFocus?: boolean;
@@ -60,7 +60,7 @@ export function UnifiedQRScanner({
     return () => {
       stopScanner();
     };
-  }, []);
+  }, [startScanner, stopScanner]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black">

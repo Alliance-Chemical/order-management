@@ -6,7 +6,7 @@ export default function Loading() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Loading Work Queue</h2>
-          <p className="text-gray-600">Fetching today's orders...</p>
+          <p className="text-gray-600">Fetching today&apos;s orders...</p>
         </div>
         <ProgressBar
           value={50}

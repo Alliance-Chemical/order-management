@@ -247,23 +247,28 @@ export default function FreightNavigation({
         <div className="ml-auto">
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
               <WrenchScrewdriverIcon className="h-4 w-4 text-slate-500" />
-              Tools
+              Tools & Utilities
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel className="text-xs uppercase text-slate-400">
+            <DropdownMenuContent
+              align="end"
+              className="w-80 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur"
+            >
+              <DropdownMenuLabel className="px-3 text-[11px] uppercase tracking-wide text-slate-400">
                 Secondary tools
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="bg-slate-200" />
               {toolItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = !item.external && (pathname === item.href || pathname?.startsWith(`${item.href}/`));
 
                 const content = (
-                  <div className="flex items-start gap-3">
-                    <Icon className={`mt-0.5 h-4 w-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                      <Icon className="h-4 w-4" />
+                    </span>
                     <div className="flex flex-col">
                       <span className={`text-sm ${isActive ? 'text-blue-600 font-semibold' : 'text-slate-700'}`}>
                         {item.name}
@@ -280,7 +285,11 @@ export default function FreightNavigation({
 
                 if (item.external) {
                   return (
-                    <DropdownMenuItem key={item.name} asChild className="focus:bg-blue-50">
+                    <DropdownMenuItem
+                      key={item.name}
+                      asChild
+                      className="rounded-xl px-3 py-2 focus:bg-blue-50 focus:text-blue-700"
+                    >
                       <a href={item.href} target="_blank" rel="noopener noreferrer">
                         {content}
                       </a>
@@ -289,7 +298,11 @@ export default function FreightNavigation({
                 }
 
                 return (
-                  <DropdownMenuItem key={item.name} asChild className="focus:bg-blue-50">
+                  <DropdownMenuItem
+                    key={item.name}
+                    asChild
+                    className="rounded-xl px-3 py-2 focus:bg-blue-50 focus:text-blue-700"
+                  >
                     <Link href={item.href}>{content}</Link>
                   </DropdownMenuItem>
                 );

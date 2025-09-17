@@ -2,12 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/lib/error-handler';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { asBigInt } from '@/lib/utils/bigint';
 import { db } from '@/lib/db';
-import { activityLog, workspaces } from '@/lib/db/schema/qr-workspace';
+import { activityLog } from '@/lib/db/schema/qr-workspace';
 import { and, eq, sql } from 'drizzle-orm';
 
 const workspaceService = new WorkspaceService();
+
+type InspectionPayload = {
+  result: 'pass' | 'fail' | 'hold';
+  data?: Record<string, unknown>;
+  userId?: string;
+  idempotencyKey?: string;
+};
+
+type ModuleStates = Record<string, unknown>;
+
+type EnsureResult = {
+  success: boolean;
+  finalTags: unknown[];
+  finalPhase: string;
+  error?: unknown;
+};
 
 export const POST = withErrorHandler(async (
   request: NextRequest,
@@ -15,8 +31,7 @@ export const POST = withErrorHandler(async (
 ) => {
   const { orderId: orderIdStr, phase } = await params;
   const orderId = asBigInt(orderIdStr);
-  const body = await request.json();
-  const { result, data, userId = 'system', idempotencyKey } = body;
+  const { result, data, userId = 'system', idempotencyKey } = await request.json() as InspectionPayload;
   
   // Validate result (support pass | fail | hold)
   if (!['pass', 'fail', 'hold'].includes(result)) {
@@ -44,16 +59,20 @@ export const POST = withErrorHandler(async (
   }
   
   // Update module state
-  const moduleStates = workspace.moduleStates || {};
+  const moduleStates: ModuleStates = {
+    ...(workspace.moduleStates as ModuleStates | undefined),
+  };
   moduleStates[phase] = { 
-    ...moduleStates[phase], 
+    ...(moduleStates[phase] as Record<string, unknown> | undefined), 
     result,
     completedAt: new Date().toISOString(),
     data 
   };
   
   // Update module state and phase completion timestamp
-  const phaseCompletedAt = (workspace.phaseCompletedAt as any) || {};
+  const phaseCompletedAt: Record<string, string> = {
+    ...(workspace.phaseCompletedAt as Record<string, string> | undefined),
+  };
   const nowIso = new Date().toISOString();
   phaseCompletedAt[phase] = nowIso;
 
@@ -72,8 +91,11 @@ export const POST = withErrorHandler(async (
   });
   
   // Determine target phase based on inspection result
-  let targetPhase = workspace.workflowPhase; // default to current
-  let ensureResult = { success: true as boolean, finalTags: [] as any[], finalPhase: workspace.workflowPhase };
+  let ensureResult: EnsureResult = {
+    success: true,
+    finalTags: [],
+    finalPhase: workspace.workflowPhase,
+  };
   
   if (result === 'pass') {
     // Only transition phase on PASS results

@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(result, { status: 201 });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating product link:', error);
     
     return NextResponse.json(
@@ -235,14 +235,19 @@ export async function PUT(request: NextRequest) {
     }
     
     const result = await withEdgeRetry(async () => {
-      const updateData: any = {
+      const updateData: Partial<typeof productFreightLinks.$inferInsert> = {
         updatedAt: new Date(),
       };
       
       // Only update provided fields
       if (body.overrideFreightClass !== undefined) updateData.overrideFreightClass = body.overrideFreightClass;
       if (body.overridePackaging !== undefined) updateData.overridePackaging = body.overridePackaging;
-      if (body.confidenceScore !== undefined) updateData.confidenceScore = parseFloat(body.confidenceScore);
+      if (body.confidenceScore !== undefined) {
+        const numericScore = Number(body.confidenceScore);
+        updateData.confidenceScore = Number.isFinite(numericScore)
+          ? numericScore.toFixed(2)
+          : null;
+      }
       if (body.linkSource !== undefined) updateData.linkSource = body.linkSource;
       if (body.isApproved !== undefined) updateData.isApproved = body.isApproved;
       if (body.approvedBy !== undefined) updateData.approvedBy = body.approvedBy;
@@ -320,52 +325,4 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// GET /api/product-links/unlinked - Get products without approved classifications
-async function getUnlinkedProducts() {
-  const cacheKey = 'unlinked-products:all';
-  
-  // Try cache first
-  const cached = await KVCache.get(cacheKey);
-  if (cached) {
-    return NextResponse.json(cached);
-  }
-  
-  const result = await withEdgeRetry(async () => {
-    // Get products that don't have approved links
-    const unlinkedProducts = await db
-      .select({
-        productId: products.id,
-        sku: products.sku,
-        name: products.name,
-        isHazardous: products.isHazardous,
-        casNumber: products.casNumber,
-        unNumber: products.unNumber,
-        packagingType: products.packagingType,
-        unitContainerType: products.unitContainerType,
-        hasUnapprovedLink: productFreightLinks.id,
-      })
-      .from(products)
-      .leftJoin(
-        productFreightLinks,
-        and(
-          eq(products.id, productFreightLinks.productId),
-          eq(productFreightLinks.isApproved, true)
-        )
-      )
-      .where(
-        and(
-          eq(products.isActive, true),
-          eq(productFreightLinks.id, null) // No approved links
-        )
-      );
-    
-    return unlinkedProducts;
-  });
-  
-  // Cache for 2 minutes (changes frequently)
-  await KVCache.set(cacheKey, result, 120);
-  
-  return result;
 }

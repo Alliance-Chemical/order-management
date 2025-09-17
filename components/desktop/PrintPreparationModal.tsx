@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { XMarkIcon, PrinterIcon, DocumentCheckIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, PrinterIcon } from '@heroicons/react/24/solid';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import QRCodeSummary from './print-preparation/QRCodeSummary';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';

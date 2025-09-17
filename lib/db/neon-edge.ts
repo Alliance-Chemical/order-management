@@ -86,6 +86,10 @@ export async function withEdgeRetry<T>(
 }
 
 // Quick health check for Edge
+type HealthCheckRow = {
+  health: number;
+};
+
 export async function checkEdgeHealth(): Promise<boolean> {
   try {
     if (!connectionString) return false;
@@ -98,7 +102,7 @@ export async function checkEdgeHealth(): Promise<boolean> {
         new Promise<never>((_, reject) => 
           setTimeout(() => reject(new Error('Health check timeout')), 1000)
         )
-      ]) as any[];
+      ]) as HealthCheckRow[];
       
       return result?.[0]?.health === 1;
     }

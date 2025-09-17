@@ -3,20 +3,17 @@
 import { useState, useRef } from 'react';
 import { MicrophoneIcon, CameraIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { Button } from '@/components/ui/button';
-import ProgressBar from '@/components/ui/ProgressBar';
 import { useToast } from '@/hooks/use-toast';
 import { reportIssue } from '@/app/actions/ai';
 
 interface AIIssueReporterProps {
   orderId: string;
-  workerId: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 export default function AIIssueReporter({ 
   orderId, 
-  workerId, 
   onClose, 
   onSuccess 
 }: AIIssueReporterProps) {
@@ -49,7 +46,7 @@ export default function AIIssueReporter({
 
       mediaRecorder.current.start();
       setIsRecording(true);
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: "Error",
         description: "Could not access microphone. Please check permissions.",

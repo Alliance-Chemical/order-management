@@ -1,4 +1,114 @@
 import { MyCarrierAPIClient } from "./api-client";
+import type {
+  MyCarrierOrderPayload,
+  MyCarrierOrderQuoteUnit,
+  MyCarrierOrderResponse,
+  MyCarrierOrderQuoteCommodity,
+} from "./api-client";
+
+interface ShipstationAddress {
+  street1?: string | null;
+  street2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  name?: string | null;
+  company?: string | null;
+  phone?: string | null;
+}
+
+interface ShipstationItemWeight {
+  value?: number | null;
+}
+
+interface ShipstationItem {
+  sku?: string | null;
+  name?: string | null;
+  quantity?: number | string | null;
+  weight?: ShipstationItemWeight | null;
+  freightClass?: string | null;
+  hazmat?: boolean;
+  hazmatId?: string | null;
+  hazmatName?: string | null;
+  hazmatClass?: string | null;
+  packingGroup?: string | null;
+}
+
+interface ShipstationOrder {
+  orderId?: number | string | null;
+  orderNumber?: string | null;
+  customerEmail?: string | null;
+  shipFrom?: ShipstationAddress | null;
+  shipTo?: ShipstationAddress | null;
+  billTo?: ShipstationAddress | null;
+  items?: ShipstationItem[];
+}
+
+interface CarrierSelection {
+  mode?: string | null;
+  carrier?: string | null;
+  service?: string | null;
+}
+
+interface NmfcOverride {
+  nmfcCode?: string;
+  nmfcSub?: string;
+  freightClass?: string;
+}
+
+interface HazmatOverrideInput {
+  isHazmat?: boolean | null;
+  unNumber?: string | null;
+  hazardClass?: string | null;
+  packingGroup?: string | null;
+  properShippingName?: string | null;
+  persist?: boolean;
+}
+
+interface FreightUserOverrides {
+  instructions?: string;
+  autoDispatch?: boolean;
+  residential?: boolean;
+  insidePickup?: boolean;
+  liftgatePickup?: boolean;
+  protectFromFreeze?: boolean;
+  notifyBeforeDelivery?: boolean;
+  liftgateDelivery?: boolean;
+  insideDelivery?: boolean;
+  deliveryAppointment?: boolean;
+  freightClass?: string;
+  nmfcCode?: string;
+  nmfcSub?: string;
+  nmfcBySku?: Record<string, NmfcOverride>;
+  hazmat?: HazmatOverrideInput;
+  hazmatBySku?: Record<string, HazmatOverrideInput>;
+}
+
+type EnrichedShipstationItem = ShipstationItem & {
+  nmfc?: string;
+  freightClass?: string | null;
+  hazmat?: boolean;
+  hazmatId?: string | null;
+  hazmatName?: string | null;
+  hazmatClass?: string | null;
+  packingGroup?: string | null;
+};
+
+type CapturedOrderPayload = MyCarrierOrderPayload & {
+  sessionId: string;
+  timestamp: string;
+  result?: MyCarrierOrderResponse;
+  proNumber?: string | null;
+};
+
+const splitName = (fullName?: string | null): [string | undefined, string | undefined] => {
+  if (!fullName) return [undefined, undefined];
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) return [undefined, undefined];
+  const [first, ...rest] = parts;
+  return [first || undefined, rest.length ? rest.join(' ') : undefined];
+};
 
 // Wrapper class that intercepts orders being sent to MyCarrier
 // and captures them for AI learning before forwarding
@@ -11,19 +121,18 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
   }
 
   async createOrderWithCapture(
-    orderData: any,
+    orderData: MyCarrierOrderPayload,
     sessionId?: string,
-  ): Promise<any> {
+  ): Promise<MyCarrierOrderResponse> {
     try {
-      // Add session ID for tracking
-      const enrichedOrder = {
+      const enrichedOrder: CapturedOrderPayload = {
         ...orderData,
-        sessionId: sessionId || `session-${Date.now()}`,
+        sessionId: sessionId ?? `session-${Date.now()}`,
         timestamp: new Date().toISOString(),
       };
 
       // Capture order for AI learning (fire and forget)
-      this.captureOrder(enrichedOrder).catch((error) => {
+      void this.captureOrder(enrichedOrder).catch((error) => {
         console.error("Failed to capture order for AI learning:", error);
         // Don't block order placement if capture fails
       });
@@ -33,10 +142,10 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
 
       // If successful, capture the result too
       if (result.isSuccess) {
-        this.captureOrderResult({
+        void this.captureOrderResult({
           ...enrichedOrder,
           result,
-          proNumber: result.proNumber || orderData.proNumber,
+          proNumber: result.proNumber ?? enrichedOrder.proNumber ?? null,
         }).catch((error) => {
           console.error("Failed to capture order result:", error);
         });
@@ -49,7 +158,7 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
     }
   }
 
-  private async captureOrder(orderData: any): Promise<void> {
+  private async captureOrder(orderData: CapturedOrderPayload): Promise<void> {
     try {
       await fetch(this.captureEndpoint, {
         method: "POST",
@@ -63,7 +172,7 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
     }
   }
 
-  private async captureOrderResult(orderData: any): Promise<void> {
+  private async captureOrderResult(orderData: CapturedOrderPayload): Promise<void> {
     try {
       await fetch(this.captureEndpoint, {
         method: "POST",
@@ -82,10 +191,55 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
 
   // Helper to build order from UI selections
   static buildOrderFromFreightSelection(
-    shipstationOrder: any,
-    carrierSelection: any,
-    userOverrides: any = {},
-  ) {
+    shipstationOrder: ShipstationOrder,
+    carrierSelection: CarrierSelection,
+    userOverrides: FreightUserOverrides = {},
+  ): MyCarrierOrderPayload {
+    const [originFirstName, originLastName] = splitName(
+      shipstationOrder.shipFrom?.name,
+    );
+    const [destinationFirstName, destinationLastName] = splitName(
+      shipstationOrder.shipTo?.name,
+    );
+
+    const quoteUnits: MyCarrierOrderQuoteUnit[] =
+      shipstationOrder.items?.map((item): MyCarrierOrderQuoteUnit => {
+        const quantity = item.quantity ?? 1;
+        const commodityPieces =
+          typeof quantity === "string" ? quantity : quantity.toString();
+
+        const commodityWeightValue = item.weight?.value ?? 100;
+        const commodityWeight = commodityWeightValue.toString();
+
+        const commodity: MyCarrierOrderQuoteCommodity = {
+          productID: item.sku ?? undefined,
+          commodityDescription: item.name ?? undefined,
+          commodityPieces,
+          commodityWeight,
+          commodityClass:
+            userOverrides.freightClass ?? item.freightClass ?? "85",
+          commodityHazMat: item.hazmat ? "YES" : "NO",
+          hazmatIDNumber: item.hazmatId ?? undefined,
+          hazmatProperShippingName: item.hazmatName ?? undefined,
+          hazmatHazardClass: item.hazmatClass ?? undefined,
+          hazmatPackingGroup: item.packingGroup ?? undefined,
+          ...(userOverrides.nmfcCode || userOverrides.nmfcSub
+            ? {
+                nmfc: `${
+                  userOverrides.nmfcCode ?? ""
+                }${userOverrides.nmfcSub ? `-${userOverrides.nmfcSub}` : ""}`,
+              }
+            : {}),
+        };
+
+        return {
+          shippingUnitType: "Pallet",
+          shippingUnitCount: "1",
+          unitStackable: "NO",
+          quoteCommodities: [commodity],
+        };
+      }) ?? [];
+
     return {
       quoteReferenceID: shipstationOrder.orderNumber || `order-${Date.now()}`,
       serviceType: carrierSelection.mode || "LTL",
@@ -105,10 +259,8 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
         zip: shipstationOrder.shipFrom?.postalCode || "60171",
         country: "USA",
         locationType: "Business",
-        contactFirstName:
-          shipstationOrder.shipFrom?.name?.split(" ")[0] || "Warehouse",
-        contactLastName:
-          shipstationOrder.shipFrom?.name?.split(" ")[1] || "Manager",
+        contactFirstName: originFirstName || "Warehouse",
+        contactLastName: originLastName || "Manager",
         contactPhone: shipstationOrder.shipFrom?.phone || "(555) 555-1234",
       },
 
@@ -122,8 +274,8 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
         zip: shipstationOrder.shipTo?.postalCode,
         country: shipstationOrder.shipTo?.country === "CA" ? "CAN" : "USA",
         locationType: userOverrides.residential ? "Residential" : "Business",
-        contactFirstName: shipstationOrder.shipTo?.name?.split(" ")[0],
-        contactLastName: shipstationOrder.shipTo?.name?.split(" ")[1],
+        contactFirstName: destinationFirstName,
+        contactLastName: destinationLastName,
         contactEmail: shipstationOrder.customerEmail,
         contactPhone: shipstationOrder.shipTo?.phone,
       },
@@ -141,66 +293,68 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
         deliveryAppointment: userOverrides.deliveryAppointment ? "YES" : "NO",
       },
 
-      quoteUnits:
-        shipstationOrder.items?.map((item: any) => ({
-          shippingUnitType: "Pallet",
-          shippingUnitCount: "1",
-          unitStackable: "NO",
-          quoteCommodities: [
-            {
-              productID: item.sku,
-              commodityDescription: item.name,
-              commodityPieces: item.quantity.toString(),
-              commodityWeight: item.weight?.value?.toString() || "100",
-              commodityClass: userOverrides.freightClass || item.freightClass || "85",
-              commodityHazMat: item.hazmat ? "YES" : "NO",
-              hazmatIDNumber: item.hazmatId,
-              hazmatProperShippingName: item.hazmatName,
-              hazmatHazardClass: item.hazmatClass,
-              hazmatPackingGroup: item.packingGroup,
-              // Optional: pass NMFC as freeform if provided (MyCarrier may accept or ignore unknown keys)
-              ...(userOverrides.nmfcCode || userOverrides.nmfcSub
-                ? { nmfc: `${userOverrides.nmfcCode || ""}${userOverrides.nmfcSub ? '-' + userOverrides.nmfcSub : ''}` }
-                : {}),
-            },
-          ],
-        })) || [],
+      quoteUnits,
     };
   }
 
   // Async variant that auto-applies saved classification (freight class/NMFC) per SKU
   static async buildOrderFromFreightSelectionWithSavedClass(
-    shipstationOrder: any,
-    carrierSelection: any,
-    userOverrides: any = {},
-  ) {
+    shipstationOrder: ShipstationOrder,
+    carrierSelection: CarrierSelection,
+    userOverrides: FreightUserOverrides = {},
+  ): Promise<MyCarrierOrderPayload> {
     const { getApprovedClassificationBySku } = await import('../product-classification');
     const { getCfrHazmatBySku } = await import('../cfr-hazmat');
     const { getHazmatOverrideBySku } = await import('../hazmat-override');
-    const nmfcBySku: Record<string, any> = userOverrides?.nmfcBySku || {};
+    const nmfcBySku: Record<string, NmfcOverride> = userOverrides.nmfcBySku || {};
 
     const itemsWithClass = await Promise.all(
-      (shipstationOrder.items || []).map(async (item: any) => {
+      (shipstationOrder.items || []).map(async (item): Promise<EnrichedShipstationItem> => {
         const saved = item?.sku ? await getApprovedClassificationBySku(item.sku) : null;
         const override = item?.sku ? await getHazmatOverrideBySku(item.sku) : null;
         const cfr = item?.sku ? await getCfrHazmatBySku(item.sku) : null;
 
-        const lineOvr = (userOverrides?.hazmatBySku && item?.sku) ? (userOverrides.hazmatBySku[item.sku] || {}) : {};
-        const lineNmfc = (item?.sku && nmfcBySku[item.sku]) ? nmfcBySku[item.sku] : {};
-        const globalOvr = userOverrides?.hazmat || {};
+        const lineOverride: HazmatOverrideInput = item?.sku
+          ? userOverrides.hazmatBySku?.[item.sku] ?? {}
+          : {};
+        const lineNmfc: NmfcOverride = item?.sku ? nmfcBySku[item.sku] ?? {} : {};
+        const globalOverride: HazmatOverrideInput = userOverrides.hazmat ?? {};
         const hazmatYes = (
-          (typeof lineOvr.isHazmat === 'boolean' ? lineOvr.isHazmat : null) ??
-          (typeof globalOvr.isHazmat === 'boolean' ? globalOvr.isHazmat : null) ??
+          (typeof lineOverride.isHazmat === 'boolean' ? lineOverride.isHazmat : null) ??
+          (typeof globalOverride.isHazmat === 'boolean' ? globalOverride.isHazmat : null) ??
           override?.isHazmat ??
           cfr?.isHazmat ??
           saved?.isHazmat ??
           item.hazmat
         ) || false;
 
-        const unNumber = (lineOvr.unNumber ?? globalOvr.unNumber) ?? override?.unNumber ?? cfr?.unNumber ?? saved?.unNumber ?? item.hazmatId;
-        const hazardClass = (lineOvr.hazardClass ?? globalOvr.hazardClass) ?? override?.hazardClass ?? cfr?.hazardClass ?? saved?.hazmatClass ?? item.hazmatClass;
-        const packingGroup = (lineOvr.packingGroup ?? globalOvr.packingGroup) ?? override?.packingGroup ?? cfr?.packingGroup ?? saved?.packingGroup ?? item.packingGroup;
-        const properShippingName = (lineOvr.properShippingName ?? globalOvr.properShippingName) ?? override?.properShippingName ?? cfr?.properShippingName ?? item.hazmatName;
+        const unNumber =
+          lineOverride.unNumber ??
+          globalOverride.unNumber ??
+          override?.unNumber ??
+          cfr?.unNumber ??
+          saved?.unNumber ??
+          item.hazmatId;
+        const hazardClass =
+          lineOverride.hazardClass ??
+          globalOverride.hazardClass ??
+          override?.hazardClass ??
+          cfr?.hazardClass ??
+          saved?.hazmatClass ??
+          item.hazmatClass;
+        const packingGroup =
+          lineOverride.packingGroup ??
+          globalOverride.packingGroup ??
+          override?.packingGroup ??
+          cfr?.packingGroup ??
+          saved?.packingGroup ??
+          item.packingGroup;
+        const properShippingName =
+          lineOverride.properShippingName ??
+          globalOverride.properShippingName ??
+          override?.properShippingName ??
+          cfr?.properShippingName ??
+          item.hazmatName;
 
         // Build NMFC string with precedence: per-line override > saved > derived (flagged)
         let nmfc: string | undefined = undefined;
@@ -240,11 +394,11 @@ export class MyCarrierOrderInterceptor extends MyCarrierAPIClient {
     );
 
     // Also propagate NMFC string if available
-    order.quoteUnits = (order.quoteUnits || []).map((unit: any, idx: number) => {
-      const first = unit.quoteCommodities?.[0];
-      const src = itemsWithClass[idx];
-      if (first && src?.nmfc && !first.nmfc) {
-        first.nmfc = src.nmfc;
+    order.quoteUnits = order.quoteUnits.map((unit, idx) => {
+      const firstCommodity = unit.quoteCommodities[0];
+      const sourceItem = itemsWithClass[idx];
+      if (firstCommodity && sourceItem?.nmfc && !firstCommodity.nmfc) {
+        firstCommodity.nmfc = sourceItem.nmfc;
       }
       return unit;
     });

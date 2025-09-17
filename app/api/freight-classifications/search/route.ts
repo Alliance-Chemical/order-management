@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
 import { freightClassifications } from '@/lib/db/schema/freight';
-import { eq, and, or, ilike, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, or, ilike } from 'drizzle-orm';
 
 // Enable Edge Runtime for performance
 export const runtime = 'edge';

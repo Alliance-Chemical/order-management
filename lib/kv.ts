@@ -1,8 +1,94 @@
 import { createClient } from '@vercel/kv';
+import type { ScoreMember, SetCommandOptions, ZRangeCommandOptions } from '@upstash/redis';
 
 // Create in-memory fallback for testing
+interface SortedSetEntry {
+  score: number;
+  member: string;
+}
+
+type KVValue = unknown;
+
+type ScoreBoundaryInput = number | '-inf' | '+inf' | `(${number}` | `[${number}`;
+type NormalizedScoreBoundary = number | '-inf' | '+inf' | `(${number}`;
+
+const EPSILON = 1e-9;
+
+function buildSetOptions(options?: { nx?: boolean; ex?: number }): SetCommandOptions | undefined {
+  if (!options) return undefined;
+
+  const { nx, ex } = options;
+
+  if (typeof ex === 'number') {
+    return nx ? ({ ex, nx: true }) : ({ ex });
+  }
+
+  if (nx) {
+    return { nx: true };
+  }
+
+  return undefined;
+}
+
+function normalizeBoundaryForRedis(value: ScoreBoundaryInput): NormalizedScoreBoundary {
+  if (typeof value === 'number' || value === '-inf' || value === '+inf') {
+    return value;
+  }
+
+  if (value.startsWith('(')) {
+    const numeric = Number(value.slice(1));
+    const safeNumeric = Number.isFinite(numeric) ? numeric : 0;
+    return (`(${safeNumeric}` as `(${number}`);
+  }
+
+  if (value.startsWith('[')) {
+    const numeric = Number(value.slice(1));
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  return 0;
+}
+
+function isAboveMin(score: number, boundary: ScoreBoundaryInput): boolean {
+  if (boundary === '-inf') return true;
+  if (boundary === '+inf') return false;
+  if (typeof boundary === 'number') return score >= boundary;
+
+  const numeric = Number(boundary.slice(1));
+  if (!Number.isFinite(numeric)) return true;
+
+  if (boundary.startsWith('(')) {
+    return score > numeric + EPSILON;
+  }
+
+  if (boundary.startsWith('[')) {
+    return score >= numeric;
+  }
+
+  return score >= Number(boundary);
+}
+
+function isBelowMax(score: number, boundary: ScoreBoundaryInput): boolean {
+  if (boundary === '+inf') return true;
+  if (boundary === '-inf') return false;
+  if (typeof boundary === 'number') return score <= boundary;
+
+  const numeric = Number(boundary.slice(1));
+  if (!Number.isFinite(numeric)) return true;
+
+  if (boundary.startsWith('(')) {
+    return score < numeric - EPSILON;
+  }
+
+  if (boundary.startsWith('[')) {
+    return score <= numeric;
+  }
+
+  return score <= Number(boundary);
+}
+
 class InMemoryKV {
-  private store = new Map<string, any>();
+  private store = new Map<string, KVValue>();
   private expiry = new Map<string, number>();
 
   async get(key: string) {
@@ -10,7 +96,7 @@ class InMemoryKV {
     return this.store.get(key);
   }
 
-  async set(key: string, value: any, options?: { nx?: boolean; ex?: number }) {
+  async set(key: string, value: KVValue, options?: { nx?: boolean; ex?: number }) {
     this.cleanExpired();
     
     if (options?.nx && this.store.has(key)) {
@@ -51,15 +137,15 @@ class InMemoryKV {
     return Math.max(0, Math.floor((exp - Date.now()) / 1000));
   }
 
-  async lpush(key: string, ...values: any[]) {
-    let list = this.store.get(key) || [];
+  async lpush(key: string, ...values: KVValue[]) {
+    const list = (this.store.get(key) as unknown[] | undefined) ?? [];
     list.unshift(...values);
     this.store.set(key, list);
     return list.length;
   }
 
   async rpop(key: string) {
-    const list = this.store.get(key) || [];
+    const list = (this.store.get(key) as unknown[] | undefined) ?? [];
     const value = list.pop();
     if (list.length === 0) {
       this.store.delete(key);
@@ -70,43 +156,41 @@ class InMemoryKV {
   }
 
   async llen(key: string) {
-    const list = this.store.get(key) || [];
+    const list = (this.store.get(key) as unknown[] | undefined) ?? [];
     return list.length;
   }
 
-  async zadd(key: string, ...items: { score: number; member: string }[]) {
-    let zset = this.store.get(key) || [];
-    items.forEach(item => {
-      const idx = zset.findIndex((z: any) => z.member === item.member);
+  async zadd(key: string, ...items: SortedSetEntry[]) {
+    const zset = (this.store.get(key) as SortedSetEntry[] | undefined) ?? [];
+    items.forEach((item) => {
+      const idx = zset.findIndex((z) => z.member === item.member);
       if (idx >= 0) {
         zset[idx] = item;
       } else {
         zset.push(item);
       }
     });
-    zset.sort((a: any, b: any) => a.score - b.score);
+    zset.sort((a, b) => a.score - b.score);
     this.store.set(key, zset);
     return items.length;
   }
 
-  async zrangebyscore(key: string, min: string | number, max: string | number, options?: { limit?: [number, number] }) {
-    const zset = this.store.get(key) || [];
-    const minScore = min === '-inf' ? -Infinity : Number(min);
-    const maxScore = max === '+inf' ? Infinity : Number(max);
+  async zrangebyscore(key: string, min: ScoreBoundaryInput, max: ScoreBoundaryInput, options?: { limit?: [number, number] }) {
+    const zset = (this.store.get(key) as SortedSetEntry[] | undefined) ?? [];
     
-    let filtered = zset.filter((item: any) => item.score >= minScore && item.score <= maxScore);
+    let filtered = zset.filter((item) => isAboveMin(item.score, min) && isBelowMax(item.score, max));
     
     if (options?.limit) {
       const [offset, count] = options.limit;
       filtered = filtered.slice(offset, offset + count);
     }
     
-    return filtered.map((item: any) => item.member);
+    return filtered.map((item) => item.member);
   }
 
   async zrem(key: string, ...members: string[]) {
-    const zset = this.store.get(key) || [];
-    const newZset = zset.filter((item: any) => !members.includes(item.member));
+    const zset = (this.store.get(key) as SortedSetEntry[] | undefined) ?? [];
+    const newZset = zset.filter((item) => !members.includes(item.member));
     
     if (newZset.length === 0) {
       this.store.delete(key);
@@ -118,27 +202,25 @@ class InMemoryKV {
   }
 
   async zcard(key: string) {
-    const zset = this.store.get(key) || [];
+    const zset = (this.store.get(key) as SortedSetEntry[] | undefined) ?? [];
     return zset.length;
   }
 
-  pipeline() {
-    const commands: Array<() => Promise<any>> = [];
-    const self = this;
-    
-    return {
-      lpush(key: string, value: any) {
-        commands.push(() => self.lpush(key, value));
-        return this;
+  pipeline(): PipelineApi {
+    const commands: Array<() => Promise<unknown>> = [];
+    const api = {
+      lpush: (key: string, value: KVValue) => {
+        commands.push(() => this.lpush(key, value));
+        return api;
       },
-      zrem(key: string, member: string) {
-        commands.push(() => self.zrem(key, member));
-        return this;
+      zrem: (key: string, member: string) => {
+        commands.push(() => this.zrem(key, member));
+        return api;
       },
-      async exec() {
-        return Promise.all(commands.map(cmd => cmd()));
-      }
+      exec: async () => Promise.all(commands.map((cmd) => cmd())),
     };
+
+    return api;
   }
 
   private cleanExpired() {
@@ -157,26 +239,32 @@ const useInMemory = !process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOK
                     process.env.KV_REST_API_URL === '' || process.env.KV_REST_API_TOKEN === '';
 
 // Create a proper type for KV operations
+interface PipelineApi {
+  lpush: (key: string, value: KVValue) => PipelineApi;
+  zrem: (key: string, member: string) => PipelineApi;
+  exec: () => Promise<unknown[]>;
+}
+
 type KVClient = {
-  get: (key: string) => Promise<any>;
-  set: (key: string, value: any, options?: { nx?: boolean; ex?: number }) => Promise<string | null>;
+  get: (key: string) => Promise<KVValue>;
+  set: (key: string, value: KVValue, options?: { nx?: boolean; ex?: number }) => Promise<string | null>;
   del: (key: string) => Promise<number>;
   exists: (key: string) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<number>;
   ttl: (key: string) => Promise<number>;
-  lpush: (key: string, ...values: any[]) => Promise<number>;
-  rpop: (key: string) => Promise<any>;
+  lpush: (key: string, ...values: KVValue[]) => Promise<number>;
+  rpop: (key: string) => Promise<KVValue>;
   llen: (key: string) => Promise<number>;
-  zadd: (key: string, ...items: { score: number; member: string }[]) => Promise<number>;
-  zrangebyscore: (key: string, min: string | number, max: string | number, options?: { limit?: [number, number] }) => Promise<string[]>;
+  zadd: (key: string, ...items: SortedSetEntry[]) => Promise<number>;
+  zrangebyscore: (key: string, min: ScoreBoundaryInput, max: ScoreBoundaryInput, options?: { limit?: [number, number] }) => Promise<string[]>;
   zrem: (key: string, ...members: string[]) => Promise<number>;
   zcard: (key: string) => Promise<number>;
-  pipeline: () => any;
+  pipeline: () => PipelineApi;
 };
 
 // Create a wrapper for Vercel KV to ensure consistent API
 class VercelKVWrapper {
-  private client: any;
+  private client: ReturnType<typeof createClient>;
   
   constructor() {
     this.client = createClient({
@@ -189,11 +277,9 @@ class VercelKVWrapper {
     return this.client.get(key);
   }
   
-  async set(key: string, value: any, options?: { nx?: boolean; ex?: number }) {
-    if (options?.nx) {
-      return this.client.setnx(key, value, options.ex ? { ex: options.ex } : {});
-    }
-    return this.client.set(key, value, options?.ex ? { ex: options.ex } : {});
+  async set(key: string, value: KVValue, options?: { nx?: boolean; ex?: number }) {
+    const setOptions = buildSetOptions(options);
+    return this.client.set(key, value, setOptions);
   }
   
   async del(key: string) {
@@ -212,7 +298,7 @@ class VercelKVWrapper {
     return this.client.ttl(key);
   }
   
-  async lpush(key: string, ...values: any[]) {
+  async lpush(key: string, ...values: KVValue[]) {
     return this.client.lpush(key, ...values);
   }
   
@@ -224,23 +310,30 @@ class VercelKVWrapper {
     return this.client.llen(key);
   }
   
-  async zadd(key: string, ...items: { score: number; member: string }[]) {
-    // Vercel KV zadd expects flat array: [score1, member1, score2, member2, ...]
-    const args: any[] = [];
-    items.forEach(item => {
-      args.push(item.score, item.member);
-    });
-    return this.client.zadd(key, ...args);
-  }
-  
-  async zrangebyscore(key: string, min: string | number, max: string | number, options?: { limit?: [number, number] }) {
-    if (options?.limit) {
-      return this.client.zrange(key, min, max, {
-        byScore: true,
-        limit: { offset: options.limit[0], count: options.limit[1] }
-      });
+  async zadd(key: string, ...items: SortedSetEntry[]) {
+    if (items.length === 0) {
+      return 0;
     }
-    return this.client.zrange(key, min, max, { byScore: true });
+
+    const entries = items.map(({ score, member }) => ({ score, member })) as ScoreMember<string>[];
+    const [first, ...rest] = entries as [ScoreMember<string>, ...ScoreMember<string>[]];
+    return this.client.zadd(key, first, ...rest);
+  }
+
+  async zrangebyscore(
+    key: string,
+    min: ScoreBoundaryInput,
+    max: ScoreBoundaryInput,
+    options?: { limit?: [number, number] },
+  ) {
+    const minBoundary = normalizeBoundaryForRedis(min);
+    const maxBoundary = normalizeBoundaryForRedis(max);
+
+    const commandOptions: ZRangeCommandOptions & { byScore: true } = options?.limit
+      ? { byScore: true, offset: options.limit[0], count: options.limit[1] }
+      : { byScore: true };
+
+    return this.client.zrange(key, minBoundary, maxBoundary, commandOptions);
   }
   
   async zrem(key: string, ...members: string[]) {
@@ -251,8 +344,21 @@ class VercelKVWrapper {
     return this.client.zcard(key);
   }
   
-  pipeline() {
-    return this.client.pipeline();
+  pipeline(): PipelineApi {
+    const pipeline = this.client.pipeline();
+    const api: PipelineApi = {
+      lpush: (key: string, value: KVValue) => {
+        pipeline.lpush(key, value);
+        return api;
+      },
+      zrem: (key: string, member: string) => {
+        pipeline.zrem(key, member);
+        return api;
+      },
+      exec: () => pipeline.exec(),
+    };
+
+    return api;
   }
 }
 

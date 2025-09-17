@@ -1,3 +1,22 @@
+export interface ShipStationOrderItem extends Record<string, unknown> {
+  lineItemKey?: string;
+  sku?: string;
+  quantity?: number;
+}
+
+export interface ShipStationOrder extends Record<string, unknown> {
+  orderId: number;
+  orderKey?: string;
+  orderNumber?: string;
+  items?: ShipStationOrderItem[];
+  tagIds?: number[];
+  internalNotes?: string;
+}
+
+interface ShipStationOrderSearchResponse {
+  orders: ShipStationOrder[];
+}
+
 export class ShipStationClient {
   private apiKey: string;
   private apiSecret: string;
@@ -18,7 +37,7 @@ export class ShipStationClient {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: {
-        'Authorization': this.getAuthHeader(),
+        Authorization: this.getAuthHeader(),
         'Content-Type': 'application/json',
         ...options?.headers,
       },
@@ -28,54 +47,54 @@ export class ShipStationClient {
       throw new Error(`ShipStation API error: ${response.status} ${response.statusText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
-  async getOrder(orderId: number): Promise<any> {
+  async getOrder(orderId: number): Promise<ShipStationOrder> {
     // ShipStation's /orders/{orderId} endpoint returns the full order including items
-    const order = await this.makeRequest(`/orders/${orderId}`);
-    
+    const order = await this.makeRequest<ShipStationOrder>(`/orders/${orderId}`);
+
     // If items are missing, try fetching via search endpoint which includes items
     if (!order.items || order.items.length === 0) {
       console.log(`Order ${orderId} missing items, fetching via search endpoint`);
-      const searchResponse = await this.makeRequest<{ orders: any[] }>(
+      const searchResponse = await this.makeRequest<ShipStationOrderSearchResponse>(
         `/orders?orderId=${orderId}`
       );
-      if (searchResponse.orders && searchResponse.orders.length > 0) {
+      if (searchResponse.orders.length > 0) {
         return searchResponse.orders[0];
       }
     }
-    
+
     return order;
   }
 
-  async getOrderByNumber(orderNumber: string): Promise<any> {
-    const response = await this.makeRequest<{ orders: any[] }>(
+  async getOrderByNumber(orderNumber: string): Promise<ShipStationOrder | null> {
+    const response = await this.makeRequest<ShipStationOrderSearchResponse>(
       `/orders?orderNumber=${encodeURIComponent(orderNumber)}`
     );
-    return response.orders[0] || null;
+    return response.orders[0] ?? null;
   }
 
-  async updateOrderTags(orderId: number, tags: number[]): Promise<any> {
-    return this.makeRequest(`/orders/${orderId}`, {
+  async updateOrderTags(orderId: number, tags: number[]): Promise<ShipStationOrder> {
+    return this.makeRequest<ShipStationOrder>(`/orders/${orderId}`, {
       method: 'PUT',
       body: JSON.stringify({ tagIds: tags }),
     });
   }
 
-  async addOrderTag(orderId: number, tagId: number): Promise<any> {
+  async addOrderTag(orderId: number, tagId: number): Promise<ShipStationOrder> {
     const order = await this.getOrder(orderId);
-    const currentTags = order.tagIds || [];
+    const currentTags = Array.isArray(order.tagIds) ? order.tagIds : [];
     if (!currentTags.includes(tagId)) {
       return this.updateOrderTags(orderId, [...currentTags, tagId]);
     }
     return order;
   }
 
-  async removeOrderTag(orderId: number, tagId: number): Promise<any> {
+  async removeOrderTag(orderId: number, tagId: number): Promise<ShipStationOrder> {
     const order = await this.getOrder(orderId);
-    const currentTags = order.tagIds || [];
-    const newTags = currentTags.filter((t: number) => t !== tagId);
+    const currentTags = Array.isArray(order.tagIds) ? order.tagIds : [];
+    const newTags = currentTags.filter((t) => t !== tagId);
     if (newTags.length !== currentTags.length) {
       return this.updateOrderTags(orderId, newTags);
     }
@@ -85,14 +104,14 @@ export class ShipStationClient {
   /**
    * Append text to internalNotes for an order (with timestamp)
    */
-  async appendInternalNotes(orderId: number, note: string): Promise<any> {
+  async appendInternalNotes(orderId: number, note: string): Promise<ShipStationOrder> {
     const order = await this.getOrder(orderId);
     const ts = new Date().toISOString();
-    const existing: string = order.internalNotes || '';
+    const existing = typeof order.internalNotes === 'string' ? order.internalNotes : '';
     const separator = existing ? '\n' : '';
     const newNotes = `${existing}${separator}[${ts}] ${note}`.slice(0, 4000); // ShipStation limits
 
-    return this.makeRequest(`/orders/${orderId}`, {
+    return this.makeRequest<ShipStationOrder>(`/orders/${orderId}`, {
       method: 'PUT',
       body: JSON.stringify({ internalNotes: newNotes }),
     });

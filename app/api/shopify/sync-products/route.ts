@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { qrCodes } from '@/lib/db/schema/qr-workspace';
-import { QRGenerator } from '@/src/services/qr/qrGenerator';
 import { eq } from 'drizzle-orm';
-
-const qrGenerator = new QRGenerator();
 
 // Shopify API configuration
 const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL || 'your-store.myshopify.com';
@@ -72,13 +69,18 @@ async function fetchShopifyProducts(): Promise<ShopifyProduct[]> {
 }
 
 function generateSourceContainerShortCode(variantId: string): string {
-  // Generate a unique short code for source containers
+  // Generate a unique short code for source containers by using a hash of the variant ID
   const prefix = 'SC'; // Source Container
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return `${prefix}-${random}`;
+  let hash = 0;
+  for (let i = 0; i < variantId.length; i++) {
+    hash = (hash << 5) - hash + variantId.charCodeAt(i);
+    hash |= 0; // Convert to 32-bit integer
+  }
+  const normalized = Math.abs(hash).toString(36).toUpperCase().padStart(6, '0').slice(0, 6);
+  return `${prefix}-${normalized}`;
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     console.log('[SHOPIFY SYNC] Starting product sync...');
     
@@ -151,7 +153,7 @@ export async function POST(request: NextRequest) {
 }
 
 // GET endpoint to retrieve products from Shopify
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     console.log('[SHOPIFY SYNC] Fetching products from Shopify API...');
     

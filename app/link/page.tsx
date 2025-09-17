@@ -480,14 +480,14 @@ export default function LinkPage() {
                     <div className="flex items-start">
                       <ExclamationTriangleIcon className="h-5 w-5 text-red-400 mt-0.5 mr-2" />
                       <div className="text-sm text-red-700">
-                        <strong>Safety Warning:</strong> You've selected hazardous products but a non-hazmat classification. 
+                        <strong>Safety Warning:</strong> You&apos;ve selected hazardous products but a non-hazmat classification. 
                         This may violate DOT regulations.
                       </div>
-                    </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Approve toggle + Link Button */}
+              {/* Approve toggle + Link Button */}
                 <div className="mt-4 flex items-center justify-between">
                   <label className="flex items-center text-sm text-gray-700" aria-label="Approve on save" title="Approve on save">
                     <input

@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(result, { status: 201 });
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating freight classification:', error);
     
     return NextResponse.json(
@@ -212,9 +212,4 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Helper function for validation
-function validateFreightClass(freightClass: string): boolean {
-  return VALID_FREIGHT_CLASSES.includes(freightClass);
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CheckCircleIcon, TruckIcon, DocumentTextIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, TruckIcon } from '@heroicons/react/24/outline';
 import FinalMeasurements from '@/components/workspace/FinalMeasurements';
 import PhotoGallery from '@/components/workspace/PhotoGallery';
 import { useToast } from '@/hooks/use-toast';
@@ -9,8 +9,32 @@ import { updateMeasurements, shipWorkspace } from '@/app/actions/workspace';
 
 interface PreShipInspectionProps {
   orderId: string;
-  initialState?: any;
-  onStateChange: (state: any) => void;
+  initialState?: Partial<PreShipInspectionState>;
+  onStateChange: (state: PreShipInspectionState) => void;
+}
+
+type ShippingChecklist = Record<string, boolean>;
+
+interface InspectionPhoto {
+  url: string;
+  name: string;
+  timestamp: string;
+}
+
+type FinalMeasurementsData = Record<string, unknown> | null;
+
+interface PreShipInspectionState {
+  checklist: ShippingChecklist;
+  bolNumber: string;
+  carrierName: string;
+  trailerNumber: string;
+  sealNumbers: string[];
+  loadingPhotos: InspectionPhoto[];
+  notes: string;
+  readyToShip: boolean;
+  shippedAt: string | null;
+  shippedBy: string | null;
+  finalMeasurements: FinalMeasurementsData;
 }
 
 const shippingChecklist = [
@@ -21,20 +45,20 @@ const shippingChecklist = [
   { id: 'pallet_stable', label: 'Pallet Condition Good & Stable', required: true },
 ];
 
-export default function PreShipInspection({ orderId, initialState = {}, onStateChange }: PreShipInspectionProps) {
-  const { toast } = useToast()
-  const [state, setState] = useState({
-    checklist: initialState.checklist || {},
-    bolNumber: initialState.bolNumber || '',
-    carrierName: initialState.carrierName || '',
-    trailerNumber: initialState.trailerNumber || '',
-    sealNumbers: initialState.sealNumbers || [],
-    loadingPhotos: initialState.loadingPhotos || [],
-    notes: initialState.notes || '',
-    readyToShip: initialState.readyToShip || false,
-    shippedAt: initialState.shippedAt || null,
-    shippedBy: initialState.shippedBy || null,
-    finalMeasurements: initialState.finalMeasurements || null,
+export default function PreShipInspection({ orderId, initialState, onStateChange }: PreShipInspectionProps) {
+  const { toast } = useToast();
+  const [state, setState] = useState<PreShipInspectionState>({
+    checklist: initialState?.checklist ?? {},
+    bolNumber: initialState?.bolNumber ?? '',
+    carrierName: initialState?.carrierName ?? '',
+    trailerNumber: initialState?.trailerNumber ?? '',
+    sealNumbers: initialState?.sealNumbers ?? [],
+    loadingPhotos: initialState?.loadingPhotos ?? [],
+    notes: initialState?.notes ?? '',
+    readyToShip: initialState?.readyToShip ?? false,
+    shippedAt: initialState?.shippedAt ?? null,
+    shippedBy: initialState?.shippedBy ?? null,
+    finalMeasurements: initialState?.finalMeasurements ?? null,
   });
 
   const [newSealNumber, setNewSealNumber] = useState('');
@@ -66,28 +90,13 @@ export default function PreShipInspection({ orderId, initialState = {}, onStateC
   const handleRemoveSealNumber = (index: number) => {
     const newState = {
       ...state,
-      sealNumbers: state.sealNumbers.filter((_: any, i: number) => i !== index),
+      sealNumbers: state.sealNumbers.filter((_, i) => i !== index),
     };
     setState(newState);
     onStateChange(newState);
   };
 
-  const handlePhotoUpload = async (file: File) => {
-    // In a real app, upload to S3 here
-    const photoUrl = URL.createObjectURL(file);
-    const newState = {
-      ...state,
-      loadingPhotos: [...state.loadingPhotos, { 
-        url: photoUrl, 
-        name: file.name, 
-        timestamp: new Date().toISOString() 
-      }],
-    };
-    setState(newState);
-    onStateChange(newState);
-  };
-
-  const handleMeasurementsSave = async (measurements: any) => {
+  const handleMeasurementsSave = async (measurements: Record<string, unknown>) => {
     // Save measurements to workspace via server action
     try {
       const result = await updateMeasurements(orderId, measurements);

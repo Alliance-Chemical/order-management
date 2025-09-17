@@ -5,7 +5,7 @@
 
 export interface QRRecord {
   qrType: string;
-  encodedData: any;
+  encodedData: Record<string, unknown>;
   shortCode?: string;
 }
 

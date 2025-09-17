@@ -2,12 +2,124 @@ import { NextRequest, NextResponse } from 'next/server';
 import { classifyWithDatabaseRAG } from '@/lib/services/rag/database-rag';
 import { getRawSql } from '@/lib/db/neon';
 
+type ChatRole = 'system' | 'user' | 'assistant';
+
+interface ChatHistoryMessage {
+  role: ChatRole;
+  content: string;
+}
+
+interface RagDocumentMetadata extends Record<string, unknown> {
+  section?: string;
+  baseName?: string;
+  name?: string;
+  hazardClass?: string;
+  packingGroup?: string;
+  labels?: string;
+  ergGuide?: string;
+  freightClass?: string;
+  nmfcCode?: string;
+}
+
+interface RagDocumentRow {
+  id: string;
+  source: string;
+  text: string;
+  metadata: RagDocumentMetadata | null;
+  score: number;
+}
+
+interface RawRagDocumentRow {
+  id: string;
+  source: string;
+  text: string;
+  metadata?: RagDocumentMetadata | null;
+  score?: number | string | null;
+}
+
+interface ChatSource {
+  source: string;
+  score: string;
+  snippet: string;
+  metadata: RagDocumentMetadata | null;
+}
+
+interface ChatUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+interface ChatSuccessResponse {
+  response: string;
+  usage: ChatUsage | null;
+  model: string;
+  sources: ChatSource[];
+}
+
+interface ChatErrorResponse {
+  error: string;
+  details?: string;
+  fallback?: string;
+}
+
+type ChatResponsePayload = ChatSuccessResponse | ChatErrorResponse;
+
+interface ChatRequestPayload {
+  message?: string;
+  history?: ChatHistoryMessage[];
+  ragLimit?: number;
+}
+
+interface ClassificationResult {
+  un_number?: string;
+  proper_shipping_name?: string;
+  hazard_class?: string;
+  packing_group?: string;
+  labels?: string;
+  erg_guide?: string;
+  confidence?: number;
+  source?: string;
+  exemption_reason?: string;
+}
+
+type SqlQueryResult<T> = T[] | { rows: T[] };
+
+const extractRows = <T,>(result: SqlQueryResult<T>): T[] => {
+  if (Array.isArray(result)) {
+    return result;
+  }
+
+  return Array.isArray(result.rows) ? result.rows : [];
+};
+
+const normaliseRows = (rows: RawRagDocumentRow[]): RagDocumentRow[] =>
+  rows.map(row => ({
+    id: row.id,
+    source: row.source,
+    text: row.text,
+    metadata: (row.metadata ?? null) as RagDocumentMetadata | null,
+    score: typeof row.score === 'number' ? row.score : Number(row.score ?? 0) || 0
+  }));
+
+const isValidHistoryMessage = (value: unknown): value is ChatHistoryMessage => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as { role?: unknown; content?: unknown };
+  return (
+    (candidate.role === 'system' || candidate.role === 'user' || candidate.role === 'assistant') &&
+    typeof candidate.content === 'string'
+  );
+};
+
 // Use Edge runtime for better performance
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 // Search the database RAG for general queries
-async function searchDatabaseRAG(query: string, limit: number = 5) {
+async function searchDatabaseRAG(query: string, limit: number = 5): Promise<RagDocumentRow[]> {
   const sql = getRawSql();
   
   // Check if this is a UN number query
@@ -37,9 +149,9 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
             ELSE 2
           END
         LIMIT ${limit}
-      `;
+      ` as SqlQueryResult<RawRagDocumentRow>;
       
-      const rows = (result as any).rows || result;
+      const rows = normaliseRows(extractRows(result));
       if (rows.length > 0) {
         return rows;
       }
@@ -72,9 +184,9 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
           END,
           ts_rank(search_vector, plainto_tsquery('english', ${query})) DESC
         LIMIT ${limit}
-      `;
+      ` as SqlQueryResult<RawRagDocumentRow>;
       
-      return (result as any).rows || result;
+      return normaliseRows(extractRows(result));
     }
     
     // Generate embedding
@@ -94,7 +206,7 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
       throw new Error(`OpenAI API error: ${embeddingResponse.status}`);
     }
     
-    const embeddingData = await embeddingResponse.json();
+    const embeddingData = await embeddingResponse.json() as { data: Array<{ embedding: number[] }> };
     const embedding = embeddingData.data[0].embedding;
     
     // Search using vector similarity
@@ -109,10 +221,10 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
       WHERE embedding IS NOT NULL
       ORDER BY embedding <=> ${'[' + embedding.join(',') + ']'}::vector
       LIMIT ${limit}
-    `;
+    ` as SqlQueryResult<RawRagDocumentRow>;
     
-    const rows = (result as any).rows || result;
-    return rows.filter((r: any) => r.score > 0.4); // Use our proven threshold
+    const rows = normaliseRows(extractRows(result));
+    return rows.filter(r => r.score > 0.4); // Use our proven threshold
     
   } catch (error) {
     console.error('Database RAG search error:', error);
@@ -136,18 +248,18 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
         END,
         ts_rank(search_vector, plainto_tsquery('english', ${query})) DESC
       LIMIT ${limit}
-    `;
+    ` as SqlQueryResult<RawRagDocumentRow>;
     
-    return (result as any).rows || result;
+    return normaliseRows(extractRows(result));
   }
 }
 
 // Generate chat response using GPT-5 nano with RAG context
 async function generateChatResponse(
   message: string,
-  ragContext: any[],
-  conversationHistory?: any[]
-) {
+  ragContext: RagDocumentRow[],
+  conversationHistory: ChatHistoryMessage[] = []
+): Promise<ChatResponsePayload> {
   const apiKey = process.env.OPENAI_API_KEY;
   
   if (!apiKey) {
@@ -159,7 +271,7 @@ async function generateChatResponse(
   
   // Build context from RAG results
   const context = ragContext.map((doc, i) => 
-    `[Source ${i+1}: ${doc.source}${doc.metadata?.section ? ` §${doc.metadata.section}` : ''}]\n${doc.text}`
+    `[Source ${i + 1}: ${doc.source}${doc.metadata?.section ? ` §${doc.metadata.section}` : ''}]\n${doc.text}`
   ).join('\n\n');
   
   // Build the prompt
@@ -179,7 +291,7 @@ Important guidelines:
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    ...(conversationHistory || []),
+    ...conversationHistory,
     { role: 'user', content: message }
   ];
   
@@ -203,10 +315,14 @@ Important guidelines:
       throw new Error(`OpenAI API error: ${response.status} - ${error}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: ChatUsage;
+      model: string;
+    };
     return {
-      response: data.choices[0].message.content,
-      usage: data.usage,
+      response: data.choices[0]?.message.content ?? '',
+      usage: data.usage ?? null,
       model: data.model,
       sources: ragContext.map(doc => ({
         source: doc.source,
@@ -227,8 +343,10 @@ Important guidelines:
 // POST endpoint for chat
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { message, history, ragLimit = 5 } = body;
+    const body = await request.json() as ChatRequestPayload;
+    const { message, ragLimit = 5 } = body;
+    const rawHistory: unknown[] = Array.isArray(body.history) ? body.history : [];
+    const history = rawHistory.filter(isValidHistoryMessage);
     
     if (!message) {
       return NextResponse.json({
@@ -248,7 +366,7 @@ export async function POST(request: NextRequest) {
       
       if (ragResults && ragResults.length > 0) {
         const topResult = ragResults[0];
-        const metadata = topResult.metadata || {};
+        const metadata = topResult.metadata ?? ({} as RagDocumentMetadata);
         
         // Format response based on found data
         const response = `${unNumber} is:\n\n` +
@@ -313,7 +431,7 @@ export async function POST(request: NextRequest) {
       console.log(`Classifying chemical: "${productName}"`);
       
       try {
-        const classification = await classifyWithDatabaseRAG('QUERY', productName);
+        const classification = await classifyWithDatabaseRAG('QUERY', productName) as ClassificationResult;
         
         // Format as chat response
         const response = classification.un_number
@@ -350,7 +468,7 @@ export async function POST(request: NextRequest) {
     console.log(`Searching database RAG for: "${message}"`);
     const ragResults = await searchDatabaseRAG(message, ragLimit);
     
-    if (!ragResults || ragResults.length === 0) {
+    if (ragResults.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'No relevant context found in knowledge base',
@@ -406,8 +524,9 @@ export async function GET() {
     // Get document count from database
     const countResult = await sql`
       SELECT COUNT(*) as count FROM rag.documents
-    `;
-    const documentCount = ((countResult as any).rows || countResult)[0]?.count || 0;
+    ` as SqlQueryResult<{ count: number | string }>;
+    const countRows = extractRows(countResult);
+    const documentCount = Number(countRows[0]?.count ?? 0);
     
     return NextResponse.json({
       success: true,

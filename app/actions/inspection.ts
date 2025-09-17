@@ -4,7 +4,7 @@ import { WorkspaceService } from '@/lib/services/workspace/service'
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase'
 import { asBigInt } from '@/lib/utils/bigint'
 import { db } from '@/lib/db'
-import { activityLog, workspaces } from '@/lib/db/schema/qr-workspace'
+import { activityLog } from '@/lib/db/schema/qr-workspace'
 import { and, eq, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
@@ -14,7 +14,7 @@ export async function submitInspection(data: {
   orderId: string
   phase: string
   result: 'pass' | 'fail' | 'hold'
-  inspectionData?: any
+  inspectionData?: Record<string, unknown>
   userId?: string
   idempotencyKey?: string
 }) {
@@ -57,16 +57,16 @@ export async function submitInspection(data: {
     }
     
     // Update module state
-    const moduleStates = workspace.moduleStates || {}
+    const moduleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {}
     moduleStates[phase] = { 
-      ...moduleStates[phase], 
+      ...(moduleStates[phase] as Record<string, unknown> | undefined), 
       result,
       completedAt: new Date().toISOString(),
       data: inspectionData 
     }
     
     // Update phase completion timestamp
-    const phaseCompletedAt = (workspace.phaseCompletedAt as any) || {}
+    const phaseCompletedAt = (workspace.phaseCompletedAt as Record<string, string> | undefined) || {}
     const nowIso = new Date().toISOString()
     phaseCompletedAt[phase] = nowIso
 
@@ -188,11 +188,11 @@ export async function submitBatchInspection(data: {
   orderIds: string[]
   phase: string
   result: 'pass' | 'fail' | 'hold'
-  inspectionData?: any
+  inspectionData?: Record<string, unknown>
   userId?: string
 }) {
   try {
-    const results = []
+    const results: Array<{ orderId: string; success: boolean; error?: string }> = []
     
     for (const orderId of data.orderIds) {
       const result = await submitInspection({

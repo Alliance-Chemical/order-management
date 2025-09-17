@@ -5,19 +5,51 @@
 
 import { getRawSql } from '@/lib/db/neon';
 
+export interface HazardMetadata extends Record<string, unknown> {
+  unNumber?: string;
+  baseName?: string;
+  name?: string;
+  properShippingName?: string;
+  hazardClass?: string;
+  packingGroup?: string;
+  labels?: string[];
+  packaging?: Record<string, unknown>;
+  quantity_limitations?: Record<string, unknown>;
+  vesselStowage?: Record<string, unknown>;
+  specialProvisions?: Record<string, unknown>;
+  vessel_stowage?: Record<string, unknown>;
+  items?: unknown[];
+  sourceContainerId?: unknown;
+  containerNumber?: number;
+  type?: string;
+  isSource?: boolean;
+}
+
+export interface RAGSearchFilters extends Record<string, unknown> {
+  unNumber?: string;
+}
+
 export interface RAGSearchOptions {
   k?: number;
   threshold?: number;
   source?: string;
-  filters?: Record<string, any>;
+  filters?: RAGSearchFilters;
   includeScore?: boolean;
+}
+
+interface KnownPattern {
+  pattern: RegExp;
+  un: string;
+  class: string;
+  pg: 'I' | 'II' | 'III';
+  name: string;
 }
 
 export interface RAGDocument {
   id: string;
   source: string;
   text: string;
-  metadata: any;
+  metadata: HazardMetadata;
   similarity?: number;
   score?: number;
 }
@@ -34,11 +66,32 @@ export interface ClassificationResult {
   explanation?: string;
   exemption_reason?: string;
   // Extended CFR fields
-  packaging?: any;
-  quantity_limitations?: any;
-  vessel_stowage?: any;
-  special_provisions?: any;
-  citations?: any[];
+  packaging?: Record<string, unknown>;
+  quantity_limitations?: Record<string, unknown>;
+  vessel_stowage?: Record<string, unknown>;
+  special_provisions?: Record<string, unknown>;
+  citations?: unknown[];
+}
+
+function toRows<T>(result: unknown): T[] {
+  if (Array.isArray(result)) {
+    return result as T[];
+  }
+  if (result && typeof result === 'object' && 'rows' in result) {
+    const rows = (result as { rows?: unknown }).rows;
+    if (Array.isArray(rows)) {
+      return rows as T[];
+    }
+  }
+  return [];
+}
+
+function ensureHazardMetadata(meta: unknown): HazardMetadata {
+  return (meta && typeof meta === 'object') ? (meta as HazardMetadata) : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
@@ -149,7 +202,7 @@ async function getCachedEmbedding(text: string): Promise<number[] | null> {
       LIMIT 1
     `;
     
-    const cached = (result as any).rows || result;
+    const cached = toRows<{ embedding: number[] }>(result);
     if (cached.length > 0) {
       // Update hit count
       await sql`
@@ -160,7 +213,7 @@ async function getCachedEmbedding(text: string): Promise<number[] | null> {
         WHERE text_hash = ${textHash}
       `;
       
-      return cached[0].embedding as number[];
+      return cached[0].embedding;
     }
   } catch (error) {
     console.warn('Cache lookup failed:', error);
@@ -220,11 +273,15 @@ export async function searchSimilarDocuments(
     k = 10,
     threshold = 0.4, // Lowered from 0.3 for better results
     source,
-    filters = {},
+    filters,
     includeScore = true
   } = options;
   
   const sql = getRawSql();
+  const unNumberFilter = typeof filters?.unNumber === 'string' ? filters.unNumber : undefined;
+  const hasOtherFilters = Boolean(
+    filters && Object.keys(filters).some((key) => key !== 'unNumber')
+  );
   
   // Get or generate embedding
   let embedding = await getCachedEmbedding(query);
@@ -243,9 +300,9 @@ export async function searchSimilarDocuments(
     let results;
     
     // Build query with filters
-    if (source || Object.keys(filters).length > 0) {
+    if (source || unNumberFilter || hasOtherFilters) {
       // Build query with proper parameterization to avoid sql.raw
-      if (source && filters.unNumber) {
+      if (source && unNumberFilter) {
         results = await sql`
           SELECT 
             id,
@@ -258,7 +315,7 @@ export async function searchSimilarDocuments(
           FROM rag.documents
           WHERE embedding IS NOT NULL
             AND source = ${source}
-            AND metadata->>'unNumber' = ${filters.unNumber}
+            AND metadata->>'unNumber' = ${unNumberFilter}
           ORDER BY embedding <=> ${vectorString}::vector
           LIMIT ${k}
         `;
@@ -278,7 +335,7 @@ export async function searchSimilarDocuments(
           ORDER BY embedding <=> ${vectorString}::vector
           LIMIT ${k}
         `;
-      } else if (filters.unNumber) {
+      } else if (unNumberFilter) {
         results = await sql`
           SELECT 
             id,
@@ -290,7 +347,7 @@ export async function searchSimilarDocuments(
             click_count
           FROM rag.documents
           WHERE embedding IS NOT NULL
-            AND metadata->>'unNumber' = ${filters.unNumber}
+            AND metadata->>'unNumber' = ${unNumberFilter}
           ORDER BY embedding <=> ${vectorString}::vector
           LIMIT ${k}
         `;
@@ -329,25 +386,36 @@ export async function searchSimilarDocuments(
     }
     
     // Handle both array and object with rows property
-    const rows = Array.isArray(results) ? results : (results as any).rows || [];
+    const vectorRows = toRows<{
+      id: string;
+      source: string;
+      text: string;
+      metadata: HazardMetadata | null;
+      similarity: number | null;
+      base_relevance: number | null;
+      click_count: number | null;
+    }>(results);
     
     // Filter by threshold and calculate combined score
-    return rows
-      .filter((r: any) => r.similarity >= threshold)
-      .map((r: any) => {
+    return vectorRows
+      .filter((row) => (row.similarity ?? 0) >= threshold)
+      .map((row) => {
         // Combined score: 70% similarity, 20% relevance, 10% popularity
+        const similarity = row.similarity ?? 0;
+        const baseRelevance = row.base_relevance ?? 0;
+        const clickCount = row.click_count ?? 0;
         const score = includeScore
-          ? (r.similarity * 0.7) + 
-            (r.base_relevance / 100 * 0.2) + 
-            (Math.min(r.click_count / 100, 1) * 0.1)
+          ? (similarity * 0.7) + 
+            (baseRelevance / 100 * 0.2) + 
+            (Math.min(clickCount / 100, 1) * 0.1)
           : undefined;
         
         return {
-          id: r.id,
-          source: r.source,
-          text: r.text,
-          metadata: r.metadata,
-          similarity: r.similarity,
+          id: row.id,
+          source: row.source,
+          text: row.text,
+          metadata: ensureHazardMetadata(row.metadata),
+          similarity,
           score
         };
       });
@@ -472,7 +540,13 @@ export async function hybridSearch(
       LIMIT ${k}
     `;
     
-    const keywordResults = (result as any).rows || result;
+    const keywordResults = toRows<{
+      id: string;
+      source: string;
+      text: string;
+      metadata: HazardMetadata | null;
+      rank: number | null;
+    }>(result);
     
     // Merge and deduplicate results
     const resultMap = new Map<string, RAGDocument>();
@@ -483,14 +557,16 @@ export async function hybridSearch(
     });
     
     // Add keyword results
-    keywordResults.forEach((r: any) => {
-      if (!resultMap.has(r.id)) {
-        resultMap.set(r.id, {
-          id: r.id,
-          source: r.source,
-          text: r.text,
-          metadata: r.metadata,
-          score: r.rank * 0.5 // Lower weight for keyword-only matches
+    keywordResults.forEach((row) => {
+      if (!resultMap.has(row.id)) {
+        const metadata = ensureHazardMetadata(row.metadata);
+        const rank = row.rank ?? 0;
+        resultMap.set(row.id, {
+          id: row.id,
+          source: row.source,
+          text: row.text,
+          metadata,
+          score: rank * 0.5 // Lower weight for keyword-only matches
         });
       }
     });
@@ -509,7 +585,7 @@ export async function hybridSearch(
  * Classify a product using database RAG
  */
 // Known patterns for common chemicals - comprehensive list for Alliance Chemical products
-export const KNOWN_PATTERNS = [
+export const KNOWN_PATTERNS: KnownPattern[] = [
   // Flammable Liquids - Class 3
   { pattern: /kerosene|k-?1\s+fuel/i, un: 'UN1223', class: '3', pg: 'III', name: 'Kerosene' },
   { pattern: /acetone/i, un: 'UN1090', class: '3', pg: 'II', name: 'Acetone' },
@@ -608,7 +684,7 @@ export async function classifyWithDatabaseRAG(
         un_number: pattern.un,
         proper_shipping_name: pattern.name,
         hazard_class: pattern.class,
-        packing_group: pattern.pg as any,
+        packing_group: pattern.pg,
         confidence: 0.95,
         source: 'pattern-un-lookup',
         explanation: `Direct UN number lookup: ${pattern.name}`
@@ -637,7 +713,7 @@ export async function classifyWithDatabaseRAG(
       un_number: knownMatch.un,
       proper_shipping_name: knownMatch.name,
       hazard_class: knownMatch.class,
-      packing_group: knownMatch.pg as any,
+      packing_group: knownMatch.pg,
       confidence: 0.92,
       source: 'database-pattern',
       explanation: 'Matched known chemical pattern'
@@ -656,14 +732,19 @@ export async function classifyWithDatabaseRAG(
         LIMIT 1
       `;
       
-      const existing = (result as any).rows || result;
+      const existing = toRows<{ metadata: HazardMetadata | null }>(result);
       if (existing.length > 0) {
-        const meta = existing[0].metadata as any;
+        const meta = ensureHazardMetadata(existing[0].metadata);
+        const properName = typeof meta.properShippingName === 'string'
+          ? meta.properShippingName
+          : typeof meta.name === 'string'
+            ? meta.name
+            : null;
         return {
-          un_number: meta.unNumber,
-          proper_shipping_name: meta.properShippingName || meta.name,
-          hazard_class: meta.hazardClass,
-          packing_group: meta.packingGroup,
+          un_number: typeof meta.unNumber === 'string' ? meta.unNumber : null,
+          proper_shipping_name: properName,
+          hazard_class: typeof meta.hazardClass === 'string' ? meta.hazardClass : null,
+          packing_group: normalizePG(typeof meta.packingGroup === 'string' ? meta.packingGroup : null),
           confidence: 1.0,
           source: 'database-verified'
         };
@@ -695,11 +776,11 @@ export async function classifyWithDatabaseRAG(
   // Rerank results based on product-specific heuristics
   const reranked = rerankResults(productName, results);
   const top = reranked[0];
-  const meta = top.metadata || {};
+  const meta = ensureHazardMetadata(top.metadata);
   
   // Look up ERG guide if available
   let ergGuide = null;
-  if (meta.unNumber) {
+  if (typeof meta.unNumber === 'string' && meta.unNumber) {
     try {
       const result = await sql`
         SELECT metadata->>'guideNumber' as guide
@@ -709,9 +790,9 @@ export async function classifyWithDatabaseRAG(
         LIMIT 1
       `;
       
-      const ergResult = (result as any).rows || result;
-      if (ergResult.length > 0) {
-        ergGuide = ergResult[0].guide;
+      const ergRows = toRows<{ guide: string | null }>(result);
+      if (ergRows.length > 0 && ergRows[0].guide) {
+        ergGuide = ergRows[0].guide;
       }
     } catch (error) {
       console.warn('ERG lookup failed:', error);
@@ -724,16 +805,24 @@ export async function classifyWithDatabaseRAG(
   // Calculate confidence
   const confidence = calculateConfidence(top, results);
   
+  const baseName = typeof meta.baseName === 'string' ? meta.baseName : undefined;
+  const name = typeof meta.name === 'string' ? meta.name : undefined;
+  const labels = Array.isArray(meta.labels) ? meta.labels.filter((label): label is string => typeof label === 'string') : undefined;
+  const packaging = isRecord(meta.packaging) ? meta.packaging : undefined;
+  const quantityLimitations = isRecord(meta.quantity_limitations) ? meta.quantity_limitations : undefined;
+  const vesselStowage = isRecord(meta.vesselStowage) ? meta.vesselStowage : undefined;
+  const specialProvisions = isRecord(meta.specialProvisions) ? meta.specialProvisions : undefined;
+
   return {
-    un_number: meta.unNumber || null,
-    proper_shipping_name: meta.baseName || meta.name || null,
-    hazard_class: meta.hazardClass || null,
-    packing_group: normalizePG(meta.packingGroup),
-    labels: meta.labels ? meta.labels.join(', ') : undefined,
-    packaging: meta.packaging,
-    quantity_limitations: meta.quantity_limitations,
-    vessel_stowage: meta.vesselStowage,
-    special_provisions: meta.specialProvisions,
+    un_number: typeof meta.unNumber === 'string' ? meta.unNumber : null,
+    proper_shipping_name: baseName || name || null,
+    hazard_class: typeof meta.hazardClass === 'string' ? meta.hazardClass : null,
+    packing_group: normalizePG(typeof meta.packingGroup === 'string' ? meta.packingGroup : null),
+    labels: labels ? labels.join(', ') : undefined,
+    packaging,
+    quantity_limitations: quantityLimitations,
+    vessel_stowage: vesselStowage,
+    special_provisions: specialProvisions,
     erg_guide: ergGuide,
     confidence,
     source: `database-${top.source}`,

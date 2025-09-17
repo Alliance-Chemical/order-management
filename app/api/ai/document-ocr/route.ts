@@ -46,9 +46,10 @@ export async function POST(request: NextRequest) {
     );
 
     // Validate extraction quality
-    const avgConfidence = Object.values(extractedData.confidence_scores)
-      .reduce((sum: number, score: any) => sum + score, 0) / 
-      Object.keys(extractedData.confidence_scores).length;
+    const confidenceValues = Object.values(extractedData.confidence_scores);
+    const avgConfidence = confidenceValues.length > 0
+      ? confidenceValues.reduce((sum, score) => sum + score, 0) / confidenceValues.length
+      : 0;
 
     if (avgConfidence < 70) {
       extractedData.validation_errors.push(
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Store extracted data in workspace
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     
     if (documentType === 'COA') {
       updateData.coa_number = extractedData.extracted_data.certificate_number;

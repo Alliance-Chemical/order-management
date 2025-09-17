@@ -2,7 +2,10 @@ import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
 import { KVCache } from '@/lib/cache/kv-cache';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { freightOrders, freightEvents } from '@/lib/db/schema/freight';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+
+type JsonMap = Record<string, unknown>;
+type JsonArray = JsonMap[];
 
 interface FreightBookingData {
   orderId: number;
@@ -10,14 +13,14 @@ interface FreightBookingData {
   carrierName?: string;
   serviceType?: string;
   estimatedCost?: number;
-  originAddress?: any;
-  destinationAddress?: any;
-  packageDetails?: any;
+  originAddress?: JsonMap;
+  destinationAddress?: JsonMap;
+  packageDetails?: JsonMap;
   specialInstructions?: string;
-  aiSuggestions?: any[];
+  aiSuggestions?: JsonArray;
   confidenceScore?: number;
   sessionId?: string;
-  telemetryData?: any;
+  telemetryData?: JsonMap;
 }
 
 interface WorkspaceData {
@@ -25,8 +28,8 @@ interface WorkspaceData {
   orderNumber: string;
   status?: string;
   workspaceUrl: string;
-  shipstationData?: any;
-  activeModules?: any;
+  shipstationData?: JsonMap;
+  activeModules?: JsonMap;
 }
 
 export class WorkspaceFreightLinkingService {
@@ -184,7 +187,7 @@ export class WorkspaceFreightLinkingService {
   /**
    * Update freight booking status and sync with workspace
    */
-  async updateFreightStatus(freightOrderId: string, status: string, eventData?: any) {
+  async updateFreightStatus(freightOrderId: string, status: string, eventData?: JsonMap) {
     try {
       const result = await withEdgeRetry(async () => {
         // Update freight order status

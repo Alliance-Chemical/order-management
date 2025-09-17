@@ -1,9 +1,11 @@
-import { QRGenerator } from './generator';
+import { QRGenerator, type QRData } from './generator';
 
 export type QRType = 'source' | 'destination' | 'order_master' | 'batch' | 'unknown';
 export type QRValidationResult = 
-  | { valid: true; type: QRType; data: any; shortCode?: string }
+  | { valid: true; type: QRType; data: QRPayload; shortCode?: string }
   | { valid: false; error: string; suggestion?: string };
+
+type QRPayload = QRData & Record<string, unknown>;
 
 interface QRValidationContext {
   expectedType?: QRType;
@@ -90,8 +92,8 @@ export class QRValidationService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        const code = error.code as string | undefined;
+        const errorBody = await response.json() as { code?: string; message?: string };
+        const code = errorBody.code;
         // Map standardized codes to friendly messages
         const messageMap: Record<string, { error: string; suggestion?: string }> = {
           INVALID_FORMAT: {
@@ -114,12 +116,12 @@ export class QRValidationService {
         const mapped = code && messageMap[code];
         return {
           valid: false,
-          error: (mapped?.error || error.message || 'Validation failed'),
+          error: mapped?.error || errorBody.message || 'Validation failed',
           suggestion: mapped?.suggestion || 'Please try again or enter the code manually',
         };
       }
 
-      const qrRecord = await response.json();
+      const qrRecord = await response.json() as { qrType: QRType; encodedData: QRPayload };
       
       // Validate type if expected
       if (context.expectedType && qrRecord.qrType !== context.expectedType) {
@@ -135,7 +137,7 @@ export class QRValidationService {
         data: qrRecord.encodedData,
         shortCode
       };
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: 'Failed to validate short code',
@@ -161,7 +163,7 @@ export class QRValidationService {
       }
 
       return this.validateEncodedData(encodedData, context);
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: 'Invalid URL format',
@@ -189,7 +191,8 @@ export class QRValidationService {
       }
 
       // Determine QR type
-      const qrType = this.determineQRType(decoded);
+      const qrData = decoded as QRPayload;
+      const qrType = this.determineQRType(qrData);
       
       // Validate type if expected
       if (context.expectedType && qrType !== context.expectedType) {
@@ -197,26 +200,26 @@ export class QRValidationService {
       }
 
       // Validate order ID if provided
-      if (context.orderId && decoded.orderId) {
+      if (context.orderId && qrData.orderId) {
         const normalizedOrderId = String(context.orderId);
-        const normalizedQROrderId = String(decoded.orderId);
+        const normalizedQROrderId = String(qrData.orderId);
         
         if (normalizedOrderId !== normalizedQROrderId) {
           return {
             valid: false,
             error: 'QR code belongs to a different order',
-            suggestion: `This QR is for order ${decoded.orderNumber || decoded.orderId}. Please scan the correct QR for order ${context.orderId}.`
+            suggestion: `This QR is for order ${qrData.orderNumber || qrData.orderId}. Please scan the correct QR for order ${context.orderId}.`
           };
         }
       }
 
       // Validate container number if provided
-      if (context.containerNumber && decoded.containerNumber) {
-        if (context.containerNumber !== decoded.containerNumber) {
+      if (context.containerNumber && qrData.containerNumber) {
+        if (context.containerNumber !== qrData.containerNumber) {
           return {
             valid: false,
             error: 'Wrong container number',
-            suggestion: `This QR is for container #${decoded.containerNumber}. Please scan container #${context.containerNumber}.`
+            suggestion: `This QR is for container #${qrData.containerNumber}. Please scan container #${context.containerNumber}.`
           };
         }
       }
@@ -227,9 +230,9 @@ export class QRValidationService {
       return {
         valid: true,
         type: qrType,
-        data: decoded
+        data: qrData
       };
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: 'Failed to process QR code',
@@ -241,19 +244,26 @@ export class QRValidationService {
   /**
    * Determine the type of QR code from decoded data
    */
-  private determineQRType(data: any): QRType {
-    if (data.type) {
-      const t = String(data.type).toLowerCase();
-      if (t === 'source' || data.isSource) return 'source';
-      if (t === 'destination' || t === 'container') return 'destination';
-      if (t === 'order_master' || t === 'master') return 'order_master';
-      if (t === 'batch') return 'batch';
+  private determineQRType(data: QRPayload): QRType {
+    const record = data as Record<string, unknown>;
+
+    const typeValue = record['type'];
+    if (typeof typeValue === 'string') {
+      const normalized = typeValue.toLowerCase();
+      if (normalized === 'source' || record['isSource'] === true) return 'source';
+      if (normalized === 'destination' || normalized === 'container') return 'destination';
+      if (normalized === 'order_master' || normalized === 'master') return 'order_master';
+      if (normalized === 'batch') return 'batch';
     }
     
     // Infer from data structure
-    if (data.sourceContainerId) return 'source';
-    if (data.containerNumber && !data.sourceContainerId) return 'destination';
-    if (data.items && Array.isArray(data.items)) return 'order_master';
+    const sourceContainerId = record['sourceContainerId'];
+    if (sourceContainerId) return 'source';
+
+    const containerNumber = record['containerNumber'];
+    if (containerNumber && !sourceContainerId) return 'destination';
+
+    if (Array.isArray(record['items'])) return 'order_master';
     
     return 'unknown';
   }

@@ -2,7 +2,7 @@ export interface OrderItemLike {
   sku?: string | null;
   name?: string | null;
   unitPrice?: number | null;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Centralized filter to exclude non-physical/discount lines
@@ -37,4 +37,3 @@ export function filterOutDiscounts<T extends OrderItemLike>(items: T[] | undefin
   if (!items || !Array.isArray(items)) return [] as T[];
   return items.filter((item) => !isDiscountLine(item));
 }
-

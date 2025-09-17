@@ -4,6 +4,36 @@ import path from 'path';
 
 const WORKSPACE_DIR = path.join(process.cwd(), 'data', 'workspaces');
 
+interface ShipStationWebhookItem {
+  order_item_id?: number;
+  name?: string;
+  sku?: string;
+  quantity?: number;
+  unit_price?: number;
+  weight?: unknown;
+}
+
+interface ShipStationWebhookPayload {
+  order_id: number | string;
+  order_number?: string;
+  order_status?: string;
+  order_date?: string;
+  ship_date?: string;
+  tracking_number?: string;
+  carrier?: string;
+  service_code?: string;
+  items?: ShipStationWebhookItem[];
+  ship_to?: Record<string, unknown>;
+  customer_email?: string;
+  customer_notes?: string;
+  internal_notes?: string;
+  requested_shipping_service?: string;
+  weight?: unknown;
+  dimensions?: unknown;
+  insurance_options?: unknown;
+  advanced_options?: unknown;
+}
+
 // Ensure workspace directory exists
 async function ensureWorkspaceDir() {
   try {
@@ -32,7 +62,13 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    const data = await request.json();
+    const data = (await request.json()) as ShipStationWebhookPayload;
+
+    if (data.order_id === undefined || data.order_id === null) {
+      return NextResponse.json({ error: 'Missing order_id in payload' }, { status: 400 });
+    }
+
+    const items = data.items ?? [];
     console.log('ShipStation webhook received:', {
       orderId: data.order_id,
       orderNumber: data.order_number,
@@ -56,13 +92,13 @@ export async function POST(request: NextRequest) {
         trackingNumber: data.tracking_number,
         carrier: data.carrier,
         serviceCode: data.service_code,
-        items: data.items?.map((item: any) => ({
-          orderItemId: item.order_item_id,
-          name: item.name,
-          sku: item.sku,
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          weight: item.weight
+        items: items.map((item) => ({
+          orderItemId: item.order_item_id ?? null,
+          name: item.name ?? 'Unknown Item',
+          sku: item.sku ?? 'N/A',
+          quantity: item.quantity ?? 0,
+          unitPrice: item.unit_price ?? 0,
+          weight: item.weight ?? null
         })),
         shipTo: data.ship_to,
         customerEmail: data.customer_email,
@@ -73,8 +109,8 @@ export async function POST(request: NextRequest) {
         dimensions: data.dimensions,
         insuranceOptions: data.insurance_options,
         advancedOptions: data.advanced_options,
-        orderTotal: data.items?.reduce((sum: number, item: any) => 
-          sum + (item.quantity * item.unit_price), 0) || 0
+        orderTotal: items.reduce((sum, item) => 
+          sum + (item.quantity ?? 0) * (item.unit_price ?? 0), 0)
       },
       documents: [],
       activities: [
@@ -85,7 +121,7 @@ export async function POST(request: NextRequest) {
           description: 'Order synced from ShipStation',
           metadata: {
             status: data.order_status,
-            itemCount: data.items?.length || 0
+            itemCount: items.length
           }
         }
       ],
@@ -122,7 +158,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   return NextResponse.json({
     status: 'ok',
     message: 'ShipStation webhook endpoint',

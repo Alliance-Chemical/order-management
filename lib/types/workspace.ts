@@ -1,9 +1,11 @@
+type JsonMap = Record<string, unknown>;
+
 export interface WorkspaceModule {
   id: string;
   name: string;
   icon?: string;
   enabled: boolean;
-  state: Record<string, any>;
+  state: JsonMap;
 }
 
 export interface OrderWorkspace {
@@ -16,7 +18,7 @@ export interface OrderWorkspace {
   alerts: AlertConfig[];
   status: WorkspaceStatus;
   workflowPhase: WorkflowPhase;
-  shipstationData?: any;
+  shipstationData?: JsonMap;
   lastShipstationSync?: Date;
   currentUsers: string[];
 }
@@ -44,7 +46,7 @@ export interface AlertConfig {
   type: AlertType;
   enabled: boolean;
   recipients: AlertRecipient[];
-  triggerConditions: Record<string, any>;
+  triggerConditions: JsonMap;
   cooldownMinutes: number;
 }
 
@@ -81,6 +83,6 @@ export interface Activity {
   performedBy: string;
   performedAt: Date;
   module?: string;
-  metadata?: Record<string, any>;
-  changes?: Record<string, any>;
+  metadata?: JsonMap;
+  changes?: JsonMap;
 }

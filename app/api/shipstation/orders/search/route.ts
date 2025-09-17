@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
+interface ShipStationOrderItem {
+  name?: string | null;
+  quantity?: number | null;
+  sku?: string | null;
+}
+
+interface ShipStationOrder {
+  orderId?: number;
+  orderNumber?: string;
+  shipTo?: { name?: string | null } | null;
+  orderDate?: string;
+  orderTotal?: number;
+  orderStatus?: string;
+  tagIds?: number[] | null;
+  items?: ShipStationOrderItem[] | null;
+}
+
+interface ShipStationOrderResponse {
+  total?: number;
+  page?: number;
+  pages?: number;
+  orders?: ShipStationOrder[] | null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { tagId, orderNumber, startDate, endDate } = await request.json();
@@ -45,21 +69,21 @@ export async function POST(request: NextRequest) {
       throw new Error(`ShipStation API error: ${response.statusText}`);
     }
     
-    const data = await response.json();
+    const data = (await response.json()) as ShipStationOrderResponse;
     
     // Format orders for display
-    const orders = (data.orders || []).map((order: any) => ({
-      orderId: order.orderId,
-      orderNumber: order.orderNumber,
-      customerName: order.shipTo?.name || 'N/A',
-      orderDate: order.orderDate,
-      orderTotal: order.orderTotal,
-      orderStatus: order.orderStatus,
-      tagIds: order.tagIds || [],
-      items: order.items?.map((item: any) => ({
-        name: item.name,
-        quantity: item.quantity,
-        sku: item.sku,
+    const orders = (data.orders ?? []).map((order) => ({
+      orderId: order.orderId ?? null,
+      orderNumber: order.orderNumber ?? 'Unknown',
+      customerName: order.shipTo?.name ?? 'N/A',
+      orderDate: order.orderDate ?? null,
+      orderTotal: order.orderTotal ?? null,
+      orderStatus: order.orderStatus ?? 'unknown',
+      tagIds: order.tagIds ?? [],
+      items: (order.items ?? []).map((item) => ({
+        name: item.name ?? 'Unknown Item',
+        quantity: item.quantity ?? 0,
+        sku: item.sku ?? 'N/A',
       })),
     }));
     

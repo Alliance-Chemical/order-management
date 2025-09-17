@@ -13,12 +13,12 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const body = await request.json();
   
   // Validate webhook secret if configured
-  const secret = request.headers.get('x-shipstation-hmac-sha256');
+  const _secret = request.headers.get('x-shipstation-hmac-sha256');
   if (process.env.SHIPSTATION_WEBHOOK_SECRET) {
     // TODO: Validate HMAC signature
   }
   
-  const { resource_type, resource_url, action } = body;
+  const { resource_type, resource_url: _resourceUrl, action } = body;
   
   // We only care about order updates
   if (resource_type !== 'ORDER_NOTIFY') {

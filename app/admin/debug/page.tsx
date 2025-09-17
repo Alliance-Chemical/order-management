@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 
+type QueuedOperation = Record<string, unknown>;
+
 interface InspectionState {
   orderId: string;
   orderNumber: string;
@@ -11,7 +13,7 @@ interface InspectionState {
   status: string;
   currentStep?: string;
   completedSteps?: string[];
-  queuedItems?: any[];
+  queuedItems?: QueuedOperation[];
   lastSync?: string;
 }
 
@@ -33,22 +35,33 @@ export default function AdminDebugPanel() {
       // Fetch active workspaces
       const response = await fetch('/api/admin/debug/inspections');
       if (response.ok) {
-        const data = await response.json();
-        setInspections(data.inspections || []);
-      }
-      
-      // Also check local storage for offline queue
-      const queue = localStorage.getItem('inspection_queue');
-      if (queue) {
-        const queuedItems = JSON.parse(queue);
-        if (queuedItems.length > 0) {
-          setInspections(prev => [...prev, {
-            orderId: 'OFFLINE',
-            orderNumber: 'Queued Items',
-            workflowPhase: 'offline',
-            status: 'queued',
-            queuedItems
-          }]);
+        const data = await response.json() as { inspections?: InspectionState[] };
+        let nextInspections = data.inspections ?? [];
+
+        const queueRaw = localStorage.getItem('inspection_queue');
+        if (queueRaw) {
+          try {
+            const queuedItems = JSON.parse(queueRaw) as QueuedOperation[];
+            if (Array.isArray(queuedItems) && queuedItems.length > 0) {
+              nextInspections = [
+                ...nextInspections,
+                {
+                  orderId: 'OFFLINE',
+                  orderNumber: 'Queued Items',
+                  workflowPhase: 'offline',
+                  status: 'queued',
+                  queuedItems,
+                },
+              ];
+            }
+          } catch (parseError) {
+            console.error('Failed to parse offline queue:', parseError);
+          }
+        }
+
+        setInspections(nextInspections);
+        if (nextInspections.length === 0) {
+          setSelectedInspection(null);
         }
       }
     } catch (error) {

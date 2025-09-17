@@ -15,6 +15,12 @@ type Body = {
   approve?: boolean; // default true
 };
 
+type ProductRow = {
+  id: string;
+  sku: string;
+  name: string;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const sql = getEdgeSql();
@@ -38,9 +44,19 @@ export async function POST(request: NextRequest) {
     // Resolve product
     const productRows = await withEdgeRetry(async () => {
       if (productId) {
-        return (await sql`SELECT id, sku, name FROM products WHERE id = ${productId} LIMIT 1`) as any[];
+        return sql<ProductRow[]>`
+          SELECT id, sku, name
+          FROM products
+          WHERE id = ${productId}
+          LIMIT 1
+        `;
       }
-      return (await sql`SELECT id, sku, name FROM products WHERE sku = ${sku} LIMIT 1`) as any[];
+      return sql<ProductRow[]>`
+        SELECT id, sku, name
+        FROM products
+        WHERE sku = ${sku}
+        LIMIT 1
+      `;
     });
 
     if (!productRows?.length) {

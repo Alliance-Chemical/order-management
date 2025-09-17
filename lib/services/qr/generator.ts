@@ -1,11 +1,10 @@
 import QRCode from 'qrcode';
-import { v4 as uuidv4 } from 'uuid';
 import { makeShortCode } from './shortcode';
 
 export interface QRData {
   orderId: number;
   orderNumber: string;
-  type: 'order_master' | 'source' | 'destination' | 'batch';
+  type: 'order_master' | 'source' | 'destination' | 'batch' | 'container';
   containerNumber?: number;
   chemicalName?: string;
   timestamp: string;
@@ -25,7 +24,7 @@ export class QRGenerator {
     return makeShortCode(base, 7);
   }
 
-  createQRData(orderId: number, orderNumber: string, type: 'order_master' | 'destination' | 'source' | 'batch', containerNumber?: number, chemicalName?: string): QRData {
+  createQRData(orderId: number, orderNumber: string, type: QRData['type'], containerNumber?: number, chemicalName?: string): QRData {
     return {
       orderId,
       orderNumber,

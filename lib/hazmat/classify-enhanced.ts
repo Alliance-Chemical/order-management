@@ -3,24 +3,10 @@
  */
 
 import { classifyWithDatabaseRAG } from '@/lib/services/rag/database-rag';
+import type { ClassificationResult } from '@/lib/services/rag/database-rag';
 import { classifyWithRAG as classifyWithJSONRAG } from './classify';
 
-export type Classification = {
-  un_number: string | null;
-  proper_shipping_name: string | null;
-  hazard_class: string | null;
-  packing_group: 'I' | 'II' | 'III' | 'NONE' | null;
-  labels?: string;
-  erg_guide?: string | null;
-  citations?: any[];
-  confidence: number;
-  source: string;
-  explanation?: string;
-  exemption_reason?: string;
-  packaging?: any;
-  quantity_limitations?: any;
-  vessel_stowage?: any;
-  special_provisions?: any;
+export type Classification = ClassificationResult & {
   // Telemetry
   searchMethod?: 'database' | 'json' | 'hybrid';
   searchTimeMs?: number;
@@ -85,7 +71,7 @@ export async function classifyWithEnhancedRAG(
           source: 'error',
           explanation: 'Classification failed - both database and JSON RAG encountered errors',
           searchMethod: 'database',
-          searchTimeMs: Date.now() - startTime
+          searchTimeMs: Date.now() - startTime,
         };
       }
     }
@@ -149,8 +135,8 @@ export async function batchClassify(
               packing_group: null,
               confidence: 0,
               source: 'error',
-              explanation: 'Classification failed'
-            }
+              explanation: 'Classification failed',
+            },
           };
         }
       })

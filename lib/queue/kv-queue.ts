@@ -10,7 +10,7 @@ export type QueueName = 'jobs' | 'alerts' | 'webhooks';
 export type QueueMessage = {
   id: string;
   type: string;
-  payload: any;
+  payload: unknown;
   timestamp: string;
   attempts?: number;
   lastAttempt?: string;
@@ -48,7 +48,7 @@ export const kvQueue = {
   async enqueue(
     queue: QueueName,
     type: string,
-    payload: any,
+    payload: unknown,
     opts?: {
       delayMs?: number;
       maxRetries?: number;
@@ -186,7 +186,7 @@ export const kvQueue = {
   async isDuplicate(
     queue: QueueName,
     type: string,
-    payload: any
+    payload: unknown
   ): Promise<boolean> {
     const fp = sha(JSON.stringify({ type, payload }));
     const doneKey = KEY.done(queue, type, fp);
@@ -273,7 +273,7 @@ export async function withLock<T>(
 
   if (!acquired) {
     console.log(`Lock ${name} already held, skipping`);
-    return { ok: false, skipped: true } as any;
+    return { ok: false, skipped: true };
   }
 
   try {

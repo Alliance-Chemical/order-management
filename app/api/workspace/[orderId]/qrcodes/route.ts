@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces, qrCodes } from '@/lib/db/schema/qr-workspace';
 import { freightOrders } from '@/lib/db/schema/freight';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { detectContainer } from '@/lib/services/qr/container-detect';
 
@@ -301,7 +301,7 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     // Determine container count and type using strict ordered matcher
     const match = detectContainer(itemName, item.sku, quantity);
     let totalContainersForThisItem = match.labels;
-    let containerType = match.type;
+    const containerType = match.type;
     
     // Ensure we always create at least 1 label
     if (totalContainersForThisItem < 1) {

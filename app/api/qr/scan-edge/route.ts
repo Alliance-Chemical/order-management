@@ -1,18 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { KVCache } from '@/lib/cache/kv-cache';
 
+interface DecodedQRData {
+  orderId: number | string;
+  type?: string;
+  containerNumber?: number | string;
+  [key: string]: unknown;
+}
+
+interface WorkspaceSummary {
+  id: string;
+  [key: string]: unknown;
+}
+
 // Enable Edge Runtime for maximum performance
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 // Lightweight QR decoder for Edge Runtime
-function decodeQRUrl(encoded: string): any {
+function decodeQRUrl(encoded: string): DecodedQRData | null {
   try {
     const decoded = atob(encoded.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(decoded);
-  } catch (error) {
-    return null;
+    const parsed = JSON.parse(decoded) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>;
+      const orderId = record.orderId;
+      if (typeof orderId === 'string' || typeof orderId === 'number') {
+        return {
+          ...record,
+          orderId,
+        } as DecodedQRData;
+      }
+    }
+  } catch (_error) {
+    // Intentionally swallow error and fall through to null return
   }
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -20,7 +43,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { qrCode, encodedData, userId = 'system' } = body;
 
-    let qrData;
+    let qrData: DecodedQRData | null = null;
     let cacheKey: string | null = null;
     
     // Try to decode QR data
@@ -46,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     // Check cache first for workspace data
     const workspaceCacheKey = `workspace:order:${qrData.orderId}`;
-    let workspace = await KVCache.get(workspaceCacheKey);
+    let workspace = await KVCache.get<WorkspaceSummary>(workspaceCacheKey);
     
     if (!workspace) {
       // If not in cache, fetch from main API
@@ -67,8 +90,16 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      workspace = await response.json();
-      
+      const json = (await response.json()) as unknown;
+      if (!json || typeof json !== 'object' || typeof (json as { id?: unknown }).id !== 'string') {
+        return NextResponse.json(
+          { error: 'Workspace payload invalid', valid: false },
+          { status: 502 }
+        );
+      }
+
+      workspace = json as WorkspaceSummary;
+
       // Cache the workspace data
       await KVCache.set(workspaceCacheKey, workspace, 300); // 5 minute cache
     }
@@ -115,7 +146,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Preflight for CORS
-export async function OPTIONS(request: NextRequest) {
+export async function OPTIONS(_request: NextRequest) {
   return new NextResponse(null, {
     status: 200,
     headers: {

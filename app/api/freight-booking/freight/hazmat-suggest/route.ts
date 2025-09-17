@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
         "Carrier hazmat certification verification"
       ]
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       {
         available: false,

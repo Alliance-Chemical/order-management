@@ -10,10 +10,57 @@ import { eq } from 'drizzle-orm';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
+type HazmatOverride = {
+  persist?: boolean;
+  isHazmat?: boolean;
+  unNumber?: string;
+  hazardClass?: string;
+  packingGroup?: string;
+  properShippingName?: string;
+};
+
+type ShipStationAddress = {
+  street1?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+};
+
+type ShipStationItem = {
+  sku?: string;
+  name?: string;
+  quantity?: number;
+  weight?: { value?: number };
+};
+
+type ShipStationOrderPayload = {
+  orderId: number;
+  orderNumber: string;
+  billTo?: ShipStationAddress;
+  shipTo?: ShipStationAddress;
+  items?: ShipStationItem[];
+};
+
+type CarrierSelection = {
+  carrier: string;
+  service?: string;
+};
+
+type UserOverrides = {
+  instructions?: string;
+  hazmat?: HazmatOverride;
+  hazmatBySku?: Record<string, HazmatOverride>;
+};
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { shipstationOrder, carrierSelection, userOverrides, estimatedCost } = body || {};
+    const body = await request.json() as {
+      shipstationOrder?: ShipStationOrderPayload;
+      carrierSelection?: CarrierSelection;
+      userOverrides?: UserOverrides;
+      estimatedCost?: number;
+    };
+    const { shipstationOrder, carrierSelection, userOverrides, estimatedCost } = body;
 
     if (!shipstationOrder?.orderId || !shipstationOrder?.orderNumber || !carrierSelection?.carrier) {
       return NextResponse.json({ success: false, error: 'Missing shipstationOrder (orderId, orderNumber) or carrierSelection.carrier' }, { status: 400 });
@@ -30,7 +77,7 @@ export async function POST(request: NextRequest) {
           const prod = await sql.query.products.findFirst({ where: (p, { eq }) => eq(p.sku, sku) });
           if (prod) {
             await sql.execute(
-              // @ts-ignore drizzle neon-http execute raw
+              // @ts-expect-error drizzle neon-http execute raw
               sql.sql`
                 INSERT INTO product_hazmat_overrides (
                   id, product_id, is_hazmat, un_number, hazard_class, packing_group, proper_shipping_name,
@@ -63,11 +110,11 @@ export async function POST(request: NextRequest) {
     // Persist per-line hazmat overrides (by SKU)
     if (userOverrides?.hazmatBySku && shipstationOrder?.items?.length) {
       try {
-        const bySku: Record<string, any> = userOverrides.hazmatBySku || {};
+        const bySku: Record<string, HazmatOverride> = userOverrides.hazmatBySku || {};
         const sql = getEdgeDb();
         const seen = new Set<string>();
-        for (const it of shipstationOrder.items as any[]) {
-          const sku = (it?.sku || '').trim();
+        for (const item of shipstationOrder.items ?? []) {
+          const sku = (item?.sku || '').trim();
           if (!sku || seen.has(sku)) continue;
           seen.add(sku);
           const o = bySku[sku];
@@ -76,7 +123,7 @@ export async function POST(request: NextRequest) {
           const prod = await sql.query.products.findFirst({ where: (p, { eq }) => eq(p.sku, sku) });
           if (!prod) continue;
           await sql.execute(
-            // @ts-ignore drizzle neon-http execute raw
+            // @ts-expect-error drizzle neon-http execute raw
             sql.sql`
               INSERT INTO product_hazmat_overrides (
                 id, product_id, is_hazmat, un_number, hazard_class, packing_group, proper_shipping_name,
@@ -172,12 +219,15 @@ export async function POST(request: NextRequest) {
           },
           packageDetails: {
             weight: {
-              value: shipstationOrder.items?.reduce((sum: number, it: any) => sum + (it.weight?.value || 0) * (it.quantity || 1), 0) || 0,
+              value: (shipstationOrder.items ?? []).reduce(
+                (sum, item) => sum + ((item.weight?.value ?? 0) * (item.quantity ?? 1)),
+                0,
+              ),
               units: 'lbs',
             },
             dimensions: { length: 48, width: 40, height: 48, units: 'in' },
             packageCount: shipstationOrder.items?.length || 1,
-            description: shipstationOrder.items?.map((i: any) => i.name).join(', '),
+            description: (shipstationOrder.items ?? []).map((item) => item.name ?? 'Item').join(', '),
           },
           specialInstructions: userOverrides?.instructions || '',
           aiSuggestions: [],
@@ -218,12 +268,15 @@ export async function POST(request: NextRequest) {
           },
           packageDetails: {
             weight: {
-              value: shipstationOrder.items?.reduce((sum: number, it: any) => sum + (it.weight?.value || 0) * (it.quantity || 1), 0) || 0,
+              value: (shipstationOrder.items ?? []).reduce(
+                (sum, item) => sum + ((item.weight?.value ?? 0) * (item.quantity ?? 1)),
+                0,
+              ),
               units: 'lbs',
             },
             dimensions: { length: 48, width: 40, height: 48, units: 'in' },
             packageCount: shipstationOrder.items?.length || 1,
-            description: shipstationOrder.items?.map((i: any) => i.name).join(', '),
+            description: (shipstationOrder.items ?? []).map((item) => item.name ?? 'Item').join(', '),
           },
           specialInstructions: userOverrides?.instructions || '',
           aiSuggestions: [],

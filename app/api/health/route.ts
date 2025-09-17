@@ -1,50 +1,83 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getEdgeSql } from '@/lib/db/neon-edge';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
-  const checks = {
-    status: 'healthy' as 'healthy' | 'degraded' | 'unhealthy',
+type ServiceStatus = 'unknown' | 'healthy' | 'degraded' | 'unhealthy';
+
+interface ServiceHealth {
+  status: ServiceStatus;
+}
+
+interface TimedServiceHealth extends ServiceHealth {
+  latency: number;
+}
+
+interface ConfigurableServiceHealth extends ServiceHealth {
+  configured: boolean;
+}
+
+interface HealthSnapshot {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  timestamp: string;
+  services: {
+    database: TimedServiceHealth;
+    shipstation: ConfigurableServiceHealth;
+    aws: ConfigurableServiceHealth;
+    qr: ServiceHealth;
+  };
+  stats: {
+    activeWorkspaces: number;
+    pendingInspections: number;
+    queuedItems: number;
+  };
+}
+
+type WorkspaceStatsRow = { active: string | number | null; pending: string | number | null };
+
+export async function GET() {
+  const checks: HealthSnapshot = {
+    status: 'healthy',
     timestamp: new Date().toISOString(),
     services: {
       database: { status: 'unknown', latency: 0 },
       shipstation: { status: 'unknown', configured: false },
       aws: { status: 'unknown', configured: false },
-      qr: { status: 'unknown' }
+      qr: { status: 'unknown' },
     },
     stats: {
       activeWorkspaces: 0,
       pendingInspections: 0,
-      queuedItems: 0
-    }
+      queuedItems: 0,
+    },
   };
 
   try {
     // Check database
     const startDb = Date.now();
     const sql = getEdgeSql();
-    const dbResult = await sql`SELECT 1 as ok`;
+    await sql`SELECT 1 as ok`;
     checks.services.database = {
       status: 'healthy',
       latency: Date.now() - startDb
     };
 
     // Get workspace stats (last 7 days)
-    const stats = await sql`
+    const stats = await sql<WorkspaceStatsRow>`
       SELECT 
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
         COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending
       FROM qr_workspace.workspaces
       WHERE created_at > NOW() - INTERVAL '7 days'
-    ` as unknown as Array<{ active: string; pending: string }>;
+    `;
 
     if (Array.isArray(stats) && stats.length > 0) {
-      checks.stats.activeWorkspaces = parseInt(stats[0].active as any);
-      checks.stats.pendingInspections = parseInt(stats[0].pending as any);
+      const [row] = stats;
+      checks.stats.activeWorkspaces = Number(row.active ?? 0);
+      checks.stats.pendingInspections = Number(row.pending ?? 0);
     }
-  } catch (error) {
+  } catch (_error: unknown) {
     checks.services.database.status = 'unhealthy';
     checks.status = 'unhealthy';
   }

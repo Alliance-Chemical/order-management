@@ -19,7 +19,8 @@ export function determineQRType(data: QRPayload): QRType {
   // Infer from data structure
   if ('sourceContainerId' in data) return 'source';
   if (data.containerNumber && !('sourceContainerId' in data)) return 'destination';
-  if ('items' in data && Array.isArray((data as any).items)) return 'order_master';
+  const items = (data as { items?: unknown[] }).items;
+  if (Array.isArray(items)) return 'order_master';
   
   return 'unknown';
 }

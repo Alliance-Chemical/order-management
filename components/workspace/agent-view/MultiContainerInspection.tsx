@@ -108,11 +108,9 @@ export default function MultiContainerInspection({
       <div className="max-w-4xl mx-auto px-4 mt-6">
         <ContainerList
           containers={containers}
-          currentContainer={currentContainer}
           progress={progress}
           scanSpeed={scanSpeed}
           getContainerStatus={getContainerStatus}
-          containerType={containerType}
         />
       </div>
 

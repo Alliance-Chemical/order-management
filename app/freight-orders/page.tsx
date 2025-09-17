@@ -218,7 +218,7 @@ function FreightOrdersContent() {
                 </div>
               ) : orders.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  No freight orders found. Click "Poll Freight Orders" to search.
+                  No freight orders found. Click &quot;Poll Freight Orders&quot; to search.
                 </div>
               ) : (
                 <div className="overflow-x-auto">

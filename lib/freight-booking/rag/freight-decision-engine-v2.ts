@@ -42,18 +42,13 @@ export interface FreightDecisionContext {
 
 export interface FreightDecision {
   recommendation: {
-    containers: Array<{
-      type: string;
-      count: number;
-      dimensions: { length: number; width: number; height: number };
-      estimatedWeight: number;
-    }>;
+    containers: FreightContainerRecommendation[];
     carrier: string;
     carrierService: string;
     accessorials: string[];
     estimatedCost: number;
     estimatedTransitDays: number;
-    addressType: "Business" | "Residential" | "Limited Access";
+    addressType: FreightAddressType;
   };
   confidence: number;
   reasoning: string;
@@ -62,7 +57,99 @@ export interface FreightDecision {
     similarity: number;
     outcome: string;
   }>;
-  alternatives?: any[];
+  alternatives?: AlternativeRecommendation[];
+}
+
+type FreightAddressType = "Business" | "Residential" | "Limited Access";
+
+interface FreightContainerRecommendation {
+  type: string;
+  count: number;
+  dimensions: {
+    length: number;
+    width: number;
+    height: number;
+  };
+  estimatedWeight: number;
+}
+
+interface HistoricalShipmentContainer {
+  type?: string | null;
+  count?: number | null;
+  dimensions?: {
+    length?: number | null;
+    width?: number | null;
+    height?: number | null;
+  } | null;
+  weight?: number | null;
+}
+
+interface HistoricalShipment {
+  reference_id: string;
+  similarity?: number;
+  carrier: string;
+  actual_cost: number;
+  transit_days: number;
+  on_time_delivery?: boolean;
+  accessorials?: Record<string, boolean> | null;
+  containers?: HistoricalShipmentContainer[] | null;
+  destination_state?: string;
+  origin_state?: string;
+  destination_city?: string;
+  origin_city?: string;
+  customer_name?: string;
+}
+
+interface ContainerPattern {
+  count: number;
+  dimensions: Array<HistoricalShipmentContainer["dimensions"]>;
+  weights: number[];
+  avgDimensions: {
+    length: number;
+    width: number;
+    height: number;
+  };
+  avgWeight: number;
+}
+
+type ContainerPatternMap = Record<string, ContainerPattern>;
+
+interface ShipmentPatterns {
+  carrierCounts: Record<string, number>;
+  mostCommonCarrier: string;
+  carrierUsageRate: number;
+  avgCost: number;
+  minCost: number;
+  maxCost: number;
+  avgTransitDays: number;
+  commonAccessorials: string[];
+  containerPatterns: ContainerPatternMap;
+  successRate: number;
+  dataPoints: number;
+}
+
+interface ConfidenceFactors {
+  dataSufficiency?: "high" | "medium" | "low";
+  patternStrength?: "high" | "medium" | "low";
+  riskFactors?: string[];
+}
+
+type AlternativeRecommendation = Record<string, unknown> & {
+  type: string;
+  reasoning: string;
+  estimatedCost?: number;
+};
+
+interface GeminiDecision {
+  containers?: FreightContainerRecommendation[];
+  carrier?: string;
+  carrierService?: string;
+  accessorials?: string[];
+  estimatedCost?: number;
+  estimatedTransitDays?: number;
+  addressType?: FreightAddressType;
+  reasoning?: string;
+  confidenceFactors?: ConfidenceFactors;
 }
 
 export class FreightDecisionEngineV2 {
@@ -198,7 +285,7 @@ export class FreightDecisionEngineV2 {
   async findSimilarShipments(
     context: FreightDecisionContext,
     limit: number = 10,
-  ): Promise<any[]> {
+  ): Promise<HistoricalShipment[]> {
     // Check if database is available
     if (!db || !process.env.ANDRE_DATABASE_URL) {
       console.warn("Database not available, returning mock data for build");
@@ -230,8 +317,8 @@ export class FreightDecisionEngineV2 {
         WHERE similarity > 0.7  -- Only return highly similar results
         ORDER BY similarity DESC
         LIMIT ${limit}
-      `;
-      return results || [];
+      ` as HistoricalShipment[];
+      return results ?? [];
     } catch (error) {
       console.error("Vector search failed, falling back to keyword search:", error);
       return this.keywordOnlySearch(context, limit);
@@ -242,7 +329,7 @@ export class FreightDecisionEngineV2 {
   private async keywordOnlySearch(
     context: FreightDecisionContext,
     limit: number,
-  ): Promise<any[]> {
+  ): Promise<HistoricalShipment[]> {
     // Check if database is available
     if (!process.env.DATABASE_URL) {
       return [];
@@ -264,8 +351,8 @@ export class FreightDecisionEngineV2 {
           )
         ORDER BY order_date DESC
         LIMIT ${limit}
-      `;
-      return results || [];
+      ` as HistoricalShipment[];
+      return results ?? [];
     } catch (error) {
       console.error("Keyword search also failed:", error);
       return [];
@@ -277,7 +364,7 @@ export class FreightDecisionEngineV2 {
     context: FreightDecisionContext,
     embedding: number[],
     limit: number,
-  ): Promise<any[]> {
+  ): Promise<HistoricalShipment[]> {
     // Check if database is available
     if (!process.env.DATABASE_URL) {
       return [];
@@ -324,8 +411,8 @@ export class FreightDecisionEngineV2 {
         SELECT * FROM combined
         ORDER BY combined_score DESC
         LIMIT ${limit}
-      `;
-      return results || [];
+      ` as HistoricalShipment[];
+      return results ?? [];
     } catch (error) {
       console.error("Hybrid search failed, falling back to keyword only:", error);
       return this.keywordOnlySearch(context, limit);
@@ -366,8 +453,8 @@ export class FreightDecisionEngineV2 {
   // Use Gemini for decision generation
   private async generateDecisionWithGemini(
     context: FreightDecisionContext,
-    similarShipments: any[],
-    patterns: any,
+    similarShipments: HistoricalShipment[],
+    patterns: ShipmentPatterns,
   ): Promise<FreightDecision> {
     const prompt = `
 You are a freight booking expert. Analyze the historical shipping data and recommend optimal freight configuration.
@@ -388,10 +475,10 @@ ${similarShipments
   .slice(0, 5)
   .map(
     (s, i) => `
-${i + 1}. Reference: ${s.reference_id} (${(s.similarity * 100).toFixed(1)}% similar)
-   Route: ${s.origin_city}, ${s.origin_state} → ${s.destination_city}, ${s.destination_state}
+${i + 1}. Reference: ${s.reference_id} (${((s.similarity ?? 0.85) * 100).toFixed(1)}% similar)
+   Route: ${s.origin_city ?? "Unknown"}, ${s.origin_state ?? ""} → ${s.destination_city ?? "Unknown"}, ${s.destination_state ?? ""}
    Carrier: ${s.carrier} | Cost: $${s.actual_cost} | Transit: ${s.transit_days} days
-   Containers: ${JSON.stringify(s.containers)}
+   Containers: ${JSON.stringify(s.containers ?? [])}
    Performance: ${s.on_time_delivery ? "✓ On-time" : "✗ Delayed"}
 `,
   )
@@ -400,7 +487,7 @@ ${i + 1}. Reference: ${s.reference_id} (${(s.similarity * 100).toFixed(1)}% simi
 CONTAINER PATTERNS:
 ${Object.entries(patterns.containerPatterns)
   .map(
-    ([type, data]: any) =>
+    ([type, data]) =>
       `- ${type}: Used ${data.count} times, Avg dims: ${data.avgDimensions.length}x${data.avgDimensions.width}x${data.avgDimensions.height}, Avg weight: ${data.avgWeight}lbs`,
   )
   .join("\n")}
@@ -434,7 +521,7 @@ Based on this data, provide your recommendation in JSON format with the followin
         throw new Error("No JSON found in Gemini response");
       }
 
-      const geminiDecision = JSON.parse(jsonMatch[0]);
+      const geminiDecision = JSON.parse(jsonMatch[0]) as GeminiDecision;
 
       return {
         recommendation: {
@@ -471,7 +558,7 @@ Based on this data, provide your recommendation in JSON format with the followin
   }
 
   // Enhanced pattern analysis
-  private analyzePatterns(shipments: any[]): any {
+  private analyzePatterns(shipments: HistoricalShipment[]): ShipmentPatterns {
     if (shipments.length === 0) {
       return this.getDefaultPatterns();
     }
@@ -486,27 +573,29 @@ Based on this data, provide your recommendation in JSON format with the followin
     );
 
     const sortedCarriers = Object.entries(carrierCounts).sort(
-      ([, a], [, b]) => (b as number) - (a as number),
+      (a, b) => b[1] - a[1],
     );
 
     const mostCommonCarrier = sortedCarriers[0]?.[0] || "SAIA";
     const carrierUsageRate = (
-      (((sortedCarriers[0]?.[1] as number) || 0) / shipments.length) *
-      100
-    ).toFixed(0);
+      (sortedCarriers[0]?.[1] ?? 0) / shipments.length
+    ) * 100;
 
     // Cost analysis with ranges
-    const costs = shipments.map((s) => s.actual_cost).filter((c) => c > 0);
-    const avgCost = costs.reduce((sum, c) => sum + c, 0) / costs.length;
-    const minCost = Math.min(...costs);
-    const maxCost = Math.max(...costs);
+    const costs = shipments
+      .map((s) => Number(s.actual_cost))
+      .filter((c) => Number.isFinite(c) && c > 0);
+    const avgCost =
+      costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
+    const minCost = costs.length ? Math.min(...costs) : 0;
+    const maxCost = costs.length ? Math.max(...costs) : 0;
 
     // Transit time analysis
     const transitDays = shipments
-      .map((s) => s.transit_days)
-      .filter((t) => t > 0);
+      .map((s) => Number(s.transit_days))
+      .filter((t) => Number.isFinite(t) && t > 0);
     const avgTransitDays =
-      transitDays.reduce((sum, t) => sum + t, 0) / transitDays.length;
+      transitDays.reduce((sum, t) => sum + t, 0) / (transitDays.length || 1);
 
     // Accessorial frequency analysis
     const accessorialCounts: Record<string, number> = {};
@@ -532,6 +621,7 @@ Based on this data, provide your recommendation in JSON format with the followin
       shipments.filter((s) => s.on_time_delivery).length / shipments.length;
 
     return {
+      carrierCounts,
       mostCommonCarrier,
       carrierUsageRate,
       avgCost,
@@ -546,13 +636,13 @@ Based on this data, provide your recommendation in JSON format with the followin
   }
 
   // Detailed container pattern analysis
-  private analyzeContainerPatterns(shipments: any[]): Record<string, any> {
-    const patterns: Record<string, any> = {};
+  private analyzeContainerPatterns(shipments: HistoricalShipment[]): ContainerPatternMap {
+    const patterns: ContainerPatternMap = {};
 
-    shipments.forEach((s) => {
-      if (s.containers && Array.isArray(s.containers)) {
-        s.containers.forEach((c: any) => {
-          const type = c.type || "pallet";
+    shipments.forEach((shipment) => {
+      if (shipment.containers && Array.isArray(shipment.containers)) {
+        shipment.containers.forEach((container) => {
+          const type = container.type || "pallet";
           if (!patterns[type]) {
             patterns[type] = {
               count: 0,
@@ -564,8 +654,8 @@ Based on this data, provide your recommendation in JSON format with the followin
           }
 
           patterns[type].count++;
-          patterns[type].dimensions.push(c.dimensions || {});
-          patterns[type].weights.push(c.weight || 0);
+          patterns[type].dimensions.push(container.dimensions || {});
+          patterns[type].weights.push(container.weight ?? 0);
         });
       }
     });
@@ -574,25 +664,26 @@ Based on this data, provide your recommendation in JSON format with the followin
     Object.keys(patterns).forEach((type) => {
       const p = patterns[type];
       if (p.dimensions.length > 0) {
+        const safeLength = p.dimensions.length || 1;
         p.avgDimensions = {
           length:
             p.dimensions.reduce(
-              (sum: number, d: any) => sum + (d.length || 48),
+              (sum: number, dimensions) => sum + (dimensions?.length ?? 48),
               0,
-            ) / p.dimensions.length,
+            ) / safeLength,
           width:
             p.dimensions.reduce(
-              (sum: number, d: any) => sum + (d.width || 40),
+              (sum: number, dimensions) => sum + (dimensions?.width ?? 40),
               0,
-            ) / p.dimensions.length,
+            ) / safeLength,
           height:
             p.dimensions.reduce(
-              (sum: number, d: any) => sum + (d.height || 48),
+              (sum: number, dimensions) => sum + (dimensions?.height ?? 48),
               0,
-            ) / p.dimensions.length,
+            ) / safeLength,
         };
         p.avgWeight =
-          p.weights.reduce((sum: number, w: number) => sum + w, 0) /
+          p.weights.reduce((sum: number, weight) => sum + weight, 0) /
           p.weights.length;
       }
     });
@@ -602,9 +693,9 @@ Based on this data, provide your recommendation in JSON format with the followin
 
   // Enhanced confidence calculation
   private calculateConfidence(
-    similarShipments: any[],
-    patterns: any,
-    confidenceFactors?: any,
+    similarShipments: HistoricalShipment[],
+    patterns: ShipmentPatterns,
+    confidenceFactors?: ConfidenceFactors,
   ): number {
     let confidence = 0;
 
@@ -632,19 +723,22 @@ Based on this data, provide your recommendation in JSON format with the followin
     if (confidenceFactors) {
       if (confidenceFactors.dataSufficiency === "low") confidence *= 0.8;
       if (confidenceFactors.patternStrength === "low") confidence *= 0.8;
-      if (confidenceFactors.riskFactors?.length > 0) confidence *= 0.9;
+      if (confidenceFactors.riskFactors?.length && confidenceFactors.riskFactors.length > 0) confidence *= 0.9;
     }
 
     return Math.min(confidence, 0.95);
   }
 
   // Generate alternative recommendations
-  private generateAlternatives(patterns: any, primaryDecision: any): any[] {
-    const alternatives = [];
+  private generateAlternatives(
+    patterns: ShipmentPatterns,
+    primaryDecision: GeminiDecision,
+  ): AlternativeRecommendation[] {
+    const alternatives: AlternativeRecommendation[] = [];
 
     // Alternative carrier if available
     const carriers = Object.entries(patterns.carrierCounts || {})
-      .sort(([, a]: any, [, b]: any) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(1, 3);
 
     carriers.forEach(([carrier]) => {
@@ -657,7 +751,7 @@ Based on this data, provide your recommendation in JSON format with the followin
     });
 
     // Economy option
-    if (primaryDecision.accessorials?.length > 0) {
+    if (primaryDecision.accessorials && primaryDecision.accessorials.length > 0) {
       alternatives.push({
         type: "economy",
         accessorials: [],
@@ -670,10 +764,11 @@ Based on this data, provide your recommendation in JSON format with the followin
   }
 
   // Fallback methods
-  private getDefaultPatterns(): any {
+  private getDefaultPatterns(): ShipmentPatterns {
     return {
+      carrierCounts: { SAIA: 1 },
       mostCommonCarrier: "SAIA",
-      carrierUsageRate: "0",
+      carrierUsageRate: 0,
       avgCost: 500,
       minCost: 400,
       maxCost: 600,
@@ -682,6 +777,8 @@ Based on this data, provide your recommendation in JSON format with the followin
       containerPatterns: {
         pallet: {
           count: 1,
+          dimensions: [],
+          weights: [],
           avgDimensions: { length: 48, width: 40, height: 48 },
           avgWeight: 1500,
         },
@@ -691,9 +788,11 @@ Based on this data, provide your recommendation in JSON format with the followin
     };
   }
 
-  private getDefaultContainers(patterns: any): any[] {
+  private getDefaultContainers(
+    patterns: ShipmentPatterns,
+  ): FreightContainerRecommendation[] {
     const mostUsed = Object.entries(patterns.containerPatterns || {}).sort(
-      ([, a]: any, [, b]: any) => b.count - a.count,
+      ([, a], [, b]) => b.count - a.count,
     )[0];
 
     if (!mostUsed) {
@@ -707,7 +806,7 @@ Based on this data, provide your recommendation in JSON format with the followin
       ];
     }
 
-    const [type, pattern]: any = mostUsed;
+    const [type, pattern] = mostUsed;
     return [
       {
         type,
@@ -718,7 +817,10 @@ Based on this data, provide your recommendation in JSON format with the followin
     ];
   }
 
-  private generateReasoning(patterns: any, similarShipments: any[]): string {
+  private generateReasoning(
+    patterns: ShipmentPatterns,
+    similarShipments: HistoricalShipment[],
+  ): string {
     const reasons = [];
 
     if (similarShipments.length > 0) {
@@ -748,8 +850,8 @@ Based on this data, provide your recommendation in JSON format with the followin
 
   private fallbackDecision(
     context: FreightDecisionContext,
-    patterns: any,
-    similarShipments: any[],
+    patterns: ShipmentPatterns,
+    similarShipments: HistoricalShipment[],
   ): FreightDecision {
     return {
       recommendation: {

@@ -3,15 +3,21 @@
  * Handles network failures gracefully and queues operations for retry
  */
 
+type OperationPayload = Record<string, unknown> & { phase?: string };
+
 interface QueuedOperation {
   id: string;
   type: 'inspection_result' | 'qr_scan' | 'activity_log';
   orderId: string;
   phase?: string; // Added for inspection operations
-  data: any;
+  data: OperationPayload;
   timestamp: string;
   retryCount: number;
   maxRetries: number;
+}
+
+interface FailedOperation extends QueuedOperation {
+  failedAt: string;
 }
 
 class InspectionQueue {
@@ -174,12 +180,12 @@ class InspectionQueue {
    */
   private moveToFailed(operation: QueuedOperation): void {
     const failedKey = 'inspection_queue_failed';
-    const failed = (this.loadFromStorage(failedKey) || []) as any[];
+    const failed = this.loadFromStorage<FailedOperation[]>(failedKey) || [];
     failed.push({
       ...operation,
       failedAt: new Date().toISOString()
     });
-    this.saveToStorage(failedKey, failed);
+    this.saveToStorage<FailedOperation[]>(failedKey, failed);
   }
 
   /**
@@ -207,7 +213,7 @@ class InspectionQueue {
    * Load queue from storage
    */
   private loadQueue(): void {
-    this.queue = this.loadFromStorage(this.storageKey) || [];
+    this.queue = this.loadFromStorage<QueuedOperation[]>(this.storageKey) || [];
   }
 
   /**
@@ -220,11 +226,11 @@ class InspectionQueue {
   /**
    * Load from localStorage
    */
-  private loadFromStorage(key: string): any {
+  private loadFromStorage<T>(key: string): T | null {
     if (typeof window === 'undefined') return null;
     try {
       const data = localStorage.getItem(key);
-      return data ? JSON.parse(data) : null;
+      return data ? (JSON.parse(data) as T) : null;
     } catch (error) {
       console.error('Failed to load from storage:', error);
       return null;
@@ -234,7 +240,7 @@ class InspectionQueue {
   /**
    * Save to localStorage
    */
-  private saveToStorage(key: string, data: any): void {
+  private saveToStorage<T>(key: string, data: T): void {
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(key, JSON.stringify(data));
@@ -259,7 +265,7 @@ class InspectionQueue {
     processing: boolean;
     failedCount: number;
   } {
-    const failed = this.loadFromStorage('inspection_queue_failed') || [];
+    const failed = this.loadFromStorage<FailedOperation[]>('inspection_queue_failed') || [];
     return {
       online: this.isOnline(),
       queueLength: this.queue.length,
@@ -285,19 +291,20 @@ class InspectionQueue {
    */
   retryFailed(): void {
     const failedKey = 'inspection_queue_failed';
-    const failed = (this.loadFromStorage(failedKey) || []) as any[];
+    const failed = this.loadFromStorage<FailedOperation[]>(failedKey) || [];
     
     // Re-queue failed operations
-    failed.forEach((op: any) => {
+    failed.forEach((op) => {
       this.enqueue({
         type: op.type,
         orderId: op.orderId,
+        phase: op.phase,
         data: op.data
       });
     });
     
     // Clear failed storage
-    this.saveToStorage(failedKey, []);
+    this.saveToStorage<FailedOperation[]>(failedKey, []);
     
     // Start processing
     this.processQueue();

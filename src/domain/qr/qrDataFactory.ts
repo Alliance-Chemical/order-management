@@ -6,10 +6,10 @@
 import type { QRPayload } from './qrCodec';
 
 export function createQRData(
-  orderId: number, 
-  orderNumber: string, 
-  type: 'order_master' | 'destination' | 'source' | 'batch', 
-  containerNumber?: number, 
+  orderId: number,
+  orderNumber: string,
+  type: QRPayload['type'],
+  containerNumber?: number,
   chemicalName?: string
 ): QRPayload {
   return {

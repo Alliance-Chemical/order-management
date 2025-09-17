@@ -5,6 +5,17 @@
 
 import { ProcessedQuery } from './query-processor';
 
+export interface DocumentMetadata extends Record<string, unknown> {
+  unNumber?: string;
+  casNumber?: string;
+  hazardClass?: string;
+  packingGroup?: string;
+  section?: string;
+  nmfcCode?: string;
+  freightClass?: string;
+  isHazardous?: boolean;
+}
+
 // BM25 parameters
 const BM25_K1 = 1.2; // Term frequency saturation
 const BM25_B = 0.75; // Length normalization
@@ -14,7 +25,7 @@ export interface Document {
   source: string;
   text: string;
   embedding: number[];
-  metadata: any;
+  metadata: DocumentMetadata;
   tokens?: string[];
   length?: number;
 }
@@ -24,6 +35,10 @@ export interface SearchResult extends Document {
   keywordScore: number;
   hybridScore: number;
   highlights?: string[];
+  rerankerScore?: number;
+  finalScore?: number;
+  explanation?: string;
+  relevanceFeatures?: Record<string, number>;
 }
 
 /**

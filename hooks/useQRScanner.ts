@@ -3,9 +3,22 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import { validateQR } from '@/app/actions/qr';
 
+export interface ValidatedQRData {
+  id: string;
+  shortCode: string;
+  type: string;
+  workspace: {
+    id: string;
+    orderId: string;
+    orderNumber: string;
+    status: string;
+  };
+  [key: string]: unknown;
+}
+
 interface UseQRScannerProps {
   onScan: (data: string) => void;
-  onValidatedScan?: (data: any) => void;
+  onValidatedScan?: (data: ValidatedQRData) => void;
   onClose: () => void;
   continuous?: boolean;
   autoFocus?: boolean;
@@ -35,22 +48,20 @@ export function useQRScanner({
   const [lastScanTime, setLastScanTime] = useState<number>(0);
   const scanTimeoutRef = useRef<NodeJS.Timeout>();
 
-  const validateQRCode = useCallback(async (code: string) => {
-    if (!validateQR) {
-      return { valid: true, data: code };
-    }
-
+  const validateQRCode = useCallback(async (code: string): Promise<
+    { valid: true; data: ValidatedQRData } | { valid: false; error: string }
+  > => {
     setIsValidating(true);
     setValidationError('');
 
     try {
       const result = await validateQR(code);
 
-      if (!result.success || !result.valid) {
+      if (!result.success || !result.valid || !result.qr) {
         throw new Error(result.error || 'Invalid QR code');
       }
 
-      return { valid: true, data: result.qr };
+      return { valid: true, data: result.qr as ValidatedQRData };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Validation failed';
       setValidationError(message);

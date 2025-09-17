@@ -3,6 +3,13 @@
 import useSWR, { mutate } from 'swr';
 import useSWRMutation from 'swr/mutation';
 
+type WorkspaceData = Record<string, unknown>;
+type WorkspaceUpdatePayload = Record<string, unknown>;
+type BatchOperationPayload = { operation: string; items: unknown[] };
+type FreightSuggestionContext = Record<string, unknown>;
+type HazmatSuggestionContext = Record<string, unknown>;
+type FreightBookingPayload = Record<string, unknown>;
+
 // Workspace real-time data hook
 export function useWorkspace(workspaceId: string | undefined) {
   const { data, error, isLoading, mutate } = useSWR(
@@ -96,7 +103,7 @@ export function useWorkerTasks(workerId: string | undefined) {
 export function useUpdateWorkspace(workspaceId: string) {
   const { trigger, isMutating, error } = useSWRMutation(
     `/api/workspaces/${workspaceId}`,
-    async (url, { arg }: { arg: any }) => {
+    async (url, { arg }: { arg: WorkspaceUpdatePayload }) => {
       const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -108,8 +115,8 @@ export function useUpdateWorkspace(workspaceId: string) {
     },
     {
       // Optimistically update the UI
-      optimisticData: (current: any, newData: any) => ({
-        ...current,
+      optimisticData: (current: WorkspaceData | undefined, newData: WorkspaceUpdatePayload): WorkspaceData => ({
+        ...(current ?? {}),
         ...newData,
       }),
       // Revalidate after mutation
@@ -130,7 +137,7 @@ export function useUpdateWorkspace(workspaceId: string) {
 export function useBatchOperation() {
   const { trigger, isMutating, error } = useSWRMutation(
     '/api/batch',
-    async (url, { arg }: { arg: { operation: string; items: any[] } }) => {
+    async (url, { arg }: { arg: BatchOperationPayload }) => {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -248,7 +255,7 @@ export function useFreightQuotes(orderId: string | undefined) {
 }
 
 // AI freight suggestions
-export function useFreightSuggestions(orderContext: any | undefined) {
+export function useFreightSuggestions(orderContext: FreightSuggestionContext | undefined) {
   const contextKey = orderContext ? JSON.stringify(orderContext).slice(0, 100) : null;
   const { data, error, isLoading } = useSWR(
     contextKey ? `/api/freight-booking/freight/suggest` : null,
@@ -282,7 +289,7 @@ export function useFreightSuggestions(orderContext: any | undefined) {
 export function useCreateFreightBooking() {
   const { trigger, isMutating, error } = useSWRMutation(
     '/api/freight-booking/capture-order',
-    async (url, { arg }: { arg: any }) => {
+    async (url, { arg }: { arg: FreightBookingPayload }) => {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -294,7 +301,7 @@ export function useCreateFreightBooking() {
     },
     {
       // Revalidate related data after booking
-      onSuccess: (data, key, config) => {
+      onSuccess: () => {
         // Invalidate freight orders list
         mutate(key => typeof key === 'string' && key.startsWith('/api/freight-booking/orders'));
         // Invalidate workspace data since booking affects workspace
@@ -311,7 +318,7 @@ export function useCreateFreightBooking() {
 }
 
 // Hazmat freight suggestions
-export function useHazmatSuggestions(hazmatContext: any | undefined) {
+export function useHazmatSuggestions(hazmatContext: HazmatSuggestionContext | undefined) {
   const contextKey = hazmatContext ? JSON.stringify(hazmatContext).slice(0, 100) : null;
   const { data, error, isLoading } = useSWR(
     contextKey ? `/api/freight-booking/freight/hazmat-suggest` : null,

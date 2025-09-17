@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { HiCheck, HiExclamation, HiSearch, HiInformationCircle } from "react-icons/hi";
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { HiCheck, HiSearch, HiInformationCircle } from "react-icons/hi";
 import { getFreightClassifications, searchFreightClassifications } from "@/helpers/getData";
 import type { SelectFreightClassification } from "@/types/db/types";
 
@@ -107,10 +107,18 @@ export default function ClassificationLinkModal({
     c => c.classificationId === parseInt(selectedClassificationId)
   );
 
+  const handleDialogChange = (open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+  };
+
   return (
-    <Modal show={isOpen} onClose={onClose} size="2xl">
-      <Modal.Header>Link Freight Classification</Modal.Header>
-      <Modal.Body>
+    <Dialog open={isOpen} onOpenChange={handleDialogChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Link Freight Classification</DialogTitle>
+        </DialogHeader>
         <div className="space-y-4">
           {/* Product Info */}
           <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-4">
@@ -121,10 +129,11 @@ export default function ClassificationLinkModal({
 
           {/* Suggestions */}
           {suggestions.length > 0 && !selectedClassificationId && (
-            <Alert color="info" icon={HiInformationCircle}>
+            <Alert className="border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30">
+              <HiInformationCircle className="mr-2 h-5 w-5 text-blue-600" />
               <div>
-                <p className="font-semibold">Suggested Classifications</p>
-                <div className="mt-2 space-y-2">
+                <AlertTitle>Suggested Classifications</AlertTitle>
+                <AlertDescription className="mt-2 space-y-2">
                   {suggestions.map((suggestion) => (
                     <button
                       key={suggestion.classificationId}
@@ -148,48 +157,53 @@ export default function ClassificationLinkModal({
                       </div>
                     </button>
                   ))}
-                </div>
+                </AlertDescription>
               </div>
             </Alert>
           )}
 
           {/* Search */}
           <div>
-            <Label htmlFor="search" value="Search Classifications" />
-            <TextInput
-              id="search"
-              type="text"
-              icon={HiSearch}
-              placeholder="Search by description, NMFC, or hazard ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <Label htmlFor="search">Search Classifications</Label>
+            <div className="relative mt-2">
+              <HiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="search"
+                type="text"
+                placeholder="Search by description, NMFC, or hazard ID..."
+                className="pl-9"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            </div>
           </div>
 
           {/* Classification Dropdown */}
           <div>
-            <Label htmlFor="classification" value="Select Classification" />
+            <Label htmlFor="classification">Select Classification</Label>
             {loading ? (
               <div className="flex items-center justify-center py-4">
                 <Spinner size="md" />
               </div>
             ) : (
               <Select
-                id="classification"
                 value={selectedClassificationId}
-                onChange={(e) => setSelectedClassificationId(e.target.value)}
-                required
+                onValueChange={(value) => setSelectedClassificationId(value)}
               >
-                <option value="">Choose a classification...</option>
-                {filteredClassifications.map((classification) => (
-                  <option
-                    key={classification.classificationId}
-                    value={classification.classificationId}
-                  >
-                    {classification.description} - NMFC: {classification.nmfc} - Class: {classification.freightClass}
-                    {classification.hazardous ? " (HAZMAT)" : ""}
-                  </option>
-                ))}
+                <SelectTrigger id="classification" className="mt-2">
+                  <SelectValue placeholder="Choose a classification..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredClassifications.map((classification) => (
+                    <SelectItem
+                      key={classification.classificationId}
+                      value={classification.classificationId?.toString() ?? ""}
+                    >
+                      {classification.description} - NMFC: {classification.nmfc} - Class: {classification.freightClass}
+                      {classification.hazardous ? " (HAZMAT)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             )}
           </div>
@@ -226,26 +240,25 @@ export default function ClassificationLinkModal({
             </div>
           )}
         </div>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button
-          color="blue"
-          onClick={handleLink}
-          disabled={!selectedClassificationId || linking}
-        >
-          {linking ? (
-            <>
-              <Spinner size="sm" className="mr-2" />
-              Linking...
-            </>
-          ) : (
-            "Link Classification"
-          )}
-        </Button>
-        <Button color="gray" onClick={onClose} disabled={linking}>
-          Cancel
-        </Button>
-      </Modal.Footer>
-    </Modal>
+        <DialogFooter>
+          <Button
+            onClick={handleLink}
+            disabled={!selectedClassificationId || linking}
+          >
+            {linking ? (
+              <>
+                <Spinner size="sm" className="mr-2" />
+                Linking...
+              </>
+            ) : (
+              "Link Classification"
+            )}
+          </Button>
+          <Button variant="outline" onClick={onClose} disabled={linking}>
+            Cancel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,5 +1,8 @@
 import { pgSchema, pgTable, uuid, text, jsonb, timestamp, integer, index, varchar, vector, boolean } from 'drizzle-orm/pg-core';
 import { sql, cosineDistance } from 'drizzle-orm';
+import type { SQLWrapper } from 'drizzle-orm';
+
+type JsonObject = Record<string, unknown>;
 
 // Create a dedicated schema for RAG data
 export const ragSchema = pgSchema('rag');
@@ -159,7 +162,7 @@ export const ragDocumentRelations = ragSchema.table('document_relations', {
   relationType: varchar('relation_type', { length: 50 }).notNull(), // 'section', 'subsection', 'reference', 'related'
   relationStrength: integer('relation_strength').default(100), // 0-100
   
-  metadata: jsonb('metadata').$type<any>().default({}),
+  metadata: jsonb('metadata').$type<JsonObject>().default({}),
   
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => ({
@@ -197,16 +200,16 @@ export type NewRagQueryHistory = typeof ragQueryHistory.$inferInsert;
 
 // Vector similarity search functions (to be used in queries)
 export const vectorDistance = {
-  cosine: (column: any, vector: number[]) => 
+  cosine: (column: SQLWrapper, vector: number[]) => 
     sql`${column} <=> ${JSON.stringify(vector)}::vector`,
   
-  euclidean: (column: any, vector: number[]) => 
+  euclidean: (column: SQLWrapper, vector: number[]) => 
     sql`${column} <-> ${JSON.stringify(vector)}::vector`,
   
-  innerProduct: (column: any, vector: number[]) => 
+  innerProduct: (column: SQLWrapper, vector: number[]) => 
     sql`${column} <#> ${JSON.stringify(vector)}::vector`,
 };
 
 // Full-text search helper
-export const textSearch = (column: any, query: string) => 
+export const textSearch = (column: SQLWrapper, query: string) => 
   sql`to_tsvector('english', ${column}) @@ plainto_tsquery('english', ${query})`;

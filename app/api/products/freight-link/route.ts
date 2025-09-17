@@ -21,6 +21,20 @@ type Body = {
   };
 };
 
+type ProductRow = {
+  id: string;
+  sku: string;
+  name: string;
+};
+
+type ClassificationRow = {
+  id: string;
+};
+
+type FreightLinkRow = {
+  id: string;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const sql = getEdgeSql();
@@ -51,16 +65,26 @@ export async function POST(request: NextRequest) {
     // Resolve product ID - create if doesn't exist
     let productRows = await withEdgeRetry(async () => {
       if (productId) {
-        return (await sql`SELECT id, sku, name FROM products WHERE id = ${productId} LIMIT 1`) as any[];
+        return sql<ProductRow[]>`
+          SELECT id, sku, name
+          FROM products
+          WHERE id = ${productId}
+          LIMIT 1
+        `;
       }
-      return (await sql`SELECT id, sku, name FROM products WHERE sku = ${sku} LIMIT 1`) as any[];
+      return sql<ProductRow[]>`
+        SELECT id, sku, name
+        FROM products
+        WHERE sku = ${sku}
+        LIMIT 1
+      `;
     });
 
     if (!productRows?.length) {
       // Create product if it doesn't exist (common for first-time SKUs)
       const productName = description || hazmatData?.properShippingName || `Product ${sku}`;
       productRows = await withEdgeRetry(async () =>
-        (await sql`
+        sql<ProductRow[]>`
           INSERT INTO products (
             id, sku, name, is_hazardous, un_number, created_at, updated_at
           ) VALUES (
@@ -72,7 +96,7 @@ export async function POST(request: NextRequest) {
             NOW(), NOW()
           )
           RETURNING id, sku, name
-        `) as any[]
+        `
       );
     }
 
@@ -98,16 +122,16 @@ export async function POST(request: NextRequest) {
       : null;
 
     // Find or create classification row (by nmfc_code + freight_class + description)
-    const existingClassRows = (await withEdgeRetry(async () =>
-      (await sql`
+    const existingClassRows = await withEdgeRetry(async () =>
+      sql<ClassificationRow[]>`
         SELECT id 
         FROM freight_classifications 
         WHERE freight_class = ${freightClass}
           AND COALESCE(nmfc_code, '') = COALESCE(${nmfc_full}, '')
           AND COALESCE(description, '') = COALESCE(${description || ''}, '')
         LIMIT 1
-      `) as any[]
-    ));
+      `
+    );
 
     let classificationId: string;
     if (existingClassRows.length) {
@@ -127,8 +151,8 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      const inserted = (await withEdgeRetry(async () =>
-        (await sql`
+      const inserted = await withEdgeRetry(async () =>
+        sql<ClassificationRow[]>`
           INSERT INTO freight_classifications (
             id, description, nmfc_code, freight_class, is_hazmat, 
             hazmat_class, packing_group, created_at, updated_at
@@ -143,20 +167,20 @@ export async function POST(request: NextRequest) {
             NOW(), NOW()
           )
           RETURNING id
-        `) as any[]
-      ));
+        `
+      );
       classificationId = inserted[0].id;
     }
 
     // Link product -> classification (manual, approved per flag)
     // Use existence check to avoid requiring a DB unique constraint
-    const existingLinkRows = (await withEdgeRetry(async () =>
-      (await sql`
+    const existingLinkRows = await withEdgeRetry(async () =>
+      sql<FreightLinkRow[]>`
         SELECT id FROM product_freight_links
         WHERE product_id = ${product.id} AND classification_id = ${classificationId}
         LIMIT 1
-      `) as any[]
-    ));
+      `
+    );
 
     if (existingLinkRows.length) {
       await withEdgeRetry(async () => {
@@ -194,7 +218,7 @@ export async function POST(request: NextRequest) {
               updated_at = NOW()
           `;
         });
-      } catch (e) {
+      } catch (_error: unknown) {
         // Fallback if unique index isn't present yet
         await withEdgeRetry(async () => {
           await sql`

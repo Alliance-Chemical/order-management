@@ -112,7 +112,7 @@ export class KVCache {
   /**
    * Cache workspace data
    */
-  static async cacheWorkspace(workspaceId: string, data: any): Promise<void> {
+  static async cacheWorkspace<T>(workspaceId: string, data: T): Promise<void> {
     const key = `${CACHE_PREFIX.WORKSPACE}${workspaceId}`;
     await this.set(key, data, CACHE_TTL.SHORT);
   }
@@ -120,15 +120,15 @@ export class KVCache {
   /**
    * Get cached workspace
    */
-  static async getCachedWorkspace(workspaceId: string): Promise<any | null> {
+  static async getCachedWorkspace<T>(workspaceId: string): Promise<T | null> {
     const key = `${CACHE_PREFIX.WORKSPACE}${workspaceId}`;
-    return this.get(key);
+    return this.get<T>(key);
   }
 
   /**
    * Cache QR code data
    */
-  static async cacheQRCode(qrCode: string, data: any): Promise<void> {
+  static async cacheQRCode<T>(qrCode: string, data: T): Promise<void> {
     const key = `${CACHE_PREFIX.QR}${qrCode}`;
     await this.set(key, data, CACHE_TTL.LONG);
   }
@@ -136,15 +136,15 @@ export class KVCache {
   /**
    * Get cached QR code
    */
-  static async getCachedQRCode(qrCode: string): Promise<any | null> {
+  static async getCachedQRCode<T>(qrCode: string): Promise<T | null> {
     const key = `${CACHE_PREFIX.QR}${qrCode}`;
-    return this.get(key);
+    return this.get<T>(key);
   }
 
   /**
    * Cache stats/metrics
    */
-  static async cacheStats(statType: string, data: any): Promise<void> {
+  static async cacheStats<T>(statType: string, data: T): Promise<void> {
     const key = `${CACHE_PREFIX.STATS}${statType}`;
     await this.set(key, data, CACHE_TTL.MEDIUM);
   }
@@ -167,7 +167,7 @@ export class KVCache {
     // If we have stale data, return it immediately
     if (stale !== null) {
       // Check if someone else is already revalidating
-      const isLocked = await kv.get(lockKey);
+      const isLocked = await kv.get<boolean>(lockKey);
       
       if (!isLocked) {
         // Set lock to prevent multiple revalidations

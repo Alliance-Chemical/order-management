@@ -3,10 +3,27 @@
 import { WorkspaceService } from '@/lib/services/workspace/service'
 import { revalidatePath } from 'next/cache'
 import { getOptimizedDb } from '@/lib/db/neon'
-import { workspaces, qrCodes, documents, moduleStates } from '@/lib/db/schema/qr-workspace'
-import { eq, and, desc } from 'drizzle-orm'
+import { workspaces, documents } from '@/lib/db/schema/qr-workspace'
+import { eq, desc } from 'drizzle-orm'
 
 const workspaceService = new WorkspaceService()
+
+type WorkspaceNote = {
+  id: string
+  content: string
+  author?: string
+  type?: string
+  createdAt: string
+}
+
+type ChecklistItem = Record<string, unknown>
+
+type NotificationEntry = {
+  type: string
+  status: string
+  notes?: string
+  timestamp: string
+}
 
 export async function createWorkspace(data: {
   orderId: string | number
@@ -47,7 +64,7 @@ export async function createWorkspace(data: {
   }
 }
 
-export async function shipWorkspace(orderId: string, userId?: string) {
+export async function shipWorkspace(orderId: string) {
   try {
     const db = getOptimizedDb()
     
@@ -153,8 +170,10 @@ export async function addNote(
     }
 
     // Add note to notes array
-    const currentNotes = (workspace.notes as any[]) || []
-    const newNote = {
+    const currentNotes = Array.isArray(workspace.notes)
+      ? (workspace.notes as WorkspaceNote[])
+      : []
+    const newNote: WorkspaceNote = {
       id: `note-${Date.now()}`,
       content: note.content,
       author: note.author || 'system',
@@ -286,7 +305,7 @@ export async function completePreShip(
   data: {
     completedBy: string
     notes?: string
-    checklistItems?: any[]
+    checklistItems?: ChecklistItem[]
   }
 ) {
   try {
@@ -305,9 +324,10 @@ export async function completePreShip(
     }
 
     // Update module states to mark pre-ship as complete
-    const currentModuleStates = (workspace.moduleStates as any) || {}
+    const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {}
+    const preShipState = (currentModuleStates.preShip as Record<string, unknown> | undefined) || {}
     currentModuleStates.preShip = {
-      ...currentModuleStates.preShip,
+      ...preShipState,
       completed: true,
       completedAt: new Date().toISOString(),
       completedBy: data.completedBy,
@@ -427,11 +447,18 @@ export async function getWorkspaceActivity(orderId: string) {
     }
 
     // Parse activity from module states and notes
-    const activities: any[] = []
+    const activities: Array<{
+      id: string
+      type: string
+      action: string
+      description: string
+      user: string
+      timestamp: string
+    }> = []
     
     // Add notes as activities
     if (workspace.notes && Array.isArray(workspace.notes)) {
-      workspace.notes.forEach((note: any) => {
+      (workspace.notes as WorkspaceNote[]).forEach((note) => {
         activities.push({
           id: note.id || `note-${activities.length}`,
           type: 'note',
@@ -444,7 +471,7 @@ export async function getWorkspaceActivity(orderId: string) {
     }
     
     // Add document uploads as activities
-    workspace.documents?.forEach((doc: any) => {
+    workspace.documents?.forEach((doc) => {
       activities.push({
         id: doc.id,
         type: 'document',
@@ -495,14 +522,17 @@ export async function notifyWorkspace(
     }
 
     // Store notification in module states
-    const currentModuleStates = (workspace.moduleStates as any) || {}
-    currentModuleStates.notifications = currentModuleStates.notifications || []
-    currentModuleStates.notifications.push({
+    const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {}
+    const notifications = Array.isArray(currentModuleStates.notifications)
+      ? (currentModuleStates.notifications as NotificationEntry[])
+      : []
+    notifications.push({
       type: data.type,
       status: data.status,
       notes: data.notes,
       timestamp: new Date().toISOString()
     })
+    currentModuleStates.notifications = notifications
 
     await db
       .update(workspaces)

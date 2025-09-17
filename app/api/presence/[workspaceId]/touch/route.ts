@@ -7,12 +7,20 @@ import { activityLog } from '@/lib/db/schema/qr-workspace';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
+type TouchPresenceParams = { workspaceId: string };
+type TouchPresencePayload = {
+  userId?: string;
+  userName?: string;
+  role?: string;
+  activity?: string;
+};
+
 export const POST = withErrorHandler(async (
   request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
+  { params }: { params: Promise<TouchPresenceParams> }
 ) => {
   const { workspaceId } = await params;
-  const body = await request.json();
+  const body = (await request.json()) as TouchPresencePayload;
   const { userId, userName, role, activity } = body;
   
   if (!userId || !userName || !role || !activity) {
@@ -36,7 +44,7 @@ export const POST = withErrorHandler(async (
     activityType: 'presence_updated',
     performedBy: userId,
     performedAt: new Date(),
-    metadata: { activity } as any,
+    metadata: { activity },
   }));
   
   return NextResponse.json({ success: true });

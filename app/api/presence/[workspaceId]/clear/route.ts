@@ -7,12 +7,15 @@ import { activityLog } from '@/lib/db/schema/qr-workspace';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
+type ClearPresenceParams = { workspaceId: string };
+type ClearPresencePayload = { userId?: string };
+
 export const POST = withErrorHandler(async (
   request: NextRequest,
-  { params }: { params: Promise<{ workspaceId: string }> }
+  { params }: { params: Promise<ClearPresenceParams> }
 ) => {
   const { workspaceId } = await params;
-  const body = await request.json();
+  const body = (await request.json()) as ClearPresencePayload;
   const { userId } = body;
   
   if (!userId) {
@@ -31,7 +34,7 @@ export const POST = withErrorHandler(async (
     activityType: 'presence_cleared',
     performedBy: userId,
     performedAt: new Date(),
-    metadata: {} as any,
+    metadata: {},
   }));
   
   return NextResponse.json({ success: true });

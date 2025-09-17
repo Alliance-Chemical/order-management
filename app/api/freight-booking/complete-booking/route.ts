@@ -2,8 +2,76 @@ import { NextRequest, NextResponse } from "next/server";
 import { workspaceFreightLinker } from "@/lib/services/workspace-freight-linking";
 import { KVCache } from "@/lib/cache/kv-cache";
 
+type Address = {
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+};
+
+type WeightDetails = {
+  value?: number;
+  units?: string;
+};
+
+type DimensionDetails = {
+  length?: number;
+  width?: number;
+  height?: number;
+  units?: string;
+};
+
+type PackageDetails = {
+  weight?: WeightDetails;
+  dimensions?: DimensionDetails;
+  packageCount?: number;
+  description?: string;
+};
+
+type PalletItem = {
+  name?: string;
+  quantity?: number;
+};
+
+type PalletData = {
+  type: string;
+  items: PalletItem[];
+  weight: WeightDetails;
+  dimensions: DimensionDetails;
+  stackable?: boolean;
+};
+
+type FreightBookingInput = {
+  orderId: string | number;
+  orderNumber: string;
+  carrierName?: string;
+  serviceType?: string;
+  estimatedCost?: number;
+  originAddress?: Address;
+  destinationAddress?: Address;
+  packageDetails?: PackageDetails;
+  palletData?: PalletData[];
+  specialInstructions?: string;
+  aiSuggestions?: Record<string, unknown>[];
+  confidenceScore?: number;
+  sessionId?: string;
+  telemetryData?: Record<string, unknown>;
+  customerName?: string;
+  customerCompany?: string;
+  customerEmail?: string;
+};
+
+type WorkspaceSummary = {
+  id: string;
+  orderId: number;
+  orderNumber: string;
+  workspaceUrl: string;
+  status: string;
+  activeModules?: Record<string, unknown>;
+ };
+
 // Convert freight booking data to ShipStation-compatible format
-function createShipStationDataFromFreight(bookingData: any) {
+function createShipStationDataFromFreight(bookingData: FreightBookingInput): Record<string, unknown> {
   return {
     orderId: bookingData.orderId,
     orderNumber: bookingData.orderNumber,
@@ -40,22 +108,22 @@ function createShipStationDataFromFreight(bookingData: any) {
     },
     
     // Convert package details to items format - use pallet data if available
-    items: bookingData.palletData?.length > 0 ? 
-      bookingData.palletData.map((pallet: any, index: number) => ({
+    items: bookingData.palletData?.length ? 
+      bookingData.palletData.map((pallet, index) => ({
         sku: `PALLET-${index + 1}`,
         name: `${pallet.type} Pallet - ${pallet.items.length} items`,
         quantity: 1,
-        unitPrice: (bookingData.estimatedCost || 0) / bookingData.palletData.length,
+        unitPrice: (bookingData.estimatedCost || 0) / bookingData.palletData!.length,
         weight: {
-          value: pallet.weight.value || 0,
-          units: pallet.weight.units || 'lbs',
+          value: pallet.weight?.value || 0,
+          units: pallet.weight?.units || 'lbs',
           WeightUnits: 2 // lbs
         },
         dimensions: {
-          length: pallet.dimensions.length,
-          width: pallet.dimensions.width,
-          height: pallet.dimensions.height,
-          units: pallet.dimensions.units
+          length: pallet.dimensions?.length || 0,
+          width: pallet.dimensions?.width || 0,
+          height: pallet.dimensions?.height || 0,
+          units: pallet.dimensions?.units || 'in'
         },
         imageUrl: '',
         productId: `${bookingData.orderId}-pallet-${index + 1}`,
@@ -68,7 +136,7 @@ function createShipStationDataFromFreight(bookingData: any) {
           },
           {
             name: 'Items',
-            value: pallet.items.map((i: any) => `${i.name} (${i.quantity})`).join(', ')
+            value: pallet.items.map((item) => `${item.name ?? 'Item'} (${item.quantity ?? 0})`).join(', ')
           }
         ]
       })) : [{
@@ -125,9 +193,8 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    const bookingData = await request.json();
-    
-    // Validate required fields
+    const bookingData = await request.json() as FreightBookingInput;
+
     if (!bookingData.orderId || !bookingData.orderNumber) {
       return NextResponse.json(
         {
@@ -139,177 +206,105 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const cacheKey = `workspace-freight:order:${bookingData.orderId}`;
+    let workspace = (await KVCache.get(cacheKey)) as WorkspaceSummary | null;
 
-    // Check if workspace already exists for this order
-    let workspace;
-    try {
-      // Try to get existing workspace by order ID (if it exists)
-      const cacheKey = `workspace-freight:order:${bookingData.orderId}`;
-      workspace = await KVCache.get(cacheKey);
-      
-      if (!workspace) {
-        // Create workspace URL from order number
-        const workspaceUrl = workspaceFreightLinker.generateWorkspaceUrl(bookingData.orderNumber);
-        
-        
-        // Convert freight data to ShipStation-compatible format
-        const shipstationData = createShipStationDataFromFreight(bookingData);
-        
-        // Create workspace with freight booking in one transaction
-        const result = await workspaceFreightLinker.createWorkspaceWithFreight(
-          {
-            orderId: bookingData.orderId,
-            orderNumber: bookingData.orderNumber,
-            workspaceUrl,
-            status: 'active',
-            shipstationData: shipstationData,
-            activeModules: {
-              preMix: true,
-              warehouse: true,
-              documents: true,
-              freight: true, // Enable freight module
-            },
-          },
-          {
-            orderId: bookingData.orderId,
-            orderNumber: bookingData.orderNumber,
-            carrierName: bookingData.carrierName,
-            serviceType: bookingData.serviceType,
-            estimatedCost: bookingData.estimatedCost,
-            originAddress: bookingData.originAddress,
-            destinationAddress: bookingData.destinationAddress,
-            packageDetails: bookingData.packageDetails,
-            specialInstructions: bookingData.specialInstructions,
-            aiSuggestions: bookingData.aiSuggestions,
-            confidenceScore: bookingData.confidenceScore,
-            sessionId: bookingData.sessionId,
-            telemetryData: bookingData.telemetryData,
-          }
-        );
+    if (!workspace) {
+      const workspaceUrl = workspaceFreightLinker.generateWorkspaceUrl(bookingData.orderNumber);
+      const shipstationData = createShipStationDataFromFreight(bookingData);
 
-        workspace = result.workspace;
-        
-        // Cache the result for 10 minutes
-        await KVCache.set(cacheKey, workspace, 600);
-        
-        
-        return NextResponse.json({
-          success: true,
-          message: "Freight booking completed and workspace created",
-          workspace: {
-            id: workspace.id,
-            orderId: workspace.orderId,
-            orderNumber: workspace.orderNumber,
-            workspaceUrl: workspace.workspaceUrl,
-            status: workspace.status,
-          },
-          freightOrder: {
-            id: result.freightOrder.id,
-            bookingStatus: result.freightOrder.bookingStatus,
-            carrierName: result.freightOrder.carrierName,
-            serviceType: result.freightOrder.serviceType,
-          },
-          workspaceLink: `/workspace/${workspace.orderId}`,
-        });
-      } else {
-        
-        // Link freight to existing workspace
-        const freightOrder = await workspaceFreightLinker.linkFreightToWorkspace(
-          workspace.id,
-          {
-            orderId: bookingData.orderId,
-            orderNumber: bookingData.orderNumber,
-            carrierName: bookingData.carrierName,
-            serviceType: bookingData.serviceType,
-            estimatedCost: bookingData.estimatedCost,
-            originAddress: bookingData.originAddress,
-            destinationAddress: bookingData.destinationAddress,
-            packageDetails: bookingData.packageDetails,
-            specialInstructions: bookingData.specialInstructions,
-            aiSuggestions: bookingData.aiSuggestions,
-            confidenceScore: bookingData.confidenceScore,
-            sessionId: bookingData.sessionId,
-            telemetryData: bookingData.telemetryData,
-          }
-        );
-
-        return NextResponse.json({
-          success: true,
-          message: "Freight booking linked to existing workspace",
-          workspace: {
-            id: workspace.id,
-            orderId: workspace.orderId,
-            orderNumber: workspace.orderNumber,
-            workspaceUrl: workspace.workspaceUrl,
-            status: workspace.status,
-          },
-          freightOrder: {
-            id: freightOrder.id,
-            bookingStatus: freightOrder.bookingStatus,
-            carrierName: freightOrder.carrierName,
-            serviceType: freightOrder.serviceType,
-          },
-          workspaceLink: `/workspace/${workspace.orderId}`,
-        });
-      }
-    } catch (error) {
-      console.error('Error in freight booking completion:', error);
-      
-      // Return a fallback response that still allows the booking to proceed
-      return NextResponse.json({
-        success: true,
-        message: "Freight booking completed (workspace creation pending)",
-        workspace: null,
-        freightOrder: {
+      const result = await workspaceFreightLinker.createWorkspaceWithFreight(
+        {
           orderId: bookingData.orderId,
           orderNumber: bookingData.orderNumber,
-          bookingStatus: 'booked',
+          workspaceUrl,
+          status: 'active',
+          shipstationData,
+          activeModules: {
+            preMix: true,
+            warehouse: true,
+            documents: true,
+            freight: true,
+          },
         },
-        workspaceLink: null,
-        note: "Workspace will be created automatically when freight arrives",
+        {
+          orderId: bookingData.orderId,
+          orderNumber: bookingData.orderNumber,
+          carrierName: bookingData.carrierName,
+          serviceType: bookingData.serviceType,
+          estimatedCost: bookingData.estimatedCost,
+          originAddress: bookingData.originAddress,
+          destinationAddress: bookingData.destinationAddress,
+          packageDetails: bookingData.packageDetails,
+          specialInstructions: bookingData.specialInstructions,
+          aiSuggestions: bookingData.aiSuggestions,
+          confidenceScore: bookingData.confidenceScore,
+          sessionId: bookingData.sessionId,
+          telemetryData: bookingData.telemetryData,
+        },
+      );
+
+      workspace = {
+        id: result.workspace.id,
+        orderId: result.workspace.orderId,
+        orderNumber: result.workspace.orderNumber,
+        workspaceUrl: result.workspace.workspaceUrl,
+        status: result.workspace.status,
+        activeModules: result.workspace.activeModules,
+      };
+
+      await KVCache.set(cacheKey, workspace, 600);
+
+      return NextResponse.json({
+        success: true,
+        message: "Freight booking completed and workspace created",
+        workspace,
+        freightOrder: {
+          id: result.freightOrder.id,
+          bookingStatus: result.freightOrder.bookingStatus,
+          carrierName: result.freightOrder.carrierName,
+          serviceType: result.freightOrder.serviceType,
+        },
+        workspaceLink: `/workspace/${workspace.orderId}`,
       });
     }
+
+    const freightOrder = await workspaceFreightLinker.linkFreightToWorkspace(
+      workspace.id,
+      {
+        orderId: bookingData.orderId,
+        orderNumber: bookingData.orderNumber,
+        carrierName: bookingData.carrierName,
+        serviceType: bookingData.serviceType,
+        estimatedCost: bookingData.estimatedCost,
+        originAddress: bookingData.originAddress,
+        destinationAddress: bookingData.destinationAddress,
+        packageDetails: bookingData.packageDetails,
+        specialInstructions: bookingData.specialInstructions,
+        aiSuggestions: bookingData.aiSuggestions,
+        confidenceScore: bookingData.confidenceScore,
+        sessionId: bookingData.sessionId,
+        telemetryData: bookingData.telemetryData,
+      },
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: "Freight booking linked to existing workspace",
+      workspace,
+      freightOrder: {
+        id: freightOrder.id,
+        bookingStatus: freightOrder.bookingStatus,
+        carrierName: freightOrder.carrierName,
+        serviceType: freightOrder.serviceType,
+      },
+      workspaceLink: workspace ? `/workspace/${workspace.orderId}` : null,
+    });
   } catch (error) {
     console.error("Error completing freight booking:", error);
     return NextResponse.json(
-      { 
-        success: false,
-        error: "Failed to complete freight booking",
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { success: false, error: "Failed to complete freight booking" },
       { status: 500 },
-    );
-  }
-}
-
-// GET endpoint to check completion status
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const orderId = searchParams.get("orderId");
-
-    if (!orderId) {
-      return NextResponse.json(
-        { error: "Order ID is required" },
-        { status: 400 }
-      );
-    }
-
-    // Check if freight booking exists and workspace is created
-    const freightOrder = await workspaceFreightLinker.getFreightOrderByOrderId(parseInt(orderId));
-    
-    return NextResponse.json({
-      hasFreightBooking: !!freightOrder,
-      hasWorkspace: !!(freightOrder?.workspace),
-      freightStatus: freightOrder?.bookingStatus || null,
-      workspaceId: freightOrder?.workspace?.id || null,
-      workspaceLink: freightOrder?.workspace ? `/workspace/${orderId}` : null,
-    });
-  } catch (error) {
-    console.error("Error checking completion status:", error);
-    return NextResponse.json(
-      { error: "Failed to check completion status" },
-      { status: 500 }
     );
   }
 }

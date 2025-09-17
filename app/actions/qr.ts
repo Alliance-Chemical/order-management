@@ -11,6 +11,15 @@ import QRCode from 'qrcode'
 const qrGenerator = new QRGenerator()
 const repository = new WorkspaceRepository()
 
+type QrRecord = typeof qrCodes.$inferSelect
+type WorkspaceRecord = typeof workspaces.$inferSelect
+type QrWithWorkspace = QrRecord & { workspace: WorkspaceRecord }
+type ScanHistoryEntry = {
+  scannedAt: string
+  scannedBy: string
+  location: string
+}
+
 export async function generateQR(data: {
   orderId: string
   orderNumber: string
@@ -78,7 +87,7 @@ export async function generateQR(data: {
   }
 }
 
-export async function regenerateQRCodes(orderId: string, items: any[]) {
+export async function regenerateQRCodes(orderId: string, items: Array<{ name: string; sku?: string; labelCount?: number }>) {
   try {
     const db = getOptimizedDb()
     
@@ -100,7 +109,7 @@ export async function regenerateQRCodes(orderId: string, items: any[]) {
       .where(eq(qrCodes.workspaceId, workspace.id))
 
     // Generate new QR codes
-    const generatedQRs = []
+    const generatedQRs: Array<{ id: string; qrCode: string; shortCode: string; url: string; itemName: string; sku?: string }> = []
     
     for (const item of items) {
       const labelCount = item.labelCount || 1
@@ -178,9 +187,9 @@ export async function addQRCodes(orderId: string, items: Array<{ name: string; s
     const existing = await db.query.qrCodes.findMany({
       where: eq(qrCodes.workspaceId, workspace.id)
     })
-    let nextContainer = Math.max(0, ...existing.map((qr: any) => qr.containerNumber || 0)) + 1
+    let nextContainer = Math.max(0, ...existing.map((qr) => qr.containerNumber || 0)) + 1
 
-    const created: any[] = []
+    const created: QrRecord[] = []
 
     for (const item of items) {
       const count = Math.max(0, Number(item.labelCount) || 0)
@@ -189,10 +198,6 @@ export async function addQRCodes(orderId: string, items: Array<{ name: string; s
         const qrData = qrGenerator.createQRData(
           Number(orderId),
           workspace.orderNumber,
-          // Using 'container' to match downstream expectations
-          // even though low-level type union may not include it
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
           'container',
           containerNumber,
           item.name
@@ -309,22 +314,21 @@ export async function validateQR(qrCode: string) {
     const db = getOptimizedDb()
     const { shortCode, orderId, containerNumber } = extractShortCodeOrLookupParams(qrCode);
 
-    let qr: any | null = null;
+    let qr: QrWithWorkspace | null = null;
     if (shortCode) {
       qr = await db.query.qrCodes.findFirst({
         where: eq(qrCodes.shortCode, shortCode),
         with: { workspace: true }
-      });
+      }) as QrWithWorkspace | null;
     } else if (orderId) {
       // Try to find by orderId + containerNumber (legacy payload path)
-      const clauses: any[] = [eq(qrCodes.orderId, BigInt(orderId))];
-      if (typeof containerNumber === 'number') {
-        clauses.push(eq(qrCodes.containerNumber, containerNumber));
-      }
+      const whereClause = typeof containerNumber === 'number'
+        ? and(eq(qrCodes.orderId, BigInt(orderId)), eq(qrCodes.containerNumber, containerNumber))
+        : eq(qrCodes.orderId, BigInt(orderId));
       qr = await db.query.qrCodes.findFirst({
-        where: and(...clauses),
+        where: whereClause,
         with: { workspace: true }
-      });
+      }) as QrWithWorkspace | null;
     }
 
     if (!qr) {
@@ -375,21 +379,20 @@ export async function scanQR(qrCode: string, scannedBy?: string, location?: stri
     const { shortCode, orderId, containerNumber } = extractShortCodeOrLookupParams(qrCode);
     
     // Find and validate QR code
-    let qr: any | null = null;
+    let qr: QrWithWorkspace | null = null;
     if (shortCode) {
       qr = await db.query.qrCodes.findFirst({
         where: eq(qrCodes.shortCode, shortCode),
         with: { workspace: true }
-      });
+      }) as QrWithWorkspace | null;
     } else if (orderId) {
-      const clauses: any[] = [eq(qrCodes.orderId, BigInt(orderId))];
-      if (typeof containerNumber === 'number') {
-        clauses.push(eq(qrCodes.containerNumber, containerNumber));
-      }
+      const whereClause = typeof containerNumber === 'number'
+        ? and(eq(qrCodes.orderId, BigInt(orderId)), eq(qrCodes.containerNumber, containerNumber))
+        : eq(qrCodes.orderId, BigInt(orderId));
       qr = await db.query.qrCodes.findFirst({
-        where: and(...clauses),
+        where: whereClause,
         with: { workspace: true }
-      });
+      }) as QrWithWorkspace | null;
     }
 
     if (!qr) {
@@ -400,13 +403,17 @@ export async function scanQR(qrCode: string, scannedBy?: string, location?: stri
     }
 
     // Update scan count and log scan event
+    const previousHistory = Array.isArray(qr.scanHistory)
+      ? (qr.scanHistory as ScanHistoryEntry[])
+      : []
+
     await db
       .update(qrCodes)
       .set({
         scanCount: (qr.scanCount || 0) + 1,
         lastScannedAt: new Date(),
         scanHistory: [
-          ...(qr.scanHistory as any[] || []),
+          ...previousHistory,
           {
             scannedAt: new Date().toISOString(),
             scannedBy: scannedBy || 'unknown',

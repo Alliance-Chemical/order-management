@@ -1,20 +1,24 @@
 'use client'
 
+interface Dimensions {
+  length: string
+  width: string
+  height: string
+  units: 'in' | 'cm'
+}
+
+interface Weight {
+  value: string
+  units: 'lbs' | 'kg'
+}
+
 interface MeasurementsModalProps {
   isOpen: boolean
-  dimensions: {
-    length: string
-    width: string
-    height: string
-    units: string
-  }
-  weight: {
-    value: string
-    units: string
-  }
+  dimensions: Dimensions
+  weight: Weight
   savingMeasurements: boolean
-  onDimensionsChange: (dimensions: any) => void
-  onWeightChange: (weight: any) => void
+  onDimensionsChange: (dimensions: Dimensions) => void
+  onWeightChange: (weight: Weight) => void
   onSave: () => void
   onClose: () => void
 }
@@ -67,7 +71,7 @@ export function MeasurementsModal({
               />
               <select 
                 value={dimensions.units} 
-                onChange={(e) => onDimensionsChange({ ...dimensions, units: e.target.value })} 
+                onChange={(e) => onDimensionsChange({ ...dimensions, units: e.target.value as Dimensions['units'] })} 
                 className="px-2 py-2 border rounded"
               >
                 <option value="in">in</option>
@@ -88,7 +92,7 @@ export function MeasurementsModal({
               />
               <select 
                 value={weight.units} 
-                onChange={(e) => onWeightChange({ ...weight, units: e.target.value })} 
+                onChange={(e) => onWeightChange({ ...weight, units: e.target.value as Weight['units'] })} 
                 className="px-2 py-2 border rounded"
               >
                 <option value="lbs">lbs</option>

@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { KVCache } from '@/lib/cache/kv-cache';
 
+type WorkspaceStatus = {
+  id: string;
+  orderId: number | string;
+  status?: string;
+  phase?: string;
+  progress?: number;
+  activeStep?: string;
+  workflowType?: string;
+  updatedAt?: string;
+  cachedAt: number;
+};
+
 // Enable Edge Runtime
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -14,13 +26,13 @@ export async function GET(
     
     // Check cache first
     const cacheKey = `workspace:status:${orderId}`;
-    const cached = await KVCache.get(cacheKey);
+    const cached = await KVCache.get(cacheKey) as WorkspaceStatus | null;
     
     if (cached) {
       return NextResponse.json({
         ...cached,
         cached: true,
-        cacheAge: Date.now() - (cached as any).cachedAt,
+        cacheAge: Date.now() - cached.cachedAt,
       });
     }
     
@@ -41,10 +53,14 @@ export async function GET(
       );
     }
     
-    const workspace = await response.json();
+    const workspace = await response.json() as WorkspaceStatus & {
+      progress?: number;
+      activeStep?: string;
+      updatedAt?: string;
+    };
     
     // Extract just status information for caching
-    const statusData = {
+    const statusData: WorkspaceStatus = {
       id: workspace.id,
       orderId: workspace.orderId,
       status: workspace.status,
@@ -85,7 +101,7 @@ export async function POST(
       const encoder = new TextEncoder();
       
       // Send initial status
-      const status = await KVCache.get(`workspace:status:${orderId}`);
+      const status = await KVCache.get(`workspace:status:${orderId}`) as WorkspaceStatus | null;
       if (status) {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(status)}\n\n`)
@@ -96,7 +112,7 @@ export async function POST(
       let lastStatus = JSON.stringify(status);
       const interval = setInterval(async () => {
         try {
-          const newStatus = await KVCache.get(`workspace:status:${orderId}`);
+          const newStatus = await KVCache.get(`workspace:status:${orderId}`) as WorkspaceStatus | null;
           const newStatusStr = JSON.stringify(newStatus);
           
           if (newStatusStr !== lastStatus) {

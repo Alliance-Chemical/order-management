@@ -108,8 +108,11 @@ export async function checkDbHealth(timeoutMs: number = 1000): Promise<boolean> 
       setTimeout(() => reject(new Error('Health check timeout')), timeoutMs)
     );
     
-    const result = await Promise.race([healthCheck, timeout]) as any[];
-    return result?.[0]?.health === 1;
+    const result = await Promise.race([healthCheck, timeout]);
+    if (Array.isArray(result)) {
+      return result[0]?.health === 1;
+    }
+    return false;
   } catch {
     return false;
   }

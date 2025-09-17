@@ -6,8 +6,109 @@ import { revalidatePath } from "next/cache"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { getEdgeSql, withEdgeRetry } from "@/lib/db/neon-edge"
 
+type Address = {
+  address?: string
+  city?: string
+  state?: string
+  zipCode?: string
+  locationType?: string
+}
+
+type WeightDetails = {
+  value?: number
+  units?: string
+}
+
+type DimensionDetails = {
+  length?: number
+  width?: number
+  height?: number
+  units?: string
+}
+
+type PackageDetails = {
+  weight?: WeightDetails
+  dimensions?: DimensionDetails
+  packageCount?: number
+  description?: string
+}
+
+type PalletItem = {
+  name?: string
+  quantity?: number
+}
+
+type PalletData = {
+  type: string
+  items: PalletItem[]
+  weight: WeightDetails
+  dimensions: DimensionDetails
+  stackable?: boolean
+}
+
+type FreightBookingInput = {
+  orderId: string
+  orderNumber: string
+  carrierName?: string
+  serviceType?: string
+  estimatedCost?: number
+  originAddress?: Address
+  destinationAddress?: Address
+  packageDetails?: PackageDetails
+  palletData?: PalletData[]
+  specialInstructions?: string
+  aiSuggestions?: Record<string, unknown>[]
+  confidenceScore?: number
+  sessionId?: string
+  telemetryData?: Record<string, unknown>
+  customerName?: string
+  customerCompany?: string
+  customerEmail?: string
+}
+
+type FreightOrderContext = {
+  orderId: string
+  destination?: Address
+  origin?: Address
+  items?: Array<Record<string, unknown>>
+  customer?: Record<string, unknown>
+}
+
+type HazmatItem = {
+  unNumber?: string
+  hazardClass?: string
+  packingGroup?: string
+  properShippingName?: string
+}
+
+type CapturedFreightOrder = {
+  originStop?: Address
+  destinationStop?: Address
+  quoteUnits?: Array<{
+    quoteCommodities?: Array<{
+      commodityPieces?: number
+      commodityDescription?: string
+      commodityWeight?: number
+      commodityClass?: string
+      commodityHazMat?: string
+    }>
+  }>
+  originAccessorials?: Record<string, unknown>
+  destinationAccessorials?: Record<string, unknown>
+  serviceType?: string
+  carrier?: string
+  carrierService?: string
+  paymentDirection?: string
+  specialInstructions?: string
+  readyToDispatch?: string
+  quoteReferenceID?: string
+  proNumber?: string
+  orderNumber?: string
+  sessionId?: string
+}
+
 // Convert freight booking data to ShipStation-compatible format
-function createShipStationDataFromFreight(bookingData: any) {
+function createShipStationDataFromFreight(bookingData: FreightBookingInput): Record<string, unknown> {
   return {
     orderId: bookingData.orderId,
     orderNumber: bookingData.orderNumber,
@@ -45,21 +146,21 @@ function createShipStationDataFromFreight(bookingData: any) {
     
     // Convert package details to items format - use pallet data if available
     items: bookingData.palletData?.length > 0 ? 
-      bookingData.palletData.map((pallet: any, index: number) => ({
+      bookingData.palletData.map((pallet, index) => ({
         sku: `PALLET-${index + 1}`,
         name: `${pallet.type} Pallet - ${pallet.items.length} items`,
         quantity: 1,
         unitPrice: (bookingData.estimatedCost || 0) / bookingData.palletData.length,
         weight: {
-          value: pallet.weight.value || 0,
-          units: pallet.weight.units || 'lbs',
+          value: pallet.weight?.value || 0,
+          units: pallet.weight?.units || 'lbs',
           WeightUnits: 2 // lbs
         },
         dimensions: {
-          length: pallet.dimensions.length,
-          width: pallet.dimensions.width,
-          height: pallet.dimensions.height,
-          units: pallet.dimensions.units
+          length: pallet.dimensions?.length || 0,
+          width: pallet.dimensions?.width || 0,
+          height: pallet.dimensions?.height || 0,
+          units: pallet.dimensions?.units || 'in'
         },
         imageUrl: '',
         productId: `${bookingData.orderId}-pallet-${index + 1}`,
@@ -72,7 +173,7 @@ function createShipStationDataFromFreight(bookingData: any) {
           },
           {
             name: 'Items',
-            value: pallet.items.map((i: any) => `${i.name} (${i.quantity})`).join(', ')
+            value: pallet.items.map((i) => `${i.name ?? 'Item'} (${i.quantity ?? 0})`).join(', ')
           }
         ]
       })) : [{
@@ -123,25 +224,7 @@ function createShipStationDataFromFreight(bookingData: any) {
   }
 }
 
-export async function completeFreightBooking(bookingData: {
-  orderId: string
-  orderNumber: string
-  carrierName?: string
-  serviceType?: string
-  estimatedCost?: number
-  originAddress?: any
-  destinationAddress?: any
-  packageDetails?: any
-  palletData?: any[]
-  specialInstructions?: string
-  aiSuggestions?: any
-  confidenceScore?: number
-  sessionId?: string
-  telemetryData?: any
-  customerName?: string
-  customerCompany?: string
-  customerEmail?: string
-}) {
+export async function completeFreightBooking(bookingData: FreightBookingInput) {
   try {
     // Validate required fields
     if (!bookingData.orderId || !bookingData.orderNumber) {
@@ -332,16 +415,16 @@ const embeddingModel = genAI.getGenerativeModel({
   model: "text-embedding-004",
 })
 
-function formatOrderForEmbedding(order: any): string {
+function formatOrderForEmbedding(order: CapturedFreightOrder): string {
   const origin = order.originStop || {}
   const dest = order.destinationStop || {}
   const units = order.quoteUnits || []
 
   // Extract commodity information
   const commodities = units
-    .flatMap((unit: any) =>
+    .flatMap((unit) =>
       (unit.quoteCommodities || []).map(
-        (c: any) =>
+        (c) =>
           `${c.commodityPieces}x ${c.commodityDescription || "Item"} (${c.commodityWeight}lbs, Class ${c.commodityClass}${c.commodityHazMat === "YES" ? ", HAZMAT" : ""})`,
       ),
     )
@@ -349,12 +432,12 @@ function formatOrderForEmbedding(order: any): string {
 
   // Extract accessorials
   const originAccessorials = Object.entries(order.originAccessorials || {})
-    .filter(([_, value]) => value === "YES" || value === true)
+    .filter(([, value]) => value === "YES" || value === true)
     .map(([key]) => key)
     .join(", ")
 
   const destAccessorials = Object.entries(order.destinationAccessorials || {})
-    .filter(([_, value]) => value === "YES" || value === true)
+    .filter(([, value]) => value === "YES" || value === true)
     .map(([key]) => key)
     .join(", ")
 
@@ -376,13 +459,7 @@ function formatOrderForEmbedding(order: any): string {
     .replace(/\s+/g, " ")
 }
 
-export async function suggestFreight(orderContext: {
-  orderId: string
-  destination?: { state?: string; city?: string; zipCode?: string }
-  origin?: { state?: string; city?: string; zipCode?: string }
-  items?: any[]
-  customer?: any
-}) {
+export async function suggestFreight(orderContext: FreightOrderContext) {
   try {
     // Validate required fields
     if (!orderContext.orderId || !orderContext.destination?.state || !orderContext.origin?.state) {
@@ -404,7 +481,6 @@ export async function suggestFreight(orderContext: {
     // Import dynamically to avoid edge runtime issues
     const { FreightDecisionEngineV2 } = await import("@/lib/freight-booking/rag/freight-decision-engine-v2")
     const { freightCache } = await import("@/lib/cache/freight-cache")
-    const { getEdgeDb } = await import("@/lib/db/neon-edge")
 
     // Check cache first for AI suggestions (1-hour TTL)
     const cacheKey = JSON.stringify(orderContext).slice(0, 100)
@@ -412,7 +488,6 @@ export async function suggestFreight(orderContext: {
     
     if (!decision) {
       // Initialize the RAG decision engine with Edge-optimized DB
-      const db = getEdgeDb()
       const decisionEngine = new FreightDecisionEngineV2()
 
       // Get AI recommendations based on similar historical shipments
@@ -480,12 +555,7 @@ export async function checkFreightSuggestionAvailability(orderNumber?: string) {
 
 export async function suggestHazmatFreight(orderContext: {
   orderId: string
-  hazmatItems?: Array<{
-    unNumber?: string
-    hazardClass?: string
-    packingGroup?: string
-    properShippingName?: string
-  }>
+  hazmatItems?: HazmatItem[]
 }) {
   try {
     // Validate required fields
@@ -628,7 +698,7 @@ export async function checkHazmatDataAvailability(unNumber?: string, hazardClass
   }
 }
 
-export async function captureFreightOrder(orderData: any) {
+export async function captureFreightOrder(orderData: CapturedFreightOrder) {
   try {
     const sql = getEdgeSql()
 
@@ -781,7 +851,7 @@ export async function linkProductToFreight(data: {
   nmfcSub?: string
   description?: string
   approve?: boolean
-  hazmatData?: any
+  hazmatData?: Record<string, unknown>
 }) {
   try {
     const { sku, freightClass, nmfcCode, nmfcSub, description, approve, hazmatData } = data
@@ -796,7 +866,14 @@ export async function linkProductToFreight(data: {
     // For now, just return success
     return {
       success: true,
-      message: `Product ${sku} linked to freight class ${freightClass}`
+      message: `Product ${sku} linked to freight class ${freightClass}`,
+      metadata: {
+        nmfcCode,
+        nmfcSub,
+        description,
+        approve,
+        hazmatData,
+      }
     }
   } catch (error) {
     console.error('Error linking product to freight:', error)

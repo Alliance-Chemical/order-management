@@ -1,12 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRawSql } from '@/lib/db/neon';
 
+type RagMetadata = Record<string, unknown> & {
+  baseName?: string;
+  name?: string;
+  section?: string;
+  hazardClass?: string;
+  packingGroup?: string;
+  labels?: string;
+  ergGuide?: string;
+  unNumber?: string;
+};
+
+type RagDocumentRow = {
+  id: string;
+  source: string;
+  text: string;
+  metadata: RagMetadata | null;
+  score?: number;
+};
+
+type ChatRole = 'system' | 'user' | 'assistant';
+
+interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+interface ChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCost: string;
+}
+
+interface ChatResponseSuccess {
+  response: string;
+  usage: ChatUsage;
+  model: string;
+  sources: Array<{
+    source: string;
+    score: string;
+    snippet: string;
+    metadata: RagMetadata | null;
+  }>;
+}
+
+interface ChatResponseError {
+  error: string;
+  fallback?: string;
+  details?: string;
+}
+
+type ChatResponse = ChatResponseSuccess | ChatResponseError;
+
+interface ChatRequestBody {
+  message: string;
+  history?: ChatMessage[];
+  model?: string;
+  ragLimit?: number;
+}
+
+function extractRows<T>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
+  if (typeof value === 'object' && value !== null && 'rows' in value) {
+    const rows = (value as { rows?: unknown }).rows;
+    if (Array.isArray(rows)) {
+      return rows as T[];
+    }
+  }
+  return [];
+}
+
 // Use Edge runtime for better performance
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 // Search the database RAG for general queries
-async function searchDatabaseRAG(query: string, limit: number = 5) {
+async function searchDatabaseRAG(query: string, limit: number = 5): Promise<RagDocumentRow[]> {
   const sql = getRawSql();
   
   // Check if this is a UN number query
@@ -17,7 +90,7 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
     
     try {
       // Search for UN number in metadata
-      const result = await sql`
+      const result = await sql<RagDocumentRow[]>`
         SELECT 
           id,
           source,
@@ -38,7 +111,7 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
         LIMIT ${limit}
       `;
       
-      const rows = (result as any).rows || result;
+      const rows = extractRows<RagDocumentRow>(result);
       if (rows.length > 0) {
         return rows;
       }
@@ -53,7 +126,7 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
     
     if (!apiKey) {
       // Fallback to text search if no API key
-      const result = await sql`
+      const result = await sql<RagDocumentRow[]>`
         SELECT 
           id,
           source,
@@ -73,7 +146,7 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
         LIMIT ${limit}
       `;
       
-      return (result as any).rows || result;
+      return extractRows<RagDocumentRow>(result);
     }
     
     // Generate embedding
@@ -93,11 +166,13 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
       throw new Error(`OpenAI API error: ${embeddingResponse.status}`);
     }
     
-    const embeddingData = await embeddingResponse.json();
-    const embedding = embeddingData.data[0].embedding;
+    const embeddingData = await embeddingResponse.json() as {
+      data: Array<{ embedding: number[] }>;
+    };
+    const embedding = embeddingData.data[0]?.embedding ?? [];
     
     // Search using vector similarity
-    const result = await sql`
+    const result = await sql<RagDocumentRow[]>`
       SELECT 
         id,
         source,
@@ -110,14 +185,14 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
       LIMIT ${limit}
     `;
     
-    const rows = (result as any).rows || result;
-    return rows.filter((r: any) => r.score > 0.4); // Use proven threshold
+    const rows = extractRows<RagDocumentRow>(result);
+    return rows.filter((row) => (row.score ?? 0) > 0.4); // Use proven threshold
     
   } catch (error) {
     console.error('Database RAG search error:', error);
     
     // Fallback to text search
-    const result = await sql`
+    const result = await sql<RagDocumentRow[]>`
       SELECT 
         id,
         source,
@@ -137,17 +212,17 @@ async function searchDatabaseRAG(query: string, limit: number = 5) {
       LIMIT ${limit}
     `;
     
-    return (result as any).rows || result;
+    return extractRows<RagDocumentRow>(result);
   }
 }
 
 // Generate chat response using GPT-5 nano with RAG context
 async function generateChatResponse(
   message: string,
-  ragContext: any[],
-  conversationHistory?: any[],
+  ragContext: RagDocumentRow[],
+  conversationHistory: ChatMessage[] = [],
   modelOverride?: string
-) {
+): Promise<ChatResponse> {
   const apiKey = process.env.OPENAI_API_KEY;
   
   if (!apiKey) {
@@ -182,9 +257,9 @@ Important guidelines:
 - If the context doesn't contain enough information, say so clearly
 - Format your responses with proper markdown for better readability`;
 
-  const messages = [
+  const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
-    ...(conversationHistory || []),
+    ...conversationHistory,
     { role: 'user', content: message }
   ];
   
@@ -217,7 +292,15 @@ Important guidelines:
       throw new Error(`OpenAI API error: ${response.status} - ${error}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+      };
+      model: string;
+    };
     
     // Calculate cost based on model
     let inputCost = 0;
@@ -248,9 +331,9 @@ Important guidelines:
         estimatedCost: `$${totalCost.toFixed(6)}`
       },
       model: data.model,
-      sources: ragContext.map(doc => ({
+      sources: ragContext.map((doc) => ({
         source: doc.source,
-        score: doc.score.toFixed(3),
+        score: (doc.score ?? 0).toFixed(3),
         snippet: doc.text.substring(0, 100) + '...',
         metadata: doc.metadata
       }))
@@ -267,8 +350,8 @@ Important guidelines:
 // POST endpoint for chat
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { message, history, model: requestModel, ragLimit = 5 } = body;
+    const body = (await request.json()) as ChatRequestBody;
+    const { message, history = [], model: requestModel, ragLimit = 5 } = body;
     
     if (!message) {
       return NextResponse.json({
@@ -286,7 +369,7 @@ export async function POST(request: NextRequest) {
       // First try database search
       const ragResults = await searchDatabaseRAG(unNumber, 3);
       
-      if (ragResults && ragResults.length > 0) {
+      if (ragResults.length > 0) {
         const topResult = ragResults[0];
         const metadata = topResult.metadata || {};
         
@@ -304,7 +387,7 @@ export async function POST(request: NextRequest) {
           response,
           sources: [{
             source: topResult.source,
-            score: topResult.score?.toFixed(3) || '1.000',
+            score: (topResult.score ?? 1).toFixed(3),
             snippet: topResult.text.substring(0, 100) + '...',
             metadata
           }],
@@ -324,7 +407,7 @@ export async function POST(request: NextRequest) {
       // Search for the chemical in our RAG database
       const ragResults = await searchDatabaseRAG(productName, 3);
       
-      if (ragResults && ragResults.length > 0) {
+      if (ragResults.length > 0) {
         const topResult = ragResults[0];
         const metadata = topResult.metadata || {};
         
@@ -342,7 +425,7 @@ export async function POST(request: NextRequest) {
           response,
           sources: [{
             source: topResult.source,
-            score: topResult.score?.toFixed(3) || '1.000',
+            score: (topResult.score ?? 1).toFixed(3),
             snippet: topResult.text.substring(0, 100) + '...',
             metadata
           }],
@@ -356,7 +439,7 @@ export async function POST(request: NextRequest) {
     console.log(`Searching database RAG for: "${message}"`);
     const ragResults = await searchDatabaseRAG(message, ragLimit);
     
-    if (!ragResults || ragResults.length === 0) {
+    if (ragResults.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'No relevant context found in knowledge base',
@@ -401,11 +484,11 @@ export async function GET() {
     const hasApiKey = !!process.env.OPENAI_API_KEY;
     const configuredModel = process.env.LLM_MODEL || 'gpt-5-nano-2025-08-07';
     
-    // Get document count from database
-    const countResult = await sql`
+    const countResult = await sql<{ count: string }[]>`
       SELECT COUNT(*) as count FROM rag.documents
     `;
-    const documentCount = ((countResult as any).rows || countResult)[0]?.count || 0;
+    const countRows = extractRows<{ count: string }>(countResult);
+    const documentCount = Number(countRows[0]?.count ?? 0);
     
     return NextResponse.json({
       success: true,

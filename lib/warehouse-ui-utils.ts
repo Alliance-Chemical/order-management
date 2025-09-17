@@ -42,12 +42,26 @@ export const hapticFeedback = {
 };
 
 // Sound effects using Web Audio API for better performance
+type AudioContextConstructor = typeof AudioContext;
+
+const getAudioContextConstructor = (): AudioContextConstructor | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  if (typeof window.AudioContext !== 'undefined') {
+    return window.AudioContext;
+  }
+  const win = window as Window & { webkitAudioContext?: AudioContextConstructor };
+  return win.webkitAudioContext;
+};
+
 class SoundEffects {
   private audioContext: AudioContext | null = null;
   
   private initContext() {
     if (!this.audioContext && typeof window !== 'undefined') {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextCtor = getAudioContextConstructor();
+      if (AudioContextCtor) {
+        this.audioContext = new AudioContextCtor();
+      }
     }
     return this.audioContext;
   }
@@ -190,7 +204,13 @@ export const visualFeedback = {
 export const supportsHaptic = () => 'vibrate' in navigator;
 
 // Utility to check if device supports audio
-export const supportsAudio = () => typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined';
+export const supportsAudio = () => {
+  if (typeof AudioContext !== 'undefined') {
+    return true;
+  }
+  const AudioContextCtor = getAudioContextConstructor();
+  return Boolean(AudioContextCtor);
+};
 
 // Get device type for UI adjustments
 export const getDeviceType = (): 'phone' | 'tablet' | 'desktop' => {
@@ -203,14 +223,20 @@ export const getDeviceType = (): 'phone' | 'tablet' | 'desktop' => {
 };
 
 // Check if user is likely wearing gloves (based on touch event characteristics)
+type ExtendedTouch = Touch & {
+  webkitRadiusX?: number;
+  webkitRadiusY?: number;
+  webkitForce?: number;
+};
+
 export const detectGloveMode = (touchEvent?: TouchEvent): boolean => {
-  if (!touchEvent || !touchEvent.touches[0]) return false;
+  if (!touchEvent || touchEvent.touches.length === 0) return false;
   
   // Gloves typically create larger touch areas
-  const touch = touchEvent.touches[0];
-  const radiusX = (touch as any).radiusX || (touch as any).webkitRadiusX || 0;
-  const radiusY = (touch as any).radiusY || (touch as any).webkitRadiusY || 0;
-  const force = (touch as any).force || (touch as any).webkitForce || 0;
+  const touch = touchEvent.touches[0] as ExtendedTouch;
+  const radiusX = touch.radiusX ?? touch.webkitRadiusX ?? 0;
+  const radiusY = touch.radiusY ?? touch.webkitRadiusY ?? 0;
+  const force = touch.force ?? touch.webkitForce ?? 0;
   
   // Gloves typically have larger touch radius and different force characteristics
   return radiusX > 20 || radiusY > 20 || force < 0.5;

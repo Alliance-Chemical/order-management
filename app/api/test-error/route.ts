@@ -14,9 +14,9 @@ export async function GET(request: NextRequest) {
         throw new Error('Database connection failed: ECONNREFUSED');
         
       case 'unhandled':
-        // This will cause a type error
-        const obj: any = null;
-        return obj.someMethod();
+        // Force a runtime type error intentionally
+        const obj: { someMethod: () => Response } | null = null;
+        return obj!.someMethod();
         
       case 'sentry':
         // Direct Sentry test

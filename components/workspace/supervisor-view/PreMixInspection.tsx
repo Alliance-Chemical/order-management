@@ -1,14 +1,35 @@
 'use client';
 
 import { useState } from 'react';
-import { CheckCircleIcon, XCircleIcon, CameraIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, CameraIcon, CalendarIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { notifyWorkspace } from '@/app/actions/workspace';
 
 interface PreMixInspectionProps {
   orderId: string;
-  initialState?: any;
-  onStateChange: (state: any) => void;
+  initialState?: Partial<PreMixInspectionState>;
+  onStateChange: (state: PreMixInspectionState) => void;
+}
+
+interface LidPhoto {
+  url: string;
+  name: string;
+  timestamp: string;
+}
+
+type InspectionChecklist = Record<string, boolean>;
+
+interface PreMixInspectionState {
+  datePerformed: string;
+  invoiceNumber: string;
+  inspector: string;
+  packingSlip: InspectionChecklist;
+  lotNumbers: string;
+  productInspection: InspectionChecklist;
+  lidPhotos: LidPhoto[];
+  notes: string;
+  completedAt: string | null;
+  completedBy: string | null;
 }
 
 const packingSlipItems = [
@@ -28,20 +49,21 @@ const productInspectionItems = [
   { id: 'ghs_labels', label: 'GHS Labels' },
 ];
 
-export default function PreMixInspection({ orderId, initialState = {}, onStateChange }: PreMixInspectionProps) {
-  const { toast } = useToast()
-  const [state, setState] = useState({
-    datePerformed: initialState.datePerformed || new Date().toISOString().split('T')[0],
-    invoiceNumber: initialState.invoiceNumber || '',
-    inspector: initialState.inspector || '',
-    packingSlip: initialState.packingSlip || {},
-    lotNumbers: initialState.lotNumbers || '',
+export default function PreMixInspection({ orderId, initialState, onStateChange }: PreMixInspectionProps) {
+  const { toast } = useToast();
+
+  const [state, setState] = useState<PreMixInspectionState>({
+    datePerformed: initialState?.datePerformed ?? new Date().toISOString().split('T')[0],
+    invoiceNumber: initialState?.invoiceNumber ?? '',
+    inspector: initialState?.inspector ?? '',
+    packingSlip: initialState?.packingSlip ?? {},
+    lotNumbers: initialState?.lotNumbers ?? '',
     // COA status removed from supervisor pre-mix form
-    productInspection: initialState.productInspection || {},
-    lidPhotos: initialState.lidPhotos || [],
-    notes: initialState.notes || '',
-    completedAt: initialState.completedAt || null,
-    completedBy: initialState.completedBy || null,
+    productInspection: initialState?.productInspection ?? {},
+    lidPhotos: initialState?.lidPhotos ?? [],
+    notes: initialState?.notes ?? '',
+    completedAt: initialState?.completedAt ?? null,
+    completedBy: initialState?.completedBy ?? null,
   });
 
   const handlePackingSlipChange = (itemId: string, checked: boolean) => {
@@ -68,7 +90,10 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
     onStateChange(newState);
   };
 
-  const handleFieldChange = (field: string, value: string) => {
+  const handleFieldChange = (
+    field: 'datePerformed' | 'invoiceNumber' | 'inspector' | 'lotNumbers',
+    value: string
+  ) => {
     const newState = { ...state, [field]: value };
     setState(newState);
     onStateChange(newState);
@@ -132,7 +157,7 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
     // COA status is no longer collected here
     
     // Check if lid inspection was selected and photos are required
-    if (state.productInspection.lid_inspection && state.lidPhotos.length === 0) {
+    if (state.productInspection['lid_inspection'] && state.lidPhotos.length === 0) {
       toast({
         title: "Error",
         description: "Please take photos of the lids for verification",
@@ -317,7 +342,7 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
       </div>
 
       {/* Lid Photo Verification */}
-      {state.productInspection.lid_inspection && (
+      {state.productInspection['lid_inspection'] && (
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
             <CameraIcon className="w-5 h-5 mr-2" />
@@ -328,7 +353,7 @@ export default function PreMixInspection({ orderId, initialState = {}, onStateCh
             Take photos to verify that lids are clean and properly secured, especially for chemicals like Bleach, Hydrogen Peroxide, and Ammonium.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {state.lidPhotos.map((photo: any, index: number) => (
+            {state.lidPhotos.map((photo, index) => (
               <div key={index} className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
                 <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
                 <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">

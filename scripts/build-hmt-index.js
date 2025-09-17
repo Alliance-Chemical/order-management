@@ -80,7 +80,7 @@ async function main() {
     docs: docs.map((d, i) => ({ ...d, embedding: embeddings[i] })),
   };
   const outPath = path.join(root, 'data', 'index-hmt-local.json');
-  saveIndex(outPath, out);
+  await saveIndex(outPath, out);
   console.log(`Built index with ${out.docs.length} chunks -> ${outPath}`);
 }
 

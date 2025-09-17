@@ -18,7 +18,7 @@ export function CollaborationIndicator({
   
   useEffect(() => {
     joinWorkspace(currentActivity);
-  }, []);
+  }, [currentActivity, joinWorkspace]);
   
   useEffect(() => {
     updateActivity(currentActivity);
@@ -32,7 +32,7 @@ export function CollaborationIndicator({
     <div className={`bg-blue-50 border border-blue-200 rounded-lg p-3 ${className}`}>
       <div className="flex items-center gap-2 mb-2">
         <div className="flex -space-x-2">
-          {activeUsers.slice(0, 3).map((user, i) => (
+          {activeUsers.slice(0, 3).map((user) => (
             <div
               key={user.id}
               className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-medium border-2 border-white"

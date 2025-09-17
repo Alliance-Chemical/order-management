@@ -1,8 +1,7 @@
 import { kv } from '@/lib/kv';
 import { v4 as uuid } from 'uuid';
-import { activityLog, workspaces } from '@/lib/db/schema/qr-workspace';
+import { activityLog } from '@/lib/db/schema/qr-workspace';
 import { db } from '@/lib/db';
-import { eq } from 'drizzle-orm';
 
 type OverrideType = 'skip_step' | 'approve_failure' | 'manual_pass' | 'unlock_inspection';
 
@@ -40,9 +39,14 @@ export async function approveOverride(id: string, approvedBy: string, workspaceI
   return { ok: true };
 }
 
+interface StoredOverride {
+  approved?: boolean;
+  expiresAt?: number;
+}
+
 export async function useOverride(id: string, usedBy: string, workspaceId: string) {
   const key = `override:${id}`;
-  const ovr = await kv.hgetall<Record<string, any>>(key);
+  const ovr = await kv.hgetall<StoredOverride>(key);
   if (!ovr || !ovr.approved) return { ok: false };
   if ((ovr.expiresAt ?? 0) < Date.now()) {
     await kv.del(key);

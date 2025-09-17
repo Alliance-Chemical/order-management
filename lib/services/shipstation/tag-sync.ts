@@ -1,4 +1,4 @@
-import { ShipStationClient } from './client';
+import { ShipStationClient, type ShipStationOrder } from './client';
 import { WorkspaceService } from '../workspace/service';
 import { db } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
@@ -14,8 +14,15 @@ const TAG_MAPPING = {
   DOCUMENTS_REQUIRED: 51273,                                          // Documents / Certificates Required
 };
 
+interface TagWorkflowMapping {
+  workflowPhase?: string;
+  moduleState?: Record<string, unknown>;
+  priority?: string;
+  hold?: boolean;
+}
+
 // Map tags to workflow phases and module states
-const TAG_TO_WORKFLOW_MAPPING = {
+const TAG_TO_WORKFLOW_MAPPING: Record<number, TagWorkflowMapping> = {
   [TAG_MAPPING.FREIGHT_STAGED]: {
     workflowPhase: 'pre_mix',
     moduleState: { planning: { locked: true } }
@@ -37,6 +44,18 @@ const TAG_TO_WORKFLOW_MAPPING = {
   }
 };
 
+type WorkspaceUpdate = Partial<typeof workspaces.$inferInsert> & Record<string, unknown>;
+
+interface ActivityLogEntry {
+  type: string;
+  description: string;
+  metadata: Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 export class ShipStationTagSyncService {
   private shipstation: ShipStationClient;
   private workspaceService: WorkspaceService;
@@ -53,12 +72,12 @@ export class ShipStationTagSyncService {
     try {
       // Get current tags from ShipStation
       const order = await this.shipstation.getOrder(orderId);
-      if (!order || !order.tagIds) {
+      const tagIds = this.extractTagIds(order);
+      if (!tagIds.length) {
         console.log(`No tags found for order ${orderId}`);
         return;
       }
 
-      const tagIds = order.tagIds as number[];
       console.log(`Order ${orderId} has tags:`, tagIds);
 
       // Find workspace
@@ -69,10 +88,13 @@ export class ShipStationTagSyncService {
       }
 
       // Process each tag
-      let updates: any = {
-        moduleStates: workspace.moduleStates || {}
+      let moduleStates: Record<string, unknown> = isRecord(workspace.moduleStates)
+        ? { ...workspace.moduleStates }
+        : {};
+      const updates: WorkspaceUpdate = {
+        moduleStates,
       };
-      let activityLogs: any[] = [];
+      const activityLogs: ActivityLogEntry[] = [];
 
       for (const tagId of tagIds) {
         const mapping = TAG_TO_WORKFLOW_MAPPING[tagId];
@@ -89,10 +111,11 @@ export class ShipStationTagSyncService {
 
           // Update module states
           if (mapping.moduleState) {
-            updates.moduleStates = {
-              ...updates.moduleStates,
-              ...mapping.moduleState
+            moduleStates = {
+              ...moduleStates,
+              ...mapping.moduleState,
             };
+            updates.moduleStates = moduleStates;
           }
 
           // Handle special flags
@@ -129,10 +152,28 @@ export class ShipStationTagSyncService {
   /**
    * Handle webhook event for tag changes
    */
-  async handleTagUpdate(webhookData: any): Promise<void> {
-    const orderId = webhookData.order_id || webhookData.orderId;
-    const tagIds = webhookData.tag_ids || webhookData.tagIds || [];
-    
+  async handleTagUpdate(webhookData: unknown): Promise<void> {
+    if (!isRecord(webhookData)) {
+      console.warn('Invalid ShipStation webhook payload', webhookData);
+      return;
+    }
+
+    const rawOrderId = webhookData.order_id ?? webhookData.orderId;
+    const orderId = typeof rawOrderId === 'number'
+      ? rawOrderId
+      : typeof rawOrderId === 'string'
+        ? Number(rawOrderId)
+        : undefined;
+    if (!orderId || Number.isNaN(orderId)) {
+      console.warn('Webhook missing order ID', webhookData);
+      return;
+    }
+
+    const rawTags = webhookData.tag_ids ?? webhookData.tagIds;
+    const tagIds = Array.isArray(rawTags)
+      ? rawTags.map((tag) => Number(tag)).filter((tag): tag is number => Number.isFinite(tag))
+      : [];
+
     console.log(`Processing tag update for order ${orderId}, tags:`, tagIds);
     
     await this.syncTagsToWorkflow(orderId);
@@ -191,14 +232,13 @@ export class ShipStationTagSyncService {
     
     try {
       const order = await this.shipstation.getOrder(orderId);
+      const tagIds = this.extractTagIds(order);
       const workspace = await this.workspaceService.repository.findByOrderId(orderId);
       
       if (!order || !workspace) {
         return { consistent: false, issues: ['Order or workspace not found'] };
       }
 
-      const tagIds = order.tagIds || [];
-      
       // Check for conflicting tags
       if (tagIds.includes(TAG_MAPPING.FREIGHT_STAGED) && 
           tagIds.includes(TAG_MAPPING.FREIGHT_READY)) {
@@ -226,6 +266,14 @@ export class ShipStationTagSyncService {
         issues: [`Validation error: ${error}`]
       };
     }
+  }
+
+  private extractTagIds(order: ShipStationOrder): number[] {
+    const { tagIds } = order;
+    if (!Array.isArray(tagIds)) return [];
+    return tagIds
+      .map((tag) => Number(tag))
+      .filter((tag): tag is number => Number.isFinite(tag));
   }
 }
 

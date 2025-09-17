@@ -14,20 +14,16 @@ interface Container {
 
 interface ContainerListProps {
   containers: Container[];
-  currentContainer: number;
   progress: number;
   scanSpeed: number;
   getContainerStatus: (index: number) => string;
-  containerType: string;
 }
 
 export function ContainerList({
   containers,
-  currentContainer,
   progress,
   scanSpeed,
   getContainerStatus,
-  containerType,
 }: ContainerListProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

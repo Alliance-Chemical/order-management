@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     
     const result = await withEdgeRetry(async () => {
       // Get products that don't have approved links
-      let query = db
+      const query = db
         .select({
           productId: products.id,
           sku: products.sku,
@@ -92,60 +92,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// GET /api/product-links/unlinked/stats - Get statistics about unlinked products
-async function getUnlinkedStats() {
-  const cacheKey = 'unlinked-products:stats';
-  
-  const cached = await KVCache.get(cacheKey);
-  if (cached) {
-    return NextResponse.json(cached);
-  }
-  
-  const result = await withEdgeRetry(async () => {
-    // Get comprehensive stats
-    const [totalProducts] = await db
-      .select({
-        total: products.id,
-      })
-      .from(products)
-      .where(eq(products.isActive, true));
-    
-    const unlinkedProducts = await db
-      .select({
-        productId: products.id,
-        isHazardous: products.isHazardous,
-      })
-      .from(products)
-      .leftJoin(
-        productFreightLinks,
-        and(
-          eq(products.id, productFreightLinks.productId),
-          eq(productFreightLinks.isApproved, true)
-        )
-      )
-      .where(
-        and(
-          eq(products.isActive, true),
-          isNull(productFreightLinks.id)
-        )
-      );
-    
-    const stats = {
-      totalActiveProducts: totalProducts ? 1 : 0, // This is a rough count
-      totalUnlinked: unlinkedProducts.length,
-      unlinkedHazardous: unlinkedProducts.filter(p => p.isHazardous).length,
-      unlinkedNonHazardous: unlinkedProducts.filter(p => !p.isHazardous).length,
-      linkageCompletionRate: totalProducts ? 
-        Math.round(((totalProducts - unlinkedProducts.length) / totalProducts) * 100) : 0,
-    };
-    
-    return stats;
-  });
-  
-  // Cache stats for 5 minutes
-  await KVCache.set(cacheKey, result, 300);
-  
-  return result;
 }

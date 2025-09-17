@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export interface ErrorResponse {
   error: string;
   message?: string;
-  details?: any;
+  details?: unknown;
   requestId?: string;
 }
 
@@ -72,14 +72,14 @@ export function handleApiError(error: unknown): NextResponse<ErrorResponse> {
 }
 
 // Wrap API route handlers with error handling
-export function withErrorHandler<T extends any[], R>(
+export function withErrorHandler<T extends unknown[], R>(
   handler: (...args: T) => Promise<R>
 ) {
   return async (...args: T): Promise<R | NextResponse<ErrorResponse>> => {
     try {
       return await handler(...args);
     } catch (error) {
-      return handleApiError(error) as any;
+      return handleApiError(error);
     }
   };
 }

@@ -374,7 +374,7 @@ export default function ProductsPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {product.weight && <div>Weight: {product.weight} lbs</div>}
                         {(product.length && product.width && product.height) && (
-                          <div>Dims: {product.length}"×{product.width}"×{product.height}"</div>
+                          <div>Dims: {product.length}&quot;×{product.width}&quot;×{product.height}&quot;</div>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

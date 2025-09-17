@@ -3,29 +3,76 @@
 import { Button } from '@/components/ui/button'
 import { InspectionItem } from '@/lib/types/agent-view'
 
+interface LidPhoto {
+  url: string
+  name: string
+  timestamp: string
+}
+
+interface LotNumberPhoto {
+  url: string
+  base64?: string
+  timestamp: string
+}
+
+interface InspectionFormData {
+  datePerformed: string
+  inspector: string
+  packingSlipVerified: boolean
+  lotNumbers: string
+  coaStatus: string
+  productInspection: {
+    check_label_info: boolean
+    lid_inspection: boolean
+    ghs_labels: boolean
+  }
+  lidPhotos: LidPhoto[]
+  lotNumberPhoto: LotNumberPhoto | null
+  extractedLotNumbers: string[]
+}
+
+type UpdateField = <K extends keyof InspectionFormData>(
+  field: K,
+  value: InspectionFormData[K]
+) => void
+
+type UpdateNestedField = <K extends keyof InspectionFormData['productInspection']>(
+  parent: 'productInspection',
+  field: K,
+  value: InspectionFormData['productInspection'][K]
+) => void
+
+type ProductInspectionField = keyof InspectionFormData['productInspection']
+
+interface WorkspaceSummary {
+  shipstationData?: {
+    shipTo?: {
+      name?: string
+      company?: string
+      street1?: string
+      city?: string
+      state?: string
+      postalCode?: string
+    }
+    customerReference?: string
+  }
+}
+
+interface OrderItemSummary {
+  quantity: number
+  name: string
+  sku?: string
+}
+
 interface InspectionFormProps {
   currentItem: InspectionItem
-  formData: {
-    datePerformed: string
-    inspector: string
-    packingSlipVerified: boolean
-    lotNumbers: string
-    coaStatus: string
-    productInspection: {
-      check_label_info: boolean
-      lid_inspection: boolean
-      ghs_labels: boolean
-    }
-    lidPhotos: Array<{ url: string; name: string; timestamp: string }>
-    lotNumberPhoto: { url: string; base64?: string; timestamp: string } | null
-    extractedLotNumbers: string[]
-  }
+  formData: InspectionFormData
   orderNumber: string
-  workspace?: any
-  orderItems?: any[]
+  workspace?: WorkspaceSummary
+  orderItems?: OrderItemSummary[]
   isProcessingLotNumbers: boolean
-  onUpdateField: (field: string, value: any) => void
-  onUpdateNestedField: (parent: string, field: string, value: any) => void
+  onUpdateField: UpdateField
+  onUpdateNestedField: UpdateNestedField
   onPhotoUpload: (file: File) => void
   onLotNumberPhotoCapture: (file: File) => void
   onExtractLotNumbers: () => void
@@ -282,15 +329,15 @@ export function InspectionForm({
     return (
       <div className="space-y-4">
         <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-          {[
+          {([
             { id: 'check_label_info', label: 'Check label information (ACS / Tech / UN # / PG)' },
             { id: 'lid_inspection', label: 'Lid (Bleach, Hydrogen Peroxide, Ammonium)' },
             { id: 'ghs_labels', label: 'GHS Labels' }
-          ].map((item) => (
+          ] as Array<{ id: ProductInspectionField; label: string }>).map((item) => (
             <label key={item.id} className="flex items-center cursor-pointer p-2 bg-white rounded-lg">
               <input
                 type="checkbox"
-                checked={formData.productInspection[item.id as keyof typeof formData.productInspection]}
+                checked={formData.productInspection[item.id]}
                 onChange={(e) => onUpdateNestedField('productInspection', item.id, e.target.checked)}
                 className="w-6 h-6 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />

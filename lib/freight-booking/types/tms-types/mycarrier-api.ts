@@ -10,7 +10,7 @@ export interface MyCarrierOrderResponse {
     statusHistories: StatusHistory[];
     updatedAt: string;
   };
-  errors: any;
+  errors: unknown;
   statusCode: number;
 }
 
@@ -76,7 +76,7 @@ export interface ShipmentUpdatePayload {
   CarrierInfo: CarrierInfo;
   IsLateDelivery: boolean;
   IsUnspecifiedTracking: boolean;
-  DataHistories: any[];
+  DataHistories: Array<Record<string, unknown>>;
 }
 
 export interface ShipmentPriceDetail {

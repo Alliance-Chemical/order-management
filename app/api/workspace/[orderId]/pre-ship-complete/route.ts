@@ -15,13 +15,35 @@ const s3Client = new S3Client({
   },
 });
 
+type PreShipPhotoInput = {
+  base64?: string;
+  lotNumbers?: string[];
+  timestamp?: string;
+};
+
+type CheckedItem = Record<string, unknown>;
+
+type UploadedPhoto = {
+  id: string;
+  s3Key: string;
+  s3Url: string;
+  lotNumbers: string[];
+  capturedAt: string;
+  documentId: string;
+};
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ orderId: string }> }
 ) {
   try {
     const params = await context.params;
-    const { checkedItems, photos, completedAt, failureNotes } = await request.json();
+    const { checkedItems, photos, completedAt, failureNotes } = await request.json() as {
+      checkedItems?: CheckedItem[];
+      photos: PreShipPhotoInput[];
+      completedAt?: string;
+      failureNotes?: string;
+    };
     
     const orderId = params.orderId;
     
@@ -40,12 +62,12 @@ export async function POST(
     }
 
     // Extract lot numbers from all photos
-    const allLotNumbers = photos.reduce((acc: string[], photo: any) => {
+    const allLotNumbers = photos.reduce<string[]>((acc, photo) => {
       return [...acc, ...(photo.lotNumbers || [])];
     }, []);
 
     // Upload photos to S3 and store in documents table
-    const uploadedPhotos = [] as any[];
+    const uploadedPhotos: UploadedPhoto[] = [];
     const failedUploads: Array<{ name?: string; reason: string }> = [];
     for (const [index, photo] of photos.entries()) {
       if (photo.base64) {
@@ -93,9 +115,9 @@ export async function POST(
             capturedAt: photo.timestamp || new Date().toISOString(),
             documentId: documentRecord[0].id
           });
-        } catch (uploadError: any) {
+        } catch (uploadError) {
           console.error('Failed to upload photo:', uploadError);
-          failedUploads.push({ name: `Photo ${index + 1}`, reason: uploadError?.message || 'Upload failed' });
+          failedUploads.push({ name: `Photo ${index + 1}`, reason: uploadError instanceof Error ? uploadError.message : 'Upload failed' });
         }
       }
     }
@@ -108,7 +130,7 @@ export async function POST(
     }
 
     // Update workspace with pre-ship inspection data
-    const currentModuleStates = workspace.moduleStates as any || {};
+    const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {};
     const updatedModuleStates = {
       ...currentModuleStates,
       preShip: {
@@ -123,7 +145,7 @@ export async function POST(
     };
 
     // Update phase completed timestamp
-    const currentPhaseCompleted = workspace.phaseCompletedAt as any || {};
+    const currentPhaseCompleted = (workspace.phaseCompletedAt as Record<string, string> | undefined) || {};
     const updatedPhaseCompleted = {
       ...currentPhaseCompleted,
       pre_ship: new Date().toISOString()

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
+import { getEdgeDb } from '@/lib/db/neon-edge';
 import { batchHistory, qrCodes, activityLog } from '@/lib/db/schema/qr-workspace';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -12,13 +12,9 @@ export async function POST(request: NextRequest) {
     const db = getEdgeDb();
     const {
       workspaceId,
-      orderId,
       batchNumber,
       chemicalName,
-      chemicalId,
       shopifyProductId,
-      shopifyTitle,
-      shopifySKU,
       initialConcentration,
       desiredConcentration,
       totalVolumeGallons,
@@ -31,7 +27,6 @@ export async function POST(request: NextRequest) {
       methodUsed,
       initialSpecificGravity,
       hazardClass,
-      ppeSuggestion,
       destinationQrShortCodes // Array of short codes from the dilution calculator
     } = body;
 

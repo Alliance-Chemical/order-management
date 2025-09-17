@@ -5,6 +5,18 @@ import { eq } from 'drizzle-orm';
 import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
 import { ShipStationClient } from '@/lib/services/shipstation/client';
 
+type ModuleStateEntry = {
+  result?: string;
+  notes?: string;
+  [key: string]: unknown;
+};
+
+type LotAssignment = {
+  id: string;
+  lotNumber?: string;
+  [key: string]: unknown;
+};
+
 const shipstation = new ShipStationClient();
 
 export async function POST(
@@ -31,11 +43,12 @@ export async function POST(
     
     // Add inspection results
     if (workspace.moduleStates) {
-      Object.entries(workspace.moduleStates).forEach(([phase, state]: [string, any]) => {
-        if (state.result) {
-          notes.push(`${phase}: ${state.result.toUpperCase()}`);
-          if (state.notes) {
-            notes.push(`  Notes: ${state.notes}`);
+      Object.entries(workspace.moduleStates).forEach(([phase, state]) => {
+        const moduleState = state as ModuleStateEntry;
+        if (moduleState.result) {
+          notes.push(`${phase}: ${moduleState.result.toUpperCase()}`);
+          if (moduleState.notes) {
+            notes.push(`  Notes: ${moduleState.notes}`);
           }
         }
       });
@@ -45,8 +58,8 @@ export async function POST(
     const lots = workspace.shipstationData?.lots || [];
     if (lots.length > 0) {
       notes.push('\nLot Assignments:');
-      lots.forEach((lot: any) => {
-        notes.push(`  - ${lot.lotNumber}`);
+      (lots as LotAssignment[]).forEach((lot) => {
+        notes.push(`  - ${lot.lotNumber ?? 'Unknown lot'}`);
       });
     }
     

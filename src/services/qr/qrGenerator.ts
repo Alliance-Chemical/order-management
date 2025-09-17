@@ -25,10 +25,10 @@ export class QRGenerator {
   }
 
   createQRData(
-    orderId: number, 
-    orderNumber: string, 
-    type: 'order_master' | 'destination' | 'source' | 'batch', 
-    containerNumber?: number, 
+    orderId: number,
+    orderNumber: string,
+    type: QRPayload['type'],
+    containerNumber?: number,
     chemicalName?: string
   ): QRPayload {
     return createQRData(orderId, orderNumber, type, containerNumber, chemicalName);
@@ -57,9 +57,10 @@ export class QRGenerator {
       const fixed = encodedData.replace(/-/g, '+').replace(/_/g, '/');
       const pad = fixed.length % 4 === 0 ? '' : '='.repeat(4 - (fixed.length % 4));
       // Use browser atob if available, otherwise fall back to Node Buffer
-      const hasAtob = typeof (globalThis as any).atob === 'function';
+      const globalWithAtob = globalThis as typeof globalThis & { atob?: (input: string) => string };
+      const hasAtob = typeof globalWithAtob.atob === 'function';
       const decoded = hasAtob
-        ? (globalThis as any).atob(fixed + pad)
+        ? globalWithAtob.atob(fixed + pad)
         : Buffer.from(fixed + pad, 'base64').toString();
       return JSON.parse(decoded);
     } catch {

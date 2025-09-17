@@ -5,6 +5,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 const repository = new WorkspaceRepository();
 
+type DocumentIdBucketMap = {
+  coa?: string[];
+  sds?: string[];
+  other?: string[];
+};
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ orderId: string }> }
@@ -55,9 +61,18 @@ export async function POST(
     });
 
     // Update workspace documents
-    const currentDocs = workspace.documents || { coa: [], sds: [], other: [] };
+    const currentDocs: DocumentIdBucketMap = {
+      coa: [],
+      sds: [],
+      other: [],
+      ...(workspace.documents as DocumentIdBucketMap | undefined),
+    };
+
     if (documentType in currentDocs) {
-      (currentDocs as any)[documentType].push(document.id);
+      const key = documentType as keyof DocumentIdBucketMap;
+      const bucket = currentDocs[key] ?? [];
+      bucket.push(document.id);
+      currentDocs[key] = bucket;
     }
     
     await repository.update(workspace.id, {

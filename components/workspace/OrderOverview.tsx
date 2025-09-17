@@ -1,15 +1,65 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useFreightOrder } from '@/lib/swr/hooks';
 import { generateQR } from '@/app/actions/qr';
 // import { toast } from 'sonner';
+import Image from 'next/image';
+import type { OrderWorkspace } from '@/lib/types/workspace';
+
+type ShipStationAddress = {
+  name?: string;
+  street1?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string;
+};
+
+type ShipStationItemOption = {
+  name?: string;
+  value?: string;
+};
+
+type ShipStationItem = {
+  name?: string;
+  sku?: string;
+  quantity?: number;
+  unitPrice?: number;
+  imageUrl?: string;
+  options?: ShipStationItemOption[];
+};
+
+type ShipStationData = {
+  shipTo?: ShipStationAddress;
+  items?: ShipStationItem[];
+  customerEmail?: string;
+  customerNotes?: string;
+  internalNotes?: string;
+  tagIds?: number[];
+};
+
+type WorkspaceWithShipStation = OrderWorkspace & {
+  shipstationData?: ShipStationData;
+};
+
+type FreightOrderSummary = {
+  bookingStatus?: string;
+  carrierName?: string;
+  serviceType?: string;
+  trackingNumber?: string;
+  estimatedCost?: string;
+  bookedAt?: string;
+  specialInstructions?: string;
+  aiSuggestions?: Array<{ reasoning?: string }>;
+  confidenceScore?: string;
+};
 
 interface OrderOverviewProps {
   orderId: string;
-  workspace: any;
-  initialState?: any;
-  onStateChange?: (state: any) => void;
+  workspace: WorkspaceWithShipStation;
 }
 
 export default function OrderOverview({ orderId, workspace }: OrderOverviewProps) {
@@ -19,7 +69,10 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
   const items = order.items || [];
   
   // Fetch freight order data
-  const { order: freightOrder, isLoading: isLoadingFreight } = useFreightOrder(orderId);
+  const { order: freightOrder, isLoading: isLoadingFreight } = useFreightOrder(orderId) as {
+    order?: FreightOrderSummary | null;
+    isLoading: boolean;
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -232,14 +285,16 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {items.map((item: any, index: number) => (
+              {items.map((item, index) => (
                 <tr key={index} className="hover:bg-slate-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       {item.imageUrl && (
-                        <img 
-                          src={item.imageUrl} 
-                          alt={item.name}
+                        <Image 
+                          src={item.imageUrl}
+                          alt={item.name ?? 'Product image'}
+                          width={40}
+                          height={40}
                           className="h-10 w-10 rounded object-cover mr-3"
                         />
                       )}
@@ -247,7 +302,7 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
                         <p className="text-sm font-medium text-slate-900">{item.name}</p>
                         {item.options?.length > 0 && (
                           <p className="text-xs text-slate-500">
-                            {item.options.map((opt: any) => `${opt.name}: ${opt.value}`).join(', ')}
+                            {item.options.map((opt) => `${opt.name}: ${opt.value}`).join(', ')}
                           </p>
                         )}
                       </div>
@@ -255,9 +310,9 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-700">{item.sku}</td>
                   <td className="px-6 py-4 text-sm text-slate-700 text-center">{item.quantity}</td>
-                  <td className="px-6 py-4 text-sm text-slate-700 text-right">{formatCurrency(item.unitPrice)}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700 text-right">{formatCurrency(item.unitPrice ?? 0)}</td>
                   <td className="px-6 py-4 text-sm font-medium text-slate-900 text-right">
-                    {formatCurrency(item.unitPrice * item.quantity)}
+                    {formatCurrency((item.unitPrice ?? 0) * (item.quantity ?? 0))}
                   </td>
                 </tr>
               ))}

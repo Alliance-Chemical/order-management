@@ -1,6 +1,5 @@
 import { FreightDecisionEngineV2 } from "@/lib/freight-booking/rag/freight-decision-engine-v2";
 import { NextRequest, NextResponse } from "next/server";
-import { getEdgeDb } from "@/lib/db/neon-edge";
 import { freightCache } from "@/lib/cache/freight-cache";
 
 // Enable Edge Runtime for <50ms response times
@@ -37,7 +36,6 @@ export async function POST(request: NextRequest) {
     
     if (!decision) {
       // Initialize the RAG decision engine with Edge-optimized DB
-      const db = getEdgeDb();
       const decisionEngine = new FreightDecisionEngineV2();
 
       // Get AI recommendations based on similar historical shipments
@@ -104,7 +102,7 @@ export async function GET(request: NextRequest) {
       minimumDataPoints: 5,
       message: "AI suggestions are available",
     });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       {
         available: false,

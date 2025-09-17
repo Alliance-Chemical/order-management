@@ -1,15 +1,90 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import type { Document } from '@/lib/rag/hybrid-search';
 
 // Use edge runtime for fast response
 export const runtime = 'nodejs'; // Need Node.js for file system access
 export const dynamic = 'force-dynamic';
 
-// Load index on first request (cached in memory)
-let ragIndex: any = null;
+interface RagIndex {
+  documents: Document[];
+  model: string;
+  dimensions: number;
+  stats: {
+    sources: Record<string, number>;
+    [key: string]: unknown;
+  };
+}
 
-async function loadIndex() {
+type HashingVectorFn = (text: string, dimensions?: number) => number[];
+
+type SearchMode = 'highway' | 'rail' | 'air' | 'vessel';
+
+interface SearchContext {
+  unNumber?: string;
+  mode?: SearchMode;
+}
+
+interface SearchOptions {
+  limit?: number;
+  sources?: string[];
+  minScore?: number;
+  context?: SearchContext;
+}
+
+interface SearchHit extends Document {
+  score: number;
+}
+
+interface GroupedResults {
+  hmt: SearchHit[];
+  cfr: SearchHit[];
+  erg: SearchHit[];
+  products: SearchHit[];
+}
+
+interface SearchExecution {
+  query: string;
+  results: SearchHit[];
+  grouped: GroupedResults;
+  stats: {
+    totalMatches: number;
+    topScore: number;
+    sources: Record<string, number>;
+  };
+}
+
+interface SearchSummary {
+  regulations: Array<{ section?: string; subject?: string; relevance: number }>;
+  emergency: Array<{ type?: string; guideNumber?: string; unNumber?: string; relevance: number }>;
+  products: Array<{ sku?: string; name?: string; isHazardous?: boolean; relevance: number }>;
+  hazmat: Array<{ unNumber?: string; name?: string; hazardClass?: string; packingGroup?: string; relevance: number }>;
+}
+
+interface SearchRequestBody {
+  query?: string;
+  limit?: number;
+  sources?: string[];
+  minScore?: number;
+  context?: Partial<SearchContext & Record<string, unknown>>;
+}
+
+let ragIndex: RagIndex | null = null;
+
+const loadHashingVector = async (): Promise<HashingVectorFn> => {
+  const embeddingsModule = (await import('../../../../lib/rag/embeddings.js')) as {
+    default?: { hashingVector: HashingVectorFn };
+    hashingVector?: HashingVectorFn;
+  };
+  const resolvedModule = embeddingsModule.default ?? embeddingsModule;
+  if (!resolvedModule.hashingVector) {
+    throw new Error('hashingVector implementation not found');
+  }
+  return resolvedModule.hashingVector;
+};
+
+async function loadIndex(): Promise<RagIndex> {
   if (ragIndex) return ragIndex;
   
   const indexPath = path.join(process.cwd(), 'data', 'rag-index-comprehensive.json');
@@ -19,7 +94,7 @@ async function loadIndex() {
   }
   
   const indexData = fs.readFileSync(indexPath, 'utf8');
-  ragIndex = JSON.parse(indexData);
+  ragIndex = JSON.parse(indexData) as RagIndex;
   
   console.log(`Loaded RAG index: ${ragIndex.documents.length} documents`);
   return ragIndex;
@@ -48,8 +123,8 @@ async function generateQueryEmbedding(query: string): Promise<number[]> {
   // Check if we have OpenAI API key
   if (!process.env.OPENAI_API_KEY) {
     // Fallback to hash-based embedding
-    const { hashingVector } = require('../../../../lib/rag/embeddings');
-    return hashingVector(query, 512);
+    const hashingVector = await loadHashingVector();
+    return hashingVector(query, ragIndex?.dimensions || 512);
   }
   
   // Use OpenAI embeddings
@@ -70,25 +145,48 @@ async function generateQueryEmbedding(query: string): Promise<number[]> {
       throw new Error(`OpenAI API error: ${response.status}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as { data: Array<{ embedding: number[] }> };
     return data.data[0].embedding;
   } catch (error) {
     console.error('OpenAI embedding failed, using fallback:', error);
-    const { hashingVector } = require('../../../../lib/rag/embeddings');
-    return hashingVector(query, 512);
+    const hashingVector = await loadHashingVector();
+    return hashingVector(query, ragIndex?.dimensions || 512);
   }
 }
+
+const isSearchMode = (value: unknown): value is SearchMode =>
+  value === 'highway' || value === 'rail' || value === 'air' || value === 'vessel';
+
+const isString = (value: unknown): value is string => typeof value === 'string';
+
+const parseSearchContext = (input?: Partial<SearchContext & Record<string, unknown>>): SearchContext => {
+  if (!input) {
+    return {};
+  }
+
+  const parsed: SearchContext = {};
+
+  if (typeof input.unNumber === 'string') {
+    parsed.unNumber = input.unNumber;
+  }
+
+  if (isSearchMode(input.mode)) {
+    parsed.mode = input.mode;
+  } else if (typeof input.mode === 'string') {
+    const normalised = input.mode.toLowerCase();
+    if (isSearchMode(normalised)) {
+      parsed.mode = normalised;
+    }
+  }
+
+  return parsed;
+};
 
 // Search the index
 async function searchIndex(
   query: string,
-  options: {
-    limit?: number;
-    sources?: string[];
-    minScore?: number;
-    context?: any;
-  } = {}
-) {
+  options: SearchOptions = {}
+): Promise<SearchExecution> {
   const {
     limit = 10,
     sources = ['hmt', 'cfr', 'erg', 'products'],
@@ -103,54 +201,62 @@ async function searchIndex(
   const queryEmbedding = await generateQueryEmbedding(query);
   
   // Calculate similarities for all documents
-  const results = index.documents
-    .filter((doc: any) => sources.includes(doc.source))
-    .map((doc: any) => ({
+  const results: SearchHit[] = index.documents
+    .filter(doc => sources.includes(doc.source))
+    .map(doc => ({
       ...doc,
       score: cosineSimilarity(queryEmbedding, doc.embedding)
     }))
-    .filter((doc: any) => doc.score >= minScore)
-    .sort((a: any, b: any) => b.score - a.score)
+    .filter(doc => doc.score >= minScore)
+    .sort((a, b) => b.score - a.score)
     .slice(0, limit);
   
-  // Group results by source for better organization
-  const groupedResults = {
-    hmt: results.filter((r: any) => r.source === 'hmt'),
-    cfr: results.filter((r: any) => r.source === 'cfr'),
-    erg: results.filter((r: any) => r.source === 'erg'),
-    products: results.filter((r: any) => r.source === 'products')
+  // Prepare grouped results placeholder
+  const groupedResults: GroupedResults = {
+    hmt: [],
+    cfr: [],
+    erg: [],
+    products: []
   };
   
   // Apply context-specific filtering if provided
   if (context.unNumber) {
     // Boost results matching the UN number
-    results.forEach((result: any) => {
+    results.forEach(result => {
       if (result.metadata?.unNumber === context.unNumber) {
         result.score *= 1.5; // Boost score by 50%
       }
     });
-    results.sort((a: any, b: any) => b.score - a.score);
+    results.sort((a, b) => b.score - a.score);
   }
   
   if (context.mode) {
     // Filter CFR results by transportation mode
-    const modeMap: any = {
-      'highway': '177',
-      'rail': '174',
-      'air': '175',
-      'vessel': '176'
+    const modeMap: Record<SearchMode, string> = {
+      highway: '177',
+      rail: '174',
+      air: '175',
+      vessel: '176'
     };
     
-    const relevantPart = modeMap[context.mode.toLowerCase()];
+    const relevantPart = modeMap[context.mode];
     if (relevantPart) {
-      results.forEach((result: any) => {
+      results.forEach(result => {
         if (result.source === 'cfr' && result.metadata?.part === relevantPart) {
           result.score *= 1.3; // Boost mode-specific regulations
         }
       });
-      results.sort((a: any, b: any) => b.score - a.score);
+      results.sort((a, b) => b.score - a.score);
     }
   }
+  
+  // Group results by source for better organization
+  results.forEach(result => {
+    if (result.source in groupedResults) {
+      const bucket = groupedResults[result.source as keyof GroupedResults];
+      bucket.push(result);
+    }
+  });
   
   return {
     query,
@@ -160,9 +266,7 @@ async function searchIndex(
       totalMatches: results.length,
       topScore: results[0]?.score || 0,
       sources: Object.fromEntries(
-        Object.entries(groupedResults).map(([source, docs]: [string, any]) => 
-          [source, docs.length]
-        )
+        Object.entries(groupedResults).map(([source, docs]) => [source, docs.length] as [string, number])
       )
     }
   };
@@ -171,8 +275,8 @@ async function searchIndex(
 // POST endpoint for search
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { query, limit, sources, minScore, context } = body;
+    const body = await request.json() as SearchRequestBody;
+    const { query } = body;
     
     if (!query) {
       return NextResponse.json({
@@ -182,14 +286,14 @@ export async function POST(request: NextRequest) {
     }
     
     const searchResults = await searchIndex(query, {
-      limit,
-      sources,
-      minScore,
-      context
+      limit: typeof body.limit === 'number' ? body.limit : undefined,
+      sources: Array.isArray(body.sources) ? body.sources.filter(isString) : undefined,
+      minScore: typeof body.minScore === 'number' ? body.minScore : undefined,
+      context: parseSearchContext(body.context)
     });
     
     // Format response for easy consumption
-    const formattedResults = searchResults.results.map((result: any) => ({
+    const formattedResults = searchResults.results.map(result => ({
       id: result.id,
       source: result.source,
       score: result.score.toFixed(3),
@@ -216,8 +320,8 @@ export async function POST(request: NextRequest) {
 }
 
 // Generate a helpful summary of results
-function generateSummary(searchResults: any): any {
-  const summary: any = {
+function generateSummary(searchResults: SearchExecution): SearchSummary {
+  const summary: SearchSummary = {
     regulations: [],
     emergency: [],
     products: [],
@@ -225,7 +329,7 @@ function generateSummary(searchResults: any): any {
   };
   
   // Extract key information from top results
-  searchResults.results.slice(0, 5).forEach((result: any) => {
+  searchResults.results.slice(0, 5).forEach(result => {
     switch (result.source) {
       case 'cfr':
         summary.regulations.push({

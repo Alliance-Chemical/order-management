@@ -3,7 +3,7 @@
  * Implements cross-encoder style re-ranking for better accuracy
  */
 
-import { SearchResult } from './hybrid-search';
+import { DocumentMetadata, SearchResult } from './hybrid-search';
 import { ProcessedQuery } from './query-processor';
 
 export interface RerankedResult extends SearchResult {
@@ -153,7 +153,7 @@ export class FeatureExtractor {
     return relevanceMap[intent]?.[source] || 0.5;
   }
 
-  private static calculateMetadataCompleteness(metadata: any): number {
+  private static calculateMetadataCompleteness(metadata?: DocumentMetadata): number {
     if (!metadata) return 0;
     
     const importantFields = [
@@ -163,7 +163,7 @@ export class FeatureExtractor {
     
     let present = 0;
     for (const field of importantFields) {
-      if (metadata[field]) present++;
+      if (metadata[field] !== undefined && metadata[field] !== null) present++;
     }
     
     return present / importantFields.length;

@@ -57,13 +57,13 @@ export const freightOrders = pgTable('freight_orders', {
   deliveredAt: timestamp('delivered_at'),
   
   // AI Decision Data
-  aiSuggestions: jsonb('ai_suggestions').$type<any>().default([]),
+  aiSuggestions: jsonb('ai_suggestions').$type<Record<string, unknown>[]>().default([]),
   confidenceScore: decimal('confidence_score', { precision: 3, scale: 2 }),
   decisionSource: varchar('decision_source', { length: 50 }),
   
   // Telemetry
   sessionId: uuid('session_id'),
-  telemetryData: jsonb('telemetry_data').$type<any>().default({}),
+  telemetryData: jsonb('telemetry_data').$type<Record<string, unknown>>().default({}),
   
   // Metadata
   createdAt: timestamp('created_at').defaultNow(),

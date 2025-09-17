@@ -13,11 +13,48 @@ const embeddingModel = genAI.getGenerativeModel({
   model: "text-embedding-004",
 });
 
+type QuoteCommodity = {
+  commodityPieces?: number;
+  commodityDescription?: string;
+  commodityWeight?: number;
+  commodityClass?: string;
+  commodityHazMat?: string;
+};
+
+type QuoteUnit = {
+  quoteCommodities?: QuoteCommodity[];
+};
+
+type OrderStop = {
+  city?: string;
+  state?: string;
+  locationType?: string;
+};
+
+type Accessorials = Record<string, unknown> | undefined;
+
+type CapturedOrderData = {
+  quoteReferenceID?: string;
+  proNumber?: string;
+  sessionId?: string;
+  orderNumber?: string;
+  carrier?: string;
+  serviceType?: string;
+  originStop?: OrderStop;
+  destinationStop?: OrderStop;
+  quoteUnits?: QuoteUnit[];
+  originAccessorials?: Accessorials;
+  destinationAccessorials?: Accessorials;
+  paymentDirection?: string;
+  specialInstructions?: string;
+  readyToDispatch?: string;
+};
+
 // This endpoint captures orders as they're being placed through MyCarrier
 export async function POST(request: NextRequest) {
   try {
     const sql = getEdgeSql();
-    const orderData = await request.json();
+    const orderData = await request.json() as CapturedOrderData;
 
     // Format the order for embedding
     const searchableText = formatOrderForEmbedding(orderData);
@@ -154,16 +191,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function formatOrderForEmbedding(order: any): string {
+function formatOrderForEmbedding(order: CapturedOrderData): string {
   const origin = order.originStop || {};
   const dest = order.destinationStop || {};
   const units = order.quoteUnits || [];
 
   // Extract commodity information
   const commodities = units
-    .flatMap((unit: any) =>
+    .flatMap((unit) =>
       (unit.quoteCommodities || []).map(
-        (c: any) =>
+        (c) =>
           `${c.commodityPieces}x ${c.commodityDescription || "Item"} (${c.commodityWeight}lbs, Class ${c.commodityClass}${c.commodityHazMat === "YES" ? ", HAZMAT" : ""})`,
       ),
     )
@@ -171,12 +208,12 @@ function formatOrderForEmbedding(order: any): string {
 
   // Extract accessorials
   const originAccessorials = Object.entries(order.originAccessorials || {})
-    .filter(([_, value]) => value === "YES" || value === true)
+    .filter(([, value]) => value === "YES" || value === true)
     .map(([key]) => key)
     .join(", ");
 
   const destAccessorials = Object.entries(order.destinationAccessorials || {})
-    .filter(([_, value]) => value === "YES" || value === true)
+    .filter(([, value]) => value === "YES" || value === true)
     .map(([key]) => key)
     .join(", ");
 

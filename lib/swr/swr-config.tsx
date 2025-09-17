@@ -3,15 +3,21 @@
 import { SWRConfig } from 'swr';
 import { ReactNode } from 'react';
 
+type FetchError = Error & { info?: unknown; status?: number };
+
+function isFetchError(error: unknown): error is FetchError {
+  return typeof error === 'object' && error !== null && 'status' in error;
+}
+
 // Default fetcher with error handling
-const fetcher = async (url: string) => {
+const fetcher = async (url: string): Promise<unknown> => {
   const res = await fetch(url);
   
   if (!res.ok) {
-    const error = new Error('An error occurred while fetching the data.');
+    const error: FetchError = new Error('An error occurred while fetching the data.');
     // Attach extra info to the error object
-    (error as any).info = await res.json();
-    (error as any).status = res.status;
+    error.info = await res.json().catch(() => undefined);
+    error.status = res.status;
     throw error;
   }
   
@@ -45,7 +51,8 @@ export function SWRProvider({ children }: { children: ReactNode }) {
         fallback: {},
         // Global error handler
         onError: (error, key) => {
-          if ((error as any).status !== 403 && (error as any).status !== 404) {
+          const status = isFetchError(error) && typeof error.status === 'number' ? error.status : undefined;
+          if (status !== 403 && status !== 404) {
             console.error(`SWR Error for ${key}:`, error);
           }
         },

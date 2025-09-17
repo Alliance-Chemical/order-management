@@ -133,11 +133,11 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(result, { status: 201 });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating product:', error);
     
     // Handle duplicate SKU
-    if (error?.message?.includes('duplicate key')) {
+    if (error instanceof Error && error.message.includes('duplicate key')) {
       return NextResponse.json(
         { error: 'Product SKU already exists' },
         { status: 409 }

@@ -98,7 +98,7 @@ export interface WorkspaceData {
     customerNotes?: string;
     internalNotes?: string;
   };
-  moduleStates: Record<string, any>;
+  moduleStates: Record<string, unknown>;
   documents: Array<{
     id: string;
     fileName: string;
@@ -116,7 +116,7 @@ export interface WorkspaceData {
     performedBy: string;
     performedAt: string;
     module?: string;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
   }>;
   totalDocumentSize: number;
   createdAt?: string;

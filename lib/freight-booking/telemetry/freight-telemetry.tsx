@@ -2,10 +2,13 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 
+type JsonObject = Record<string, unknown>;
+type JsonObjectArray = JsonObject[];
+
 interface TelemetryEvent {
   eventType: string;
   timestamp: number;
-  data: any;
+  data: JsonObject;
   sessionId: string;
   userId?: string;
 }
@@ -19,9 +22,10 @@ interface FreightSession {
   decisions: {
     carrier?: string;
     service?: string;
-    containers?: any[];
-    accessorials?: any[];
+    containers?: JsonObjectArray;
+    accessorials?: string[];
     confidence?: number;
+    [key: string]: unknown;
   };
 }
 
@@ -29,8 +33,8 @@ interface TelemetryContextType {
   currentSession: FreightSession | null;
   startSession: (orderNumber?: string) => void;
   endSession: () => void;
-  captureEvent: (eventType: string, data: any) => void;
-  captureDecision: (decision: any) => void;
+  captureEvent: (eventType: string, data: JsonObject) => void;
+  captureDecision: (decision: Record<string, unknown>) => void;
   getSessionData: () => FreightSession | null;
 }
 
@@ -87,7 +91,7 @@ export function FreightTelemetryProvider({
   };
 
   // Capture a telemetry event
-  const captureEvent = (eventType: string, data: any) => {
+  const captureEvent = (eventType: string, data: JsonObject) => {
     if (!currentSession) {
       console.warn("[Telemetry] No active session, starting new session");
       startSession();
@@ -119,7 +123,7 @@ export function FreightTelemetryProvider({
   };
 
   // Capture a decision made by the user
-  const captureDecision = (decision: any) => {
+  const captureDecision = (decision: Record<string, unknown>) => {
     if (!currentSession) {
       console.warn("[Telemetry] No active session for decision capture");
       return;
@@ -230,7 +234,7 @@ export function useFreightTelemetry() {
 export function useTelemetryTracking(componentName: string) {
   const telemetry = useFreightTelemetry();
 
-  const trackClick = (elementName: string, data?: any) => {
+  const trackClick = (elementName: string, data: JsonObject = {}) => {
     telemetry.captureEvent("ui_click", {
       component: componentName,
       element: elementName,
@@ -238,7 +242,11 @@ export function useTelemetryTracking(componentName: string) {
     });
   };
 
-  const trackChange = (fieldName: string, value: any, previousValue?: any) => {
+  const trackChange = (
+    fieldName: string,
+    value: unknown,
+    previousValue?: unknown,
+  ) => {
     telemetry.captureEvent("field_change", {
       component: componentName,
       field: fieldName,
@@ -247,7 +255,7 @@ export function useTelemetryTracking(componentName: string) {
     });
   };
 
-  const trackView = (viewName: string, data?: any) => {
+  const trackView = (viewName: string, data: JsonObject = {}) => {
     telemetry.captureEvent("view", {
       component: componentName,
       view: viewName,
@@ -255,11 +263,15 @@ export function useTelemetryTracking(componentName: string) {
     });
   };
 
-  const trackError = (error: any, context?: any) => {
+  const trackError = (error: unknown, context: JsonObject = {}) => {
+    const errorObject =
+      error instanceof Error
+        ? error
+        : new Error(typeof error === "string" ? error : "Unknown error");
     telemetry.captureEvent("error", {
       component: componentName,
-      error: error.message || error,
-      stack: error.stack,
+      error: errorObject.message,
+      stack: errorObject.stack,
       context,
     });
   };
@@ -285,7 +297,10 @@ export function useTelemetryTracking(componentName: string) {
 export function useFreightActionTracking() {
   const telemetry = useFreightTelemetry();
 
-  const trackOrderSelection = (orderNumber: string, orderData: any) => {
+  const trackOrderSelection = (
+    orderNumber: string,
+    orderData: Record<string, unknown>,
+  ) => {
     telemetry.captureEvent("order_selected", {
       orderNumber,
       ...orderData,
@@ -322,7 +337,7 @@ export function useFreightActionTracking() {
     });
   };
 
-  const trackFreightBooked = (bookingData: any) => {
+  const trackFreightBooked = (bookingData: Record<string, unknown>) => {
     telemetry.captureEvent("freight_booked", bookingData);
     telemetry.captureDecision({
       ...bookingData,
@@ -332,7 +347,7 @@ export function useFreightActionTracking() {
 
   const trackAISuggestionInteraction = (
     action: "accepted" | "rejected" | "modified",
-    suggestion: any,
+    suggestion: Record<string, unknown>,
     reason?: string,
   ) => {
     telemetry.captureEvent("ai_suggestion_interaction", {

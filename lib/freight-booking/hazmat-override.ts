@@ -8,15 +8,23 @@ export type HazmatOverride = {
   properShippingName?: string | null;
 };
 
+type HazmatOverrideRow = {
+  is_hazmat: boolean | null;
+  un_number: string | null;
+  hazard_class: string | null;
+  packing_group: string | null;
+  proper_shipping_name: string | null;
+};
+
 export async function getHazmatOverrideBySku(sku: string): Promise<HazmatOverride | null> {
   const sql = getEdgeSql();
-  const rows = await sql`
+  const rows = await sql<HazmatOverrideRow[]>`
     SELECT pho.is_hazmat, pho.un_number, pho.hazard_class, pho.packing_group, pho.proper_shipping_name
     FROM products p
     JOIN product_hazmat_overrides pho ON pho.product_id = p.id
     WHERE p.sku = ${sku} AND pho.is_approved = true
     LIMIT 1
-  ` as any[];
+  `;
   if (!rows.length) return null;
   const r = rows[0];
   return {
@@ -27,4 +35,3 @@ export async function getHazmatOverrideBySku(sku: string): Promise<HazmatOverrid
     properShippingName: r.proper_shipping_name,
   };
 }
-

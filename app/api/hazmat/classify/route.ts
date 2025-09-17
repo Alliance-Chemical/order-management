@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEdgeSql } from '@/lib/db/neon-edge';
 import { classifyWithRAG } from '@/lib/hazmat/classify';
-import { classifyWithEnhancedRAG } from '@/lib/hazmat/classify-enhanced';
+import { classifyWithEnhancedRAG, type Classification } from '@/lib/hazmat/classify-enhanced';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,32 @@ const USE_DATABASE_RAG = process.env.USE_DATABASE_RAG === 'true' || true; // Def
 interface ClassificationRequest {
   sku: string;
   productName: string;
+}
+
+type ExistingClassificationRow = {
+  sku: string | null;
+  name: string | null;
+  is_hazardous: boolean | null;
+  un_number: string | null;
+  classification_description: string | null;
+  nmfc_code: string | null;
+  freight_class: string | null;
+  is_hazmat: boolean | null;
+  hazmat_class: string | null;
+  packing_group: string | null;
+};
+
+function extractRows<T>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
+  if (typeof value === 'object' && value !== null && 'rows' in value) {
+    const rows = (value as { rows?: unknown }).rows;
+    if (Array.isArray(rows)) {
+      return rows as T[];
+    }
+  }
+  return [];
 }
 
 export async function POST(request: NextRequest) {
@@ -31,7 +57,7 @@ export async function POST(request: NextRequest) {
     
     try {
       // Check if product already has a classification  
-      const result = await sql`
+      const result = await sql<ExistingClassificationRow[]>`
         SELECT 
            p.sku, p.name, p.is_hazardous, p.un_number,
            fc.description as classification_description,
@@ -42,9 +68,7 @@ export async function POST(request: NextRequest) {
          JOIN freight_classifications fc ON pfl.classification_id = fc.id
          WHERE p.sku = ${sku} AND pfl.is_approved = true
       `;
-      
-      // Fix the type error - handle both array and FullQueryResults
-      const existingLinks = Array.isArray(result) ? result : (result as any).rows || [];
+      const existingLinks = extractRows<ExistingClassificationRow>(result);
 
       if (existingLinks.length > 0) {
         const existing = existingLinks[0];
@@ -65,7 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use enhanced RAG with database if enabled, otherwise fallback to JSON
-    let suggestion;
+    let suggestion: Classification;
     if (USE_DATABASE_RAG) {
       try {
         suggestion = await classifyWithEnhancedRAG(sku, productName, {
@@ -83,17 +107,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...suggestion,
-      // passthrough richer CFR fields for UI
-      labels: (suggestion as any).labels,
-      packaging: (suggestion as any).packaging,
-      quantity_limitations: (suggestion as any).quantity_limitations,
-      vessel_stowage: (suggestion as any).vessel_stowage,
-      special_provisions: (suggestion as any).special_provisions,
       sku,
       productName,
-      // Include telemetry if available
-      searchMethod: (suggestion as any).searchMethod,
-      searchTimeMs: (suggestion as any).searchTimeMs
     });
 
   } catch (error) {
