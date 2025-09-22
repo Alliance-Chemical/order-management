@@ -1,12 +1,24 @@
 'use client'
 
-import React from 'react'
-import { useInspection } from '@/hooks/useInspection'
+import React, { useCallback, useMemo, useState, useEffect } from 'react'
+import { useCruzInspection } from '@/hooks/useCruzInspection'
 import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner'
-import IssueModal from './IssueModal'
 import { InspectionItem } from '@/lib/types/agent-view'
 import { InspectionHeader } from '@/components/inspection/InspectionHeader'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { INSPECTORS } from '@/lib/inspection/inspectors'
+import { uploadDocument, deleteDocument } from '@/app/actions/documents'
+import {
+  CRUZ_STEP_ORDER,
+  type CruzInspectionRun,
+  type CruzStepId,
+  type CruzStepPayloadMap,
+  type InspectionPhoto,
+  normalizeInspectionState,
+} from '@/lib/inspection/cruz'
+import type { RecordStepParams, BindRunToQrParams } from '@/app/actions/cruz-inspection'
 
 interface ResilientInspectionScreenProps {
   orderId: string
@@ -21,529 +33,927 @@ interface ResilientInspectionScreenProps {
   onSwitchToSupervisor: () => void
 }
 
+// Step form components - These are adapted from inspection-runs-panel.tsx
+// They've been modified to work within the ResilientInspectionScreen context
+
+interface StepFormProps<StepId extends CruzStepId = CruzStepId> {
+  run: CruzInspectionRun
+  payload?: CruzStepPayloadMap[StepId]
+  onSubmit: (payload: CruzStepPayloadMap[StepId], outcome: 'PASS' | 'FAIL' | 'HOLD') => void
+  isPending: boolean
+  orderId: string
+  bindRun?: (runId: string, payload: BindRunToQrParams) => void
+}
+
+function ScanQrStepForm({ run, payload, onSubmit, isPending, orderId: _orderId, bindRun }: StepFormProps<'scan_qr'> & { bindRun: (runId: string, payload: BindRunToQrParams) => void }) {
+  const [qrValue, setQrValue] = useState(payload?.qrValue ?? run.qrValue ?? '')
+  const [shortCode, setShortCode] = useState(payload?.shortCode ?? run.shortCode ?? '')
+  const [showScanner, setShowScanner] = useState(false)
+  const hasValidated = Boolean(payload?.qrValidated || run.steps?.scan_qr?.qrValidated)
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!qrValue.trim()) {
+      return
+    }
+
+    const now = new Date().toISOString()
+    onSubmit(
+      {
+        qrValue: qrValue.trim(),
+        qrValidated: true,
+        validatedAt: now,
+        shortCode: shortCode.trim() || undefined,
+      },
+      'PASS'
+    )
+
+    if (bindRun) {
+      bindRun(run.id, {
+        qrCodeId: qrValue.trim(),
+        qrValue: qrValue.trim(),
+        shortCode: shortCode.trim() || undefined,
+      })
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-slate-600">
+        {hasValidated
+          ? 'QR code already validated for this run. Rescan if you need to rebind or confirm.'
+          : 'Scan and validate the QR code associated with this run.'}
+      </p>
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-700">QR Value</label>
+        <Input value={qrValue} onChange={(event) => setQrValue(event.target.value)} required placeholder="Scan or paste QR value" />
+      </div>
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-700">Short Code (optional)</label>
+        <Input value={shortCode} onChange={(event) => setShortCode(event.target.value)} placeholder="Short code" />
+      </div>
+
+      <div className="flex gap-2">
+        <Button type="submit" disabled={isPending || !qrValue.trim()}>
+          {hasValidated ? 'Re-validate QR' : 'Mark QR as validated'}
+        </Button>
+        <Button type="button" variant="outline" onClick={() => setShowScanner(true)}>
+          Open scanner
+        </Button>
+      </div>
+
+      {showScanner && (
+        <ValidatedQRScanner
+          onClose={() => setShowScanner(false)}
+          onScan={(raw) => setQrValue(raw)}
+          onValidatedScan={(data) => {
+            const resolvedValue = data.shortCode || data.id || data.workspace?.orderNumber || ''
+            setQrValue(resolvedValue)
+            setShortCode(data.shortCode || '')
+            if (bindRun) {
+              bindRun(run.id, {
+                qrCodeId: data.id,
+                qrValue: resolvedValue,
+                shortCode: data.shortCode || undefined,
+              })
+            }
+            onSubmit(
+              {
+                qrValue: resolvedValue,
+                qrValidated: true,
+                validatedAt: new Date().toISOString(),
+                shortCode: data.shortCode || undefined,
+              },
+              'PASS'
+            )
+            setShowScanner(false)
+          }}
+          allowManualEntry
+          supervisorMode
+          title="Scan container QR"
+        />
+      )}
+    </form>
+  )
+}
+
+function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'inspection_info'>) {
+  const now = useMemo(() => new Date(), [])
+  const formatDate = useCallback((date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }, [])
+
+  const formatTime = useCallback((date: Date) => {
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${hours}:${minutes}`
+  }, [])
+
+  const derivedOrderNumber = payload?.orderNumber ?? run.steps.scan_qr?.qrValue ?? run.qrValue ?? orderId ?? ''
+  const [datePerformed, setDatePerformed] = useState(() => payload?.datePerformed ?? formatDate(now))
+  const [timePerformed, setTimePerformed] = useState(() => payload?.timePerformed ?? formatTime(now))
+  const [inspector, setInspector] = useState(payload?.inspector ?? '')
+  const [notes, setNotes] = useState(payload?.notes ?? '')
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!derivedOrderNumber.trim() || !datePerformed || !timePerformed || !inspector.trim()) {
+      return
+    }
+
+    onSubmit(
+      {
+        orderNumber: derivedOrderNumber.trim(),
+        datePerformed,
+        timePerformed,
+        inspector: inspector.trim(),
+        notes: notes.trim() || undefined,
+      },
+      'PASS'
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Order Number</label>
+          <Input value={derivedOrderNumber} readOnly disabled className="bg-slate-100 text-slate-600" />
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">Date Performed</label>
+          <Input type="date" value={datePerformed} onChange={(event) => setDatePerformed(event.target.value)} required />
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">Time Performed</label>
+          <Input type="time" value={timePerformed} onChange={(event) => setTimePerformed(event.target.value)} required />
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-700">Inspector</label>
+          <select
+            value={INSPECTORS.includes(inspector as any) ? inspector : inspector ? 'custom' : ''}
+            onChange={(event) => {
+              const value = event.target.value
+              if (value === 'custom') {
+                setInspector('')
+              } else {
+                setInspector(value)
+              }
+            }}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            required
+          >
+            <option value="" disabled>
+              Select inspector
+            </option>
+            {INSPECTORS.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+            <option value="custom">Other…</option>
+          </select>
+          {!INSPECTORS.includes(inspector as any) && (
+            <Input
+              className="mt-2"
+              value={inspector}
+              onChange={(event) => setInspector(event.target.value)}
+              placeholder="Enter inspector name"
+              required
+            />
+          )}
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-700">Notes (optional)</label>
+        <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
+      </div>
+
+      <Button type="submit" disabled={isPending || !derivedOrderNumber.trim() || !inspector.trim()}>
+        {isPending ? 'Saving…' : 'Save inspection information'}
+      </Button>
+    </form>
+  )
+}
+
+function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'verify_packing_label'>) {
+  const [checks, setChecks] = useState({
+    shipToOk: payload?.shipToOk ?? true,
+    companyOk: payload?.companyOk ?? true,
+    orderNumberOk: payload?.orderNumberOk ?? true,
+    productDescriptionOk: payload?.productDescriptionOk ?? true,
+  })
+  const [mismatchReason, setMismatchReason] = useState(payload?.mismatchReason ?? '')
+  const [photos, setPhotos] = useState<InspectionPhoto[]>(payload?.photos ?? [])
+  const [uploading, setUploading] = useState(false)
+
+  const allChecksTrue = Object.values(checks).every(Boolean)
+  const hasMismatch = !allChecksTrue
+  const finalOutcome: 'PASS' | 'FAIL' = hasMismatch ? 'FAIL' : 'PASS'
+
+  const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) {
+      return
+    }
+
+    setUploading(true)
+    const uploaded: InspectionPhoto[] = []
+    try {
+      for (const file of Array.from(files)) {
+        const result = await uploadDocument({
+          file,
+          orderId,
+          documentType: 'inspection_photo',
+          metadata: {
+            runId: run.id,
+            stepId: 'verify_packing_label',
+          },
+        })
+
+        if (result.success && result.document) {
+          uploaded.push({
+            id: result.document.id,
+            name: result.document.fileName ?? file.name,
+            uploadedAt: new Date().toISOString(),
+            documentId: result.document.id,
+            url: result.document.url,
+          })
+        }
+      }
+
+      if (uploaded.length) {
+        setPhotos((prev) => [...prev, ...uploaded])
+      }
+    } catch (err) {
+      console.error('Failed to upload inspection photos', err)
+    } finally {
+      setUploading(false)
+      event.target.value = ''
+    }
+  }
+
+  const handleRemovePhoto = async (photoId: string) => {
+    setPhotos((prev) => prev.filter((photo) => photo.id !== photoId))
+    try {
+      await deleteDocument(photoId)
+    } catch (error) {
+      console.error('Failed to delete inspection photo', error)
+    }
+  }
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (finalOutcome === 'FAIL' && (!mismatchReason.trim() || photos.length === 0)) {
+      return
+    }
+
+    onSubmit(
+      {
+        ...checks,
+        gate1Outcome: finalOutcome,
+        mismatchReason: finalOutcome === 'FAIL' ? mismatchReason.trim() : undefined,
+        photos,
+        completedAt: new Date().toISOString(),
+      },
+      finalOutcome
+    )
+  }
+
+  const updateCheck = (key: keyof typeof checks, value: boolean) => {
+    setChecks((prev) => ({ ...prev, [key]: value }))
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        <p className="font-medium text-slate-800">Packing label checklist</p>
+        <p>Toggle off anything that does not match the packing slip.</p>
+      </div>
+
+      <div className="space-y-3">
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.shipToOk} onChange={(event) => updateCheck('shipToOk', event.target.checked)} />
+          Ship-to matches packing label
+        </label>
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.companyOk} onChange={(event) => updateCheck('companyOk', event.target.checked)} />
+          Company name matches
+        </label>
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.orderNumberOk} onChange={(event) => updateCheck('orderNumberOk', event.target.checked)} />
+          Order number matches
+        </label>
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.productDescriptionOk} onChange={(event) => updateCheck('productDescriptionOk', event.target.checked)} />
+          Product description matches
+        </label>
+      </div>
+
+      {finalOutcome === 'FAIL' && (
+        <div className="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-amber-900">Describe the mismatch (required)</label>
+            <Textarea value={mismatchReason} onChange={(event) => setMismatchReason(event.target.value)} rows={3} required />
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <label className="mb-2 block text-sm font-medium text-slate-700">
+          Inspection photos {finalOutcome === 'FAIL' ? '(required when documenting a mismatch)' : '(optional)'}
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {photos.map((photo) => (
+            <span key={photo.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+              {photo.name}
+              <button
+                type="button"
+                className="text-slate-500 hover:text-slate-700"
+                onClick={() => handleRemovePhoto(photo.id)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+            Upload
+            <input type="file" className="sr-only" multiple onChange={handleFilesChange} disabled={uploading} accept="image/*" />
+          </label>
+        </div>
+        {uploading && <p className="text-xs text-slate-500">Uploading…</p>}
+      </div>
+
+      <Button
+        type="submit"
+        disabled={
+          isPending ||
+          (finalOutcome === 'FAIL' && (!mismatchReason.trim() || photos.length === 0))
+        }
+      >
+        {isPending
+          ? 'Saving…'
+          : finalOutcome === 'FAIL'
+            ? 'Record mismatch and hold run'
+            : 'Checklist complete — continue'}
+      </Button>
+    </form>
+  )
+}
+
+function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'verify_product_label'>) {
+  const [checks, setChecks] = useState({
+    gradeOk: payload?.gradeOk ?? true,
+    unOk: payload?.unOk ?? true,
+    pgOk: payload?.pgOk ?? true,
+    lidOk: payload?.lidOk ?? true,
+    ghsOk: payload?.ghsOk ?? true,
+  })
+  const [issueReason, setIssueReason] = useState(payload?.issueReason ?? '')
+  const [photos, setPhotos] = useState<InspectionPhoto[]>(payload?.photos ?? [])
+  const [uploading, setUploading] = useState(false)
+
+  const allChecksTrue = Object.values(checks).every(Boolean)
+  const hasMismatch = !allChecksTrue
+  const finalOutcome: 'PASS' | 'FAIL' = hasMismatch ? 'FAIL' : 'PASS'
+
+  const handleFilesChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) {
+      return
+    }
+
+    setUploading(true)
+    const uploaded: InspectionPhoto[] = []
+    try {
+      for (const file of Array.from(files)) {
+        const result = await uploadDocument({
+          file,
+          orderId,
+          documentType: 'inspection_photo',
+          metadata: {
+            runId: run.id,
+            stepId: 'verify_product_label',
+          },
+        })
+
+        if (result.success && result.document) {
+          uploaded.push({
+            id: result.document.id,
+            name: result.document.fileName ?? file.name,
+            uploadedAt: new Date().toISOString(),
+            documentId: result.document.id,
+            url: result.document.url,
+          })
+        }
+      }
+
+      if (uploaded.length) {
+        setPhotos((prev) => [...prev, ...uploaded])
+      }
+    } catch (err) {
+      console.error('Failed to upload product label photos', err)
+    } finally {
+      setUploading(false)
+      event.target.value = ''
+    }
+  }
+
+  const handleRemovePhoto = async (photoId: string) => {
+    setPhotos((prev) => prev.filter((photo) => photo.id !== photoId))
+    try {
+      await deleteDocument(photoId)
+    } catch (error) {
+      console.error('Failed to delete product label photo', error)
+    }
+  }
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (photos.length === 0) {
+      return
+    }
+
+    if (finalOutcome === 'FAIL' && !issueReason.trim()) {
+      return
+    }
+
+    onSubmit(
+      {
+        ...checks,
+        gate2Outcome: finalOutcome,
+        issueReason: finalOutcome === 'FAIL' ? issueReason.trim() : undefined,
+        photos,
+        completedAt: new Date().toISOString(),
+      },
+      finalOutcome
+    )
+  }
+
+  const updateCheck = (key: keyof typeof checks, value: boolean) => {
+    setChecks((prev) => ({ ...prev, [key]: value }))
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        <p className="font-medium text-slate-800">Product label checklist</p>
+        <p>Confirm every regulatory element on the product label.</p>
+      </div>
+
+      <div className="space-y-3">
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.gradeOk} onChange={(event) => updateCheck('gradeOk', event.target.checked)} />
+          Grade correct (ACS, Food, USP, etc.)
+        </label>
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.unOk} onChange={(event) => updateCheck('unOk', event.target.checked)} />
+          UN number correct
+        </label>
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.pgOk} onChange={(event) => updateCheck('pgOk', event.target.checked)} />
+          Packing group (PG) correct
+        </label>
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.lidOk} onChange={(event) => updateCheck('lidOk', event.target.checked)} />
+          Lid inspection passed
+        </label>
+        <label className="flex items-center gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={checks.ghsOk} onChange={(event) => updateCheck('ghsOk', event.target.checked)} />
+          GHS labels correct
+        </label>
+      </div>
+
+      <div className="space-y-2">
+        <label className="mb-2 block text-sm font-medium text-slate-700">Photo evidence (required)</label>
+        <div className="flex flex-wrap gap-2">
+          {photos.map((photo) => (
+            <span key={photo.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+              {photo.name}
+              <button
+                type="button"
+                className="text-slate-500 hover:text-slate-700"
+                onClick={() => handleRemovePhoto(photo.id)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+            Upload
+            <input type="file" className="sr-only" multiple onChange={handleFilesChange} disabled={uploading} accept="image/*" />
+          </label>
+        </div>
+        {uploading && <p className="text-xs text-slate-500">Uploading…</p>}
+      </div>
+
+      {finalOutcome === 'FAIL' && (
+        <div>
+          <label className="mb-2 block text-sm font-medium text-red-700">Issue reason</label>
+          <Textarea value={issueReason} onChange={(event) => setIssueReason(event.target.value)} rows={3} required />
+        </div>
+      )}
+
+      <Button
+        type="submit"
+        disabled={
+          isPending ||
+          photos.length === 0 ||
+          (finalOutcome === 'FAIL' && !issueReason.trim())
+        }
+      >
+        {isPending
+          ? 'Saving…'
+          : finalOutcome === 'FAIL'
+            ? 'Document issue and hold run'
+            : 'Checklist complete — continue'}
+      </Button>
+    </form>
+  )
+}
+
+function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_number'>) {
+  const [lots, setLots] = useState(() => payload?.lots?.map((lot) => lot.lotRaw) || [''])
+  const [sameForAll, setSameForAll] = useState(payload?.sameForAll ?? false)
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (lots.some((lot) => !lot.trim())) {
+      return
+    }
+
+    onSubmit(
+      {
+        lots: lots.map((lot, index) => ({
+          id: payload?.lots?.[index]?.id ?? `lot_${index}_${Date.now()}`,
+          lotRaw: lot.trim(),
+        })),
+        sameForAll,
+        completedAt: new Date().toISOString(),
+      },
+      'PASS'
+    )
+  }
+
+  const updateLot = (index: number, value: string) => {
+    const next = [...lots]
+    next[index] = value
+    setLots(next)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-slate-600">Record the lot number(s) exactly as printed.</p>
+
+      <label className="flex items-center gap-3 text-sm text-slate-700">
+        <input type="checkbox" checked={sameForAll} onChange={(event) => setSameForAll(event.target.checked)} /> Same lot for all containers
+      </label>
+
+      <div className="space-y-3">
+        {lots.map((lot, index) => (
+          <div key={index} className="flex gap-2">
+            <Input value={lot} onChange={(event) => updateLot(index, event.target.value)} placeholder="LOT number" required />
+            {lots.length > 1 && (
+              <Button type="button" variant="ghost" onClick={() => setLots(lots.filter((_, i) => i !== index))}>
+                Remove
+              </Button>
+            )}
+          </div>
+        ))}
+        <Button type="button" variant="outline" size="sm" onClick={() => setLots([...lots, ''])}>
+          Add another lot
+        </Button>
+      </div>
+
+      <Button type="submit" disabled={isPending || lots.some((lot) => !lot.trim())}>
+        {isPending ? 'Saving…' : 'Save lot numbers'}
+      </Button>
+    </form>
+  )
+}
+
+function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_extraction'>) {
+  const sourceLots = run.steps.lot_number?.lots ?? []
+  const confirmedLots = payload?.lots ?? sourceLots.map((lot) => ({ ...lot, confirmed: false }))
+  const [lots, setLots] = useState(confirmedLots)
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (lots.some((lot) => !lot.confirmed)) {
+      return
+    }
+
+    onSubmit(
+      {
+        lots: lots.map((lot) => ({ ...lot, confirmed: true })),
+        parseMode: 'none',
+        completedAt: new Date().toISOString(),
+      },
+      'PASS'
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-slate-600">Confirm each recorded lot before completing the run.</p>
+
+      <div className="space-y-3">
+        {lots.map((lot, index) => (
+          <label key={lot.id ?? index} className="flex items-center gap-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={lot.confirmed}
+              onChange={(event) => {
+                const next = [...lots]
+                next[index] = { ...lot, confirmed: event.target.checked }
+                setLots(next)
+              }}
+            />
+            <span className="font-mono text-sm">{lot.lotRaw}</span>
+          </label>
+        ))}
+      </div>
+
+      <Button type="submit" disabled={isPending || lots.some((lot) => !lot.confirmed)}>
+        {isPending ? 'Saving…' : 'Finalize lot confirmation'}
+      </Button>
+    </form>
+  )
+}
+
 export default function ResilientInspectionScreen(props: ResilientInspectionScreenProps) {
   const {
     orderId,
     orderNumber,
     customerName,
     orderItems,
-    workflowPhase,
-    items,
     workspace,
-    onComplete,
     onSwitchToSupervisor
   } = props
 
-  // Use the custom hook for all inspection logic
-  const inspection = useInspection({
-    orderId,
-    orderNumber,
-    workflowPhase,
-    items,
-    onComplete
-  })
+  // Initialize the Cruz inspection state
+  const normalizedInitial = useMemo(
+    () => normalizeInspectionState(workspace?.moduleStates?.inspection),
+    [workspace?.moduleStates?.inspection]
+  )
 
-  // Destructure frequently used values from the inspection hook to match JSX usage
   const {
-    currentItem,
-    formData,
-    updateFormField,
-    updateNestedField,
-    showScanner,
-    setShowScanner,
-    getExpectedQRType,
-    handleQRScan,
-    handleSkipQRScan,
-    issueModalOpen,
-    currentFailedItem,
-    setIssueModalOpen,
-    handleIssueSubmit,
-    requiresQRScan,
-    handleFormStepComplete,
-    handleResult,
-    handlePhotoUpload,
-    handleLotNumberPhotoCapture,
-    extractLotNumbersFromPhoto,
-    isProcessingLotNumbers,
-    showMeasurementsModal,
-    setShowMeasurementsModal,
-    savingMeasurements,
-    measurements,
-    setMeasurements,
-    saveFinalMeasurements,
-  } = inspection
+    runs,
+    submitStep,
+    bindRun,
+    isPending,
+    error,
+    createRuns,
+  } = useCruzInspection(orderId, normalizedInitial)
 
-  // Local helpers to work with measurements in the existing JSX shape
-  const dims = measurements.dimensions
-  const wgt = measurements.weight
-  const setDims = (newDims: typeof measurements.dimensions) =>
-    setMeasurements({ ...measurements, dimensions: newDims })
-  const setWgt = (newWgt: typeof measurements.weight) =>
-    setMeasurements({ ...measurements, weight: newWgt })
+  // Auto-create inspection run if none exist
+  const [hasAutoCreated, setHasAutoCreated] = useState(false)
 
-  if (!currentItem) {
-    return <div>Loading...</div>
+  useEffect(() => {
+    // If no runs exist and we haven't already tried to create one, do it now
+    if (runs.length === 0 && !hasAutoCreated && !isPending) {
+      setHasAutoCreated(true)
+
+      // Create real inspection runs for all items in the order
+      const runsToCreate = orderItems && orderItems.length > 0
+        ? orderItems.map(item => ({
+            itemName: item.name || 'Product',
+            itemSku: item.sku || '',
+            quantity: item.quantity || 1,
+            unitOfMeasure: item.unitOfMeasure || 'EA',
+          }))
+        : [{
+            itemName: 'Product',
+            itemSku: '',
+            quantity: 1,
+            unitOfMeasure: 'EA',
+          }]
+
+      createRuns(runsToCreate)
+    }
+  }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems])
+
+  // Find the active run that the worker should work on
+  const activeRun = useMemo(() => {
+    // First priority: runs that need reverification
+    const needsReverify = runs.find(run => run.status === 'needs_reverify')
+    if (needsReverify) return needsReverify
+
+    // Second priority: active runs
+    const active = runs.find(run => run.status === 'active')
+    if (active) return active
+
+    // Third priority: first run if any exist
+    return runs[0] || null
+  }, [runs])
+
+  // Calculate progress based on Cruz workflow
+  const currentStepIndex = activeRun ? CRUZ_STEP_ORDER.indexOf(activeRun.currentStepId) : -1
+  const progress = activeRun ? ((currentStepIndex + 1) / CRUZ_STEP_ORDER.length) * 100 : 0
+
+  // Network status
+  const [networkStatus] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+
+  // Handle step submission
+  const handleSubmit = useCallback(<K extends CruzStepId>(
+    stepId: K,
+    payload: CruzStepPayloadMap[K],
+    outcome: 'PASS' | 'FAIL' | 'HOLD'
+  ) => {
+    if (!activeRun) return
+
+    submitStep({
+      orderId,
+      runId: activeRun.id,
+      stepId,
+      payload,
+      outcome,
+    } as RecordStepParams<K>)
+  }, [activeRun, orderId, submitStep])
+
+  // Get reference image for the product
+  const referenceItem = orderItems && orderItems.length > 0 ? orderItems[0] : null
+  const fallbackCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE
+  const referenceImage = referenceItem?.imageUrl
+    ? referenceItem.imageUrl
+    : referenceItem?.sku && fallbackCdnBase
+      ? `${fallbackCdnBase.replace(/\/$/, '')}/${referenceItem.sku.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`
+      : null
+
+  if (!activeRun) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          {isPending || (runs.length === 0 && !hasAutoCreated) ? (
+            <>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Setting up inspection...</h2>
+              <p className="text-gray-600 mb-6">Creating inspection run for this order.</p>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">No Active Inspection Run</h2>
+              <p className="text-gray-600 mb-6">Unable to create inspection run. Please contact a supervisor.</p>
+              <Button onClick={onSwitchToSupervisor}>Switch to Supervisor View</Button>
+            </>
+          )}
+        </div>
+      </div>
+    )
   }
+
+  const currentStep = activeRun.currentStepId
+  const stepPayload = activeRun.steps[currentStep as keyof typeof activeRun.steps]
 
   return (
     <div className="min-h-screen bg-white">
       <InspectionHeader
         orderNumber={orderNumber}
         customerName={customerName}
-        currentIndex={inspection.currentIndex}
-        totalItems={items.length}
-        progress={inspection.progress}
-        networkStatus={inspection.networkStatus}
-        queueLength={inspection.queueStatus.queueLength}
-        canUndo={inspection.canUndo}
-        onBack={inspection.previousStep}
-        onUndo={inspection.undo}
+        currentIndex={currentStepIndex}
+        totalItems={CRUZ_STEP_ORDER.length}
+        progress={progress}
+        networkStatus={networkStatus}
+        queueLength={0}
+        canUndo={false}
+        onBack={() => {}}
+        onUndo={() => {}}
         onSwitchToSupervisor={onSwitchToSupervisor}
       />
 
-      {/* Step Navigation */}
+      {/* Reference Image */}
+      {referenceItem && referenceImage && (
+        <div className="px-6 pt-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <img
+              src={referenceImage}
+              alt={referenceItem.name || referenceItem.sku || 'Product reference'}
+              className="h-32 w-32 rounded-lg border border-slate-200 object-cover"
+              onError={(event) => {
+                const target = event.target as HTMLImageElement
+                target.style.display = 'none'
+              }}
+            />
+            <div className="text-sm text-slate-600">
+              <div className="text-lg font-semibold text-slate-900">Visual Reference</div>
+              <div>{referenceItem.name}</div>
+              {referenceItem.sku && <div>SKU: {referenceItem.sku}</div>}
+              <div className="mt-1 text-xs text-slate-500">Use this image to verify the item appearance matches what is being inspected.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step Progress Indicators */}
       <div className="p-4 bg-gray-50 border-b">
         <div className="flex gap-2 overflow-x-auto pb-2">
-          {items.map((item, idx) => {
-            const isCompleted = inspection.isStepCompleted(item.id)
-            const isCurrent = idx === inspection.currentIndex
-            const result = inspection.results[item.id]
-            
+          {CRUZ_STEP_ORDER.map((stepId, idx) => {
+            const isCompleted = activeRun.steps[stepId] !== undefined
+            const isCurrent = stepId === currentStep
+
             return (
-              <button
-                key={item.id}
-                onClick={() => inspection.goToStep(idx)}
+              <div
+                key={stepId}
                 className={`
                   px-3 py-1 rounded-lg text-sm whitespace-nowrap
                   ${isCurrent ? 'bg-blue-600 text-white' : ''}
-                  ${isCompleted && result === 'pass' ? 'bg-green-100 text-green-800' : ''}
-                  ${isCompleted && result === 'fail' ? 'bg-red-100 text-red-800' : ''}
+                  ${isCompleted && !isCurrent ? 'bg-green-100 text-green-800' : ''}
                   ${!isCurrent && !isCompleted ? 'bg-gray-200 text-gray-600' : ''}
                 `}
               >
-                {idx + 1}. {item.description.substring(0, 20)}...
-              </button>
+                {idx + 1}. {stepId.replace(/_/g, ' ')}
+              </div>
             )
           })}
         </div>
       </div>
 
-      {/* Current Step */}
+      {/* Current Step Form */}
       <div className="p-6">
-        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
-          <h2 className="text-2xl font-bold mb-2">{currentItem.description}</h2>
-          
-          {currentItem.details && (
-            <ul className="mt-4 space-y-2">
-              {currentItem.details.map((detail, idx) => (
-                <li key={idx} className="flex items-start">
-                  <span className="text-blue-600 mr-2">•</span>
-                  <span className="text-gray-700">{detail}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Form Fields or Action Buttons */}
-        {currentItem.id === 'basic_info' ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className="block text-xl font-bold text-gray-900 mb-2">Order #</label>
-                <div className="w-full px-4 py-3 text-xl bg-gray-100 border-2 border-gray-300 rounded-lg text-gray-700">
-                  {orderNumber}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xl font-bold text-gray-900 mb-2">Date Performed *</label>
-                <input
-                  type="date"
-                  value={formData.datePerformed}
-                  onChange={(e) => updateFormField('datePerformed', e.target.value)}
-                  className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xl font-bold text-gray-900 mb-2">Inspector *</label>
-                <input
-                  type="text"
-                  value={formData.inspector}
-                  onChange={(e) => updateFormField('inspector', e.target.value)}
-                  placeholder="Enter inspector name"
-                  className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            </div>
-            <Button
-              onClick={() => handleFormStepComplete('basic_info')}
-              variant="go"
-              size="xlarge"
-              fullWidth
-              haptic="success"
-            >
-              <span className="text-2xl">Continue</span>
-            </Button>
-          </div>
-        ) : currentItem.id === 'packing_slip' ? (
-          <div className="space-y-4">
-            {/* Order Details Display */}
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Expected Order Details</h3>
-              <div className="space-y-2 text-lg">
-                <div><strong>Ship To:</strong> {workspace?.shipstationData?.shipTo?.name || customerName}</div>
-                <div><strong>Company:</strong> {workspace?.shipstationData?.shipTo?.company || 'N/A'}</div>
-                <div><strong>Address:</strong> {workspace?.shipstationData?.shipTo?.street1 || 'N/A'}, {workspace?.shipstationData?.shipTo?.city || 'N/A'}, {workspace?.shipstationData?.shipTo?.state || 'N/A'} {workspace?.shipstationData?.shipTo?.postalCode || 'N/A'}</div>
-                <div><strong>Order #:</strong> {orderNumber}</div>
-                <div><strong>P.O. Number:</strong> {workspace?.shipstationData?.customerReference || 'N/A'}</div>
-              </div>
-            </div>
-            
-            {/* Items List */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="text-lg font-bold text-gray-900 mb-3">Order Items</h4>
-              <div className="space-y-2">
-                {orderItems?.map((item, index) => (
-                  <div key={index} className="bg-white rounded p-3 text-base">
-                    <div><strong>{item.quantity}x</strong> {item.name}</div>
-                    <div className="text-gray-600">SKU: {item.sku}</div>
-                  </div>
-                )) || (
-                  <div className="text-gray-600">No items available</div>
-                )}
-              </div>
-            </div>
-            
-            {/* Verification */}
-            <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
-              <label className="flex items-start cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.packingSlipVerified}
-                  onChange={(e) => updateFormField('packingSlipVerified', e.target.checked)}
-                  className="w-8 h-8 mt-1 text-blue-600 focus:ring-blue-500 border-gray-300 rounded flex-shrink-0"
-                />
-                <div className="ml-4">
-                  <div className="text-xl font-bold text-gray-900">Physical packing slip matches the order details shown above?</div>
-                  <div className="text-base text-gray-700 mt-1">Compare the physical packing slip to the expected order details displayed above</div>
-                </div>
-              </label>
-            </div>
-            
-            <Button
-              onClick={() => handleFormStepComplete('packing_slip')}
-              variant="go"
-              size="xlarge"
-              fullWidth
-              haptic="success"
-            >
-              <span className="text-2xl">Continue</span>
-            </Button>
-          </div>
-        ) : currentItem.id === 'lot_numbers' ? (
-          <div className="space-y-4">
-            {/* Photo Capture Section */}
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-              <h3 className="text-lg font-bold text-gray-900 mb-3">AI Lot Number Extraction</h3>
-              <p className="text-sm text-gray-700 mb-4">
-                Take a photo of the container label to automatically extract lot numbers
-              </p>
-              
-              {!formData.lotNumberPhoto ? (
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer hover:border-blue-400 bg-blue-25">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(e) => e.target.files?.[0] && handleLotNumberPhotoCapture(e.target.files[0])}
-                    className="sr-only"
-                  />
-                  <div className="text-center">
-                    <svg className="mx-auto w-12 h-12 text-blue-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span className="text-lg font-medium text-blue-700">Take Photo of Label</span>
-                  </div>
-                </label>
-              ) : (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <img 
-                      src={formData.lotNumberPhoto.url} 
-                      alt="Container label"
-                      className="w-full max-h-48 object-cover rounded-lg"
-                    />
-                    <button
-                      onClick={() => {
-                        updateFormField('lotNumberPhoto', null);
-                        updateFormField('extractedLotNumbers', []);
-                      }}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  
-                  {formData.extractedLotNumbers.length === 0 ? (
-                    <Button
-                      onClick={extractLotNumbersFromPhoto}
-                      disabled={isProcessingLotNumbers}
-                      variant="info"
-                      size="large"
-                      fullWidth
-                      loading={isProcessingLotNumbers}
-                    >
-                      <span className="text-lg">
-                        {isProcessingLotNumbers ? 'Extracting...' : 'Extract Lot Numbers'}
-                      </span>
-                    </Button>
-                  ) : (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <p className="text-sm font-medium text-green-800 mb-2">Extracted Lot Numbers:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {formData.extractedLotNumbers.map((lot, index) => (
-                          <span key={index} className="px-2 py-1 bg-green-100 text-green-800 rounded text-sm font-mono">
-                            {lot}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Manual Entry */}
-            <div>
-              <label className="block text-xl font-bold text-gray-900 mb-2">Lot Numbers *</label>
-              <input
-                type="text"
-                value={formData.lotNumbers}
-                onChange={(e) => updateFormField('lotNumbers', e.target.value)}
-                placeholder="Enter or capture lot numbers"
-                className="w-full px-4 py-3 text-xl border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <p className="text-sm text-gray-600 mt-1">
-                Separate multiple lot numbers with commas
-              </p>
-            </div>
-            
-            <Button
-              onClick={() => handleFormStepComplete('lot_numbers')}
-              variant="go"
-              size="xlarge"
-              fullWidth
-              haptic="success"
-            >
-              <span className="text-2xl">Continue</span>
-            </Button>
-          </div>
-        ) : currentItem.id === 'product_inspection' ? (
-          <div className="space-y-4">
-            <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-              {[
-                { id: 'check_label_info', label: 'Check label information (ACS / Tech / UN # / PG)' },
-                { id: 'lid_inspection', label: 'Lid (Bleach, Hydrogen Peroxide, Ammonium)' },
-                { id: 'ghs_labels', label: 'GHS Labels' }
-              ].map((item) => (
-                <label key={item.id} className="flex items-center cursor-pointer p-2 bg-white rounded-lg">
-                  <input
-                    type="checkbox"
-                    checked={formData.productInspection[item.id]}
-                    onChange={(e) => updateNestedField('productInspection', item.id, e.target.checked)}
-                    className="w-6 h-6 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="ml-3 text-lg font-medium text-gray-900">{item.label}</span>
-                </label>
-              ))}
-            </div>
-            
-            {formData.productInspection.lid_inspection && (
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-                <h3 className="text-lg font-bold text-gray-900 mb-3">Lid Verification Photos Required</h3>
-                <p className="text-sm text-gray-700 mb-4">
-                  Take photos to verify that lids are clean and properly secured.
-                </p>
-                
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  {formData.lidPhotos.map((photo, index) => (
-                    <div key={index} className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                      <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" />
-                      <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                        Lid {index + 1}
-                      </div>
-                    </div>
-                  ))}
-                  
-                  <label className="relative aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer flex items-center justify-center">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => e.target.files?.[0] && handlePhotoUpload(e.target.files[0])}
-                      className="sr-only"
-                    />
-                    <div className="text-center">
-                      <svg className="mx-auto w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span className="mt-2 block text-xs text-gray-500">Add Photo</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            )}
-            
-            <Button
-              onClick={() => handleFormStepComplete('product_inspection')}
-              variant="go"
-              size="xlarge"
-              fullWidth
-              haptic="success"
-            >
-              <span className="text-2xl">Continue</span>
-            </Button>
-          </div>
-        ) : requiresQRScan ? (
-          <div className="space-y-4">
-            <Button
-              onClick={() => setShowScanner(true)}
-              variant="info"
-              size="xlarge"
-              fullWidth
-              haptic="light"
-              icon={
-                <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" className="w-8 h-8">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              }
-            >
-              <span className="text-2xl">Scan QR Code</span>
-            </Button>
-            
-            <Button
-              onClick={() => {
-                const reason = prompt('Why are you skipping the QR scan?');
-                if (reason && reason.trim()) {
-                  handleSkipQRScan(reason.trim());
-                }
-              }}
-              variant="neutral"
-              size="large"
-              fullWidth
-            >
-              Skip QR Scan
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4">
-            <Button
-              onClick={() => handleResult('pass')}
-              variant="go"
-              size="xlarge"
-              fullWidth
-              haptic="success"
-              icon={
-                <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" className="w-8 h-8">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              }
-            >
-              <span className="text-2xl">Pass</span>
-            </Button>
-            
-            <Button
-              onClick={() => handleResult('fail')}
-              variant="stop"
-              size="xlarge"
-              fullWidth
-              haptic="error"
-              icon={
-                <svg fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24" className="w-8 h-8">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              }
-            >
-              <span className="text-2xl">Fail</span>
-            </Button>
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {error}
           </div>
         )}
-      </div>
 
-      {/* QR Scanner */}
-      {showScanner && (
-        <ValidatedQRScanner
-          expectedType={getExpectedQRType()}
-          orderId={orderId}
-          onValidScan={handleQRScan}
-          onClose={() => setShowScanner(false)}
-          allowManualEntry={true}
-          allowSkip={false}
-          supervisorMode={false}
-        />
-      )}
-
-      {/* Issue Modal */}
-      {issueModalOpen && currentFailedItem && (
-        <IssueModal
-          item={currentFailedItem}
-          onSubmit={handleIssueSubmit}
-          onClose={() => setIssueModalOpen(false)}
-        />
-      )}
-
-
-      {showMeasurementsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold mb-4">Record Final Dimensions & Weight</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Dimensions</label>
-                <div className="flex items-center gap-2">
-                  <input type="number" inputMode="decimal" value={dims.length} onChange={(e) => setDims({ ...dims, length: e.target.value })} placeholder="L" className="w-20 px-3 py-2 border rounded" />
-                  <span>x</span>
-                  <input type="number" inputMode="decimal" value={dims.width} onChange={(e) => setDims({ ...dims, width: e.target.value })} placeholder="W" className="w-20 px-3 py-2 border rounded" />
-                  <span>x</span>
-                  <input type="number" inputMode="decimal" value={dims.height} onChange={(e) => setDims({ ...dims, height: e.target.value })} placeholder="H" className="w-20 px-3 py-2 border rounded" />
-                  <select value={dims.units} onChange={(e) => setDims({ ...dims, units: e.target.value })} className="px-2 py-2 border rounded">
-                    <option value="in">in</option>
-                    <option value="cm">cm</option>
-                  </select>
-                </div>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Weight</label>
-                <div className="flex items-center gap-2">
-                  <input type="number" inputMode="decimal" value={wgt.value} onChange={(e) => setWgt({ ...wgt, value: e.target.value })} placeholder="Weight" className="w-32 px-3 py-2 border rounded" />
-                  <select value={wgt.units} onChange={(e) => setWgt({ ...wgt, units: e.target.value })} className="px-2 py-2 border rounded">
-                    <option value="lbs">lbs</option>
-                    <option value="kg">kg</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-6">
-              <button
-                disabled={savingMeasurements}
-                onClick={saveFinalMeasurements}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                {savingMeasurements ? 'Saving…' : 'Save & Complete'}
-              </button>
-              <button
-                disabled={savingMeasurements}
-                onClick={() => setShowMeasurementsModal(false)}
-                className="flex-1 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
+          <h2 className="text-2xl font-bold mb-2">
+            Step {currentStepIndex + 1}: {currentStep.replace(/_/g, ' ').toUpperCase()}
+          </h2>
+          <p className="text-gray-700">
+            Complete this step to proceed with the inspection workflow.
+          </p>
         </div>
-      )}
+
+        {/* Dynamic form rendering based on current step */}
+        {currentStep === 'scan_qr' && (
+          <ScanQrStepForm
+            run={activeRun}
+            payload={stepPayload as CruzStepPayloadMap['scan_qr']}
+            orderId={orderId}
+            onSubmit={(payload) => handleSubmit('scan_qr', payload, 'PASS')}
+            isPending={isPending}
+            bindRun={bindRun}
+          />
+        )}
+
+        {currentStep === 'inspection_info' && (
+          <InspectionInfoStepForm
+            run={activeRun}
+            payload={stepPayload as CruzStepPayloadMap['inspection_info']}
+            orderId={orderId}
+            onSubmit={(payload) => handleSubmit('inspection_info', payload, 'PASS')}
+            isPending={isPending}
+          />
+        )}
+
+        {currentStep === 'verify_packing_label' && (
+          <VerifyPackingLabelStepForm
+            run={activeRun}
+            payload={stepPayload as CruzStepPayloadMap['verify_packing_label']}
+            orderId={orderId}
+            onSubmit={(payload, outcome) => handleSubmit('verify_packing_label', payload, outcome)}
+            isPending={isPending}
+          />
+        )}
+
+        {currentStep === 'verify_product_label' && (
+          <VerifyProductLabelStepForm
+            run={activeRun}
+            payload={stepPayload as CruzStepPayloadMap['verify_product_label']}
+            orderId={orderId}
+            onSubmit={(payload, outcome) => handleSubmit('verify_product_label', payload, outcome)}
+            isPending={isPending}
+          />
+        )}
+
+        {currentStep === 'lot_number' && (
+          <LotNumberStepForm
+            run={activeRun}
+            payload={stepPayload as CruzStepPayloadMap['lot_number']}
+            orderId={orderId}
+            onSubmit={(payload) => handleSubmit('lot_number', payload, 'PASS')}
+            isPending={isPending}
+          />
+        )}
+
+        {currentStep === 'lot_extraction' && (
+          <LotExtractionStepForm
+            run={activeRun}
+            payload={stepPayload as CruzStepPayloadMap['lot_extraction']}
+            orderId={orderId}
+            onSubmit={(payload) => handleSubmit('lot_extraction', payload, 'PASS')}
+            isPending={isPending}
+          />
+        )}
+      </div>
     </div>
   )
 }

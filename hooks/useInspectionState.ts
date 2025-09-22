@@ -36,22 +36,24 @@ export function useInspectionState({
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
   
   // Initialize state with restored values or defaults
+  const createDefaultState = (): InspectionState => ({
+    currentIndex: 0,
+    results: {},
+    notes: {},
+    scannedQRs: {},
+    startedAt: new Date().toISOString(),
+    lastUpdatedAt: new Date().toISOString(),
+    workflowPhase,
+    orderId
+  });
+
   const initializeState = (): InspectionState => {
-    if (!enablePersistence) {
-      return {
-        currentIndex: 0,
-        results: {},
-        notes: {},
-        scannedQRs: {},
-        startedAt: new Date().toISOString(),
-        lastUpdatedAt: new Date().toISOString(),
-        workflowPhase,
-        orderId
-      };
+    if (!enablePersistence || typeof window === 'undefined') {
+      return createDefaultState();
     }
 
     try {
-      const stored = localStorage.getItem(storageKey);
+      const stored = window.localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as InspectionState;
         // Validate stored state is still relevant (not older than 24 hours)
@@ -67,16 +69,7 @@ export function useInspectionState({
       console.warn('Failed to restore inspection state:', error);
     }
 
-    return {
-      currentIndex: 0,
-      results: {},
-      notes: {},
-      scannedQRs: {},
-      startedAt: new Date().toISOString(),
-      lastUpdatedAt: new Date().toISOString(),
-      workflowPhase,
-      orderId
-    };
+    return createDefaultState();
   };
 
   const [state, setState] = useState<InspectionState>(initializeState);
@@ -95,7 +88,11 @@ export function useInspectionState({
     // Debounce saves to avoid excessive localStorage writes
     saveTimeoutRef.current = setTimeout(() => {
       try {
-        localStorage.setItem(storageKey, JSON.stringify({
+        if (typeof window === 'undefined') {
+          return;
+        }
+
+        window.localStorage.setItem(storageKey, JSON.stringify({
           ...newState,
           lastUpdatedAt: new Date().toISOString()
         }));
@@ -184,12 +181,14 @@ export function useInspectionState({
   const clearState = useCallback(() => {
     if (enablePersistence) {
       try {
-        localStorage.removeItem(storageKey);
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(storageKey);
+        }
       } catch (error) {
         console.error('Failed to clear inspection state:', error);
       }
     }
-    setState(initializeState());
+    setState(createDefaultState());
     setHistory([]);
     setCanUndo(false);
     setIsRestored(false);
@@ -202,9 +201,9 @@ export function useInspectionState({
 
   // Get progress percentage
   const getProgress = useCallback(() => {
-    const completedSteps = Object.keys(state.results).length;
-    return (completedSteps / items.length) * 100;
-  }, [state.results, items.length]);
+    // Calculate based on current step position, not completed steps
+    return ((state.currentIndex + 1) / items.length) * 100;
+  }, [state.currentIndex, items.length]);
 
   // Cleanup on unmount
   useEffect(() => {
