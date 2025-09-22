@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {
   const [itemStatuses, setItemStatuses] = useState<Record<string, 'pending' | 'in_progress' | 'completed'>>({});
+  const shopifyCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE;
 
   const getPhaseLabel = () => {
     if (workspace.workflowPhase === 'pre_mix') {
@@ -183,7 +184,12 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
                       sku: item.sku,
                       name: item.name || 'Unknown Product',
                       quantity: item.quantity || 1,
-                      unitPrice: item.unitPrice
+                      unitPrice: item.unitPrice,
+                      imageUrl:
+                        item.imageUrl ||
+                        (shopifyCdnBase && item.sku
+                          ? `${shopifyCdnBase.replace(/\/$/, '')}/${item.sku.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`
+                          : undefined),
                     }}
                     workflowType={workflowType}
                     requiresDilution={false}

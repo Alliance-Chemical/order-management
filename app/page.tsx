@@ -18,6 +18,7 @@ interface OrderItem {
   name: string;
   quantity: number;
   sku: string;
+  [key: string]: unknown;
 }
 
 interface FreightOrder {
@@ -114,7 +115,7 @@ export default function WorkQueueDashboard() {
 
   const enrichedOrders = orders
     .map((order) => {
-      const orderItems = filterOutDiscounts(order.items || []);
+      const orderItems = filterOutDiscounts<OrderItem>(order.items ?? []);
       const orderDateValue = order.orderDate ? new Date(order.orderDate) : null;
       const ageHours = orderDateValue ? (Date.now() - orderDateValue.getTime()) / (1000 * 60 * 60) : null;
       const agingBadge = ageHours == null

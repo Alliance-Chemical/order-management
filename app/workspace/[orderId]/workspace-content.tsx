@@ -10,8 +10,12 @@ import PreMixInspection from '@/components/workspace/supervisor-view/PreMixInspe
 import PreShipInspection from '@/components/workspace/supervisor-view/PreShipInspection';
 import DocumentsHub from '@/components/workspace/DocumentsHub';
 import ActivityTimeline from '@/components/workspace/ActivityTimeline';
+import QualityDashboard from '@/components/quality/QualityDashboard';
+import { InspectionRunsPanel } from './inspection-runs-panel';
 import ErrorBoundary from '@/components/error-boundary';
 import { buildInspectionItems } from '@/lib/inspection/items';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Home, Package, ChevronRight } from 'lucide-react';
 
 type WorkerStep = 'entry' | 'inspection' | 'complete';
 
@@ -68,7 +72,6 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
                 onComplete={(results) => {
                   handleWorkerInspectionComplete(results);
                   setSelectedItem(null);
-                  setWorkerStep('entry');
                 }}
                 onSwitchToSupervisor={() => setViewMode('supervisor')}
               />
@@ -89,6 +92,7 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
                 <button
                   onClick={() => {
                     setWorkerStep('entry');
+                    setSelectedItem(null);
                   }}
                   className="px-8 py-4 bg-green-600 text-white text-xl font-bold rounded-lg hover:bg-green-700"
                 >
@@ -107,9 +111,11 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
     { id: 'overview', label: 'Overview', component: OrderOverview },
     { id: 'pallets', label: 'Pallets', component: OrderOverview, testId: 'pallets-tab' },
     { id: 'qr', label: 'QR Codes', component: OrderOverview, testId: 'qr-tab' },
+    { id: 'inspection_runs', label: 'Inspection Runs', component: InspectionRunsPanel, testId: 'inspection-runs-tab' },
     { id: 'pre_mix', label: 'Pre-Mix', component: PreMixInspection },
     { id: 'pre_ship', label: 'Pre-Ship', component: PreShipInspection },
     { id: 'documents', label: 'Documents', component: DocumentsHub },
+    { id: 'quality', label: 'Quality', component: QualityDashboard, testId: 'quality-tab' },
     { id: 'activity', label: 'Activity', component: ActivityTimeline },
   ];
 
@@ -173,6 +179,60 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
           </div>
         </header>
 
+        {/* Breadcrumb Navigation */}
+        <div className="bg-slate-50/50 border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <a
+                    href="/"
+                    className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
+                  >
+                    <Home className="h-4 w-4" />
+                    Work Queue
+                  </a>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator>
+                  <ChevronRight className="h-4 w-4" />
+                </BreadcrumbSeparator>
+                <BreadcrumbItem>
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <Package className="h-4 w-4" />
+                    <BreadcrumbPage className="font-medium text-slate-900">
+                      Order #{workspace.orderNumber}
+                    </BreadcrumbPage>
+                  </div>
+                </BreadcrumbItem>
+                {activeTab !== 'overview' && (
+                  <>
+                    <BreadcrumbSeparator>
+                      <ChevronRight className="h-4 w-4" />
+                    </BreadcrumbSeparator>
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="font-medium text-warehouse-info">
+                        {tabs.find(t => t.id === activeTab)?.label || 'Unknown'}
+                      </BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </>
+                )}
+                {viewMode === 'supervisor' && (
+                  <>
+                    <BreadcrumbSeparator>
+                      <ChevronRight className="h-4 w-4" />
+                    </BreadcrumbSeparator>
+                    <BreadcrumbItem>
+                      <span className="text-xs px-2 py-1 bg-warehouse-info-light text-warehouse-info rounded-full font-medium">
+                        Supervisor View
+                      </span>
+                    </BreadcrumbItem>
+                  </>
+                )}
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+        </div>
+
         {/* Tab Navigation */}
         <nav className="bg-white border-b border-slate-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -198,12 +258,16 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <ActiveComponent
-            orderId={orderId}
-            workspace={workspace}
-            initialState={workspace.moduleStates?.[activeTab] || {}}
-            onStateChange={(state: Record<string, any>) => onModuleStateChange(activeTab, state)}
-          />
+          {activeTab === 'quality' ? (
+            <QualityDashboard workspaceId={workspace.id} />
+          ) : (
+            <ActiveComponent
+              orderId={orderId}
+              workspace={workspace}
+              initialState={activeTab === 'inspection_runs' ? workspace.moduleStates?.inspection : workspace.moduleStates?.[activeTab] || {}}
+              onStateChange={(state: Record<string, any>) => onModuleStateChange(activeTab, state)}
+            />
+          )}
         </main>
       </div>
     </ErrorBoundary>

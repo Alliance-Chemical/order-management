@@ -17,6 +17,16 @@ interface ActivityTimelineProps {
   orderId: string;
 }
 
+interface RawActivityEntry {
+  id: string;
+  type: string;
+  action: string;
+  description: string;
+  user: string;
+  timestamp: string;
+  metadata?: Record<string, unknown> | null;
+}
+
 interface ActivityEntry {
   id: string;
   activityType: string;
@@ -35,7 +45,20 @@ export default function ActivityTimeline({ orderId }: ActivityTimelineProps) {
       try {
         const result = await getWorkspaceActivity(orderId);
         if (result.success) {
-          setActivities((result.activities || []) as ActivityEntry[]);
+          const rawActivities: RawActivityEntry[] = Array.isArray(result.activities)
+            ? (result.activities as RawActivityEntry[])
+            : []
+
+          const normalizedActivities: ActivityEntry[] = rawActivities.map((activity) => ({
+            id: activity.id,
+            activityType: activity.action || activity.type,
+            activityDescription: activity.description,
+            metadata: activity.metadata ?? null,
+            performedAt: activity.timestamp,
+            performedBy: activity.user || 'System'
+          }))
+
+          setActivities(normalizedActivities);
         }
       } catch (error) {
         console.error('Failed to fetch activities:', error);
@@ -48,7 +71,7 @@ export default function ActivityTimeline({ orderId }: ActivityTimelineProps) {
   }, [orderId]);
 
   const getActivityIcon = (type: string) => {
-    const icons: Record<string, React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>> = {
+    const icons: Record<string, React.ComponentType<{ className?: string }>> = {
       workspace_created: CheckCircleIcon,
       document_uploaded: DocumentIcon,
       marked_ready_to_ship: TruckIcon,
@@ -110,14 +133,14 @@ export default function ActivityTimeline({ orderId }: ActivityTimelineProps) {
                     <li key={activity.id}>
                       <div className="relative pb-8">
                         {!isLast && (
-                          <span className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200" aria-hidden="true" />
+                          <span className="absolute left-4 top-4 -ml-px h-full w-0.5 bg-gray-200" />
                         )}
                         <div className="relative flex space-x-3">
                           <div>
                             <span
                               className={`h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white ${getActivityColor(activity.activityType)}`}
                             >
-                              <Icon className="w-5 h-5 text-white" aria-hidden="true" />
+                              <Icon className="w-5 h-5 text-white" />
                             </span>
                           </div>
                           <div className="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">

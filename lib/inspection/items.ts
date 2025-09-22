@@ -12,17 +12,38 @@ export function buildInspectionItems(workspace: WorkspaceLike, _selectedItem?: O
   inspectionItems = [];
 
   if (workspace.workflowPhase === 'pre_mix') {
-    inspectionItems.push(
-      { id: 'basic_info', label: 'Basic Information', description: 'Enter Date Performed, Invoice #, and Inspector name' },
-      { id: 'packing_slip', label: 'Packing Slip Verification', description: 'Verify ship to match, ship via, ship date, P.O. number, signature label, and freight' },
-      { id: 'lot_numbers', label: 'Lot Numbers', description: 'Enter lot numbers' },
-      { id: 'product_inspection', label: 'Product Inspection', description: 'Check label information, lid condition, and required GHS / hazmat markings' },
-      { id: 'container_condition', label: 'Check Destination Containers', description: 'Inspect DESTINATION containers for damage, leaks, or contamination (containers going to customer)' },
-      { id: 'label_verification', label: 'Verify Destination Labels', description: 'Verify labels on DESTINATION containers match order specifications' },
-      { id: 'quantity_check', label: 'Count Destination Containers', description: 'Confirm correct quantity of DESTINATION containers' },
-      { id: 'scan_destination_qr', label: 'Scan Destination QR', description: 'Scan QR code on each DESTINATION container' },
-      { id: 'seal_integrity', label: 'Check Destination Seals', description: 'Check all seals on DESTINATION containers are intact' }
-    );
+    inspectionItems = [
+      {
+        id: 'scan_qr',
+        label: 'Scan QR',
+        description: 'Scan and validate the QR to bind this run automatically before moving on.'
+      },
+      {
+        id: 'inspection_info',
+        label: 'Inspection Information',
+        description: 'Confirm the auto-filled order number and timestamp look right, then select yourself as the inspector before moving on.'
+      },
+      {
+        id: 'verify_packing_label',
+        label: 'Verify / Compare (Packing Label)',
+        description: 'Work the checklist: Ship-To, company, order number, and description must all match or you document the mismatch with photos.'
+      },
+      {
+        id: 'verify_product_label',
+        label: 'Verify Product Label (Checklist + Photo Gate)',
+        description: 'Confirm grade, UN, packing group, lid, and GHS labels—with photo evidence—and flag anything off before continuing.'
+      },
+      {
+        id: 'lot_number',
+        label: 'LOT Number',
+        description: 'Capture printed lot numbers once—use the camera assist or type them in exactly as shown.'
+      },
+      {
+        id: 'lot_extraction',
+        label: 'Lot Entry & Confirm',
+        description: 'Review the captured lots, acknowledge each one, and finalize the run.'
+      }
+    ];
   } else {
     inspectionItems = [
       { id: 'final_container_check', label: 'Final Container Check', description: 'Verify containers are clean and sealed' },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
 import { buildInspectionItems } from '@/lib/inspection/items';
@@ -35,15 +35,31 @@ export default function WorkspacePage() {
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     viewQuery === 'supervisor' ? 'supervisor' : 'worker'
   );
-  const [workerStep, setWorkerStep] = useState<AgentStep>('entry');
+  const [workerStep, setWorkerStep] = useState<AgentStep>(() => {
+    const hasQrParam = Boolean(searchParams?.get('sc'));
+    const explicitWorkerView = searchParams?.get('view') === 'worker';
+    return hasQrParam || explicitWorkerView ? 'inspection' : 'entry';
+  });
   const [activeTab, setActiveTab] = useState('overview'); // For supervisor view
   const [selectedItem, setSelectedItem] = useState<any>(null); // Track which item is being inspected
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const autoStartRef = useRef(false);
 
   useEffect(() => {
     const queryMode: ViewMode = viewQuery === 'supervisor' ? 'supervisor' : 'worker';
     setViewMode((current) => (current === queryMode ? current : queryMode));
   }, [viewQuery]);
+
+  useEffect(() => {
+    const hasQrParam = Boolean(searchParams?.get('sc'));
+    const explicitWorkerView = searchParams?.get('view') === 'worker';
+    const shouldAutoStart = (hasQrParam || explicitWorkerView) && viewMode === 'worker';
+
+    if (shouldAutoStart && workerStep === 'entry' && !autoStartRef.current) {
+      autoStartRef.current = true;
+      setWorkerStep('inspection');
+    }
+  }, [searchParams, viewMode, workerStep]);
 
   const updateViewMode = useCallback(
     (mode: ViewMode) => {
@@ -218,7 +234,6 @@ export default function WorkspacePage() {
 
   // Worker View Routing based on workflowPhase
   if (viewMode === 'worker') {
-    // Determine if we should show worker view based on workflowPhase
     if (workspace.workflowPhase === 'pre_mix' || workspace.workflowPhase === 'pre_ship') {
       if (workerStep === 'entry') {
         return (

@@ -8,16 +8,8 @@ export default defineConfig({
   test: {
     // Load environment variables from .env.test
     env: loadEnv('test', process.cwd(), ''),
-    environment: 'jsdom',
     globals: true,
     setupFiles: ['./tests/setup.ts'],
-    environmentMatchGlobs: [
-      // Use node environment for API route tests
-      ['app/api/**/*.test.ts', 'node'],
-      ['lib/services/**/*.test.ts', 'node'],
-      // Use jsdom for component tests
-      ['components/**/*.test.tsx', 'jsdom'],
-    ],
     coverage: {
       reporter: ['text', 'json', 'html'],
       exclude: [
@@ -28,6 +20,25 @@ export default defineConfig({
         'drizzle/',
       ],
     },
+    pool: 'threads',
+    projects: [
+      {
+        test: {
+          name: 'dom',
+          environment: 'jsdom',
+          include: ['components/**/*.test.{ts,tsx}', 'tests/unit/**/*.spec.ts'],
+          pool: 'threads',
+        },
+      },
+      {
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['app/api/**/*.test.ts', 'lib/services/**/*.test.ts'],
+          pool: 'threads',
+        },
+      },
+    ],
   },
   resolve: {
     alias: {

@@ -11,10 +11,10 @@ import { PreShipActionButtons } from '@/components/inspection/PreShipActionButto
 
 interface PreShipInspectionWorkerProps {
   orderId: string;
-  onComplete: () => void;
+  onCompleteAction: () => void;
 }
 
-export default function PreShipInspectionWorkerView({ orderId, onComplete }: PreShipInspectionWorkerProps) {
+export default function PreShipInspectionWorkerView({ orderId, onCompleteAction }: PreShipInspectionWorkerProps) {
   const {
     currentStep,
     checkedItems,
@@ -43,7 +43,7 @@ export default function PreShipInspectionWorkerView({ orderId, onComplete }: Pre
     handleComplete,
     skipToCompletion,
     setNoteError,
-  } = usePreShipInspection({ orderId, onComplete });
+  } = usePreShipInspection({ orderId, onComplete: onCompleteAction });
 
   // Auto-start camera when reaching photo step
   useEffect(() => {

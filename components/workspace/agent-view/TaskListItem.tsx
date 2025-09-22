@@ -12,6 +12,7 @@ interface TaskListItemProps {
     name: string;
     quantity: number;
     unitPrice?: number;
+    imageUrl?: string;
   };
   workflowType?: 'pump_and_fill' | 'direct_resell';
   requiresDilution?: boolean;
@@ -99,6 +100,19 @@ export default function TaskListItem({
       </div>
       
       <div className="flex flex-col lg:flex-row gap-6">
+        {item.imageUrl && (
+          <div className="self-center lg:self-start">
+            <img
+              src={item.imageUrl}
+              alt={item.name}
+              className="h-28 w-28 rounded-lg border border-gray-200 object-cover"
+              onError={(event) => {
+                const target = event.target as HTMLImageElement
+                target.style.display = 'none'
+              }}
+            />
+          </div>
+        )}
         <div className="flex-1">
           {/* Priority Header */}
           <div className="flex items-center gap-4 mb-4">

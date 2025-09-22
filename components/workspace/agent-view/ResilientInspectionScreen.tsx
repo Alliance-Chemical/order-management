@@ -715,6 +715,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
   // Auto-create inspection run if none exist
   const [hasAutoCreated, setHasAutoCreated] = useState(false)
+  const [hasAutoSkippedQr, setHasAutoSkippedQr] = useState(false)
 
   useEffect(() => {
     // If no runs exist and we haven't already tried to create one, do it now
@@ -728,17 +729,41 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
             itemSku: item.sku || '',
             quantity: item.quantity || 1,
             unitOfMeasure: item.unitOfMeasure || 'EA',
+            containerType: 'drum' as const,
+            containerCount: item.quantity || 1,
           }))
         : [{
             itemName: 'Product',
             itemSku: '',
             quantity: 1,
             unitOfMeasure: 'EA',
+            containerType: 'drum' as const,
+            containerCount: 1,
           }]
 
       createRuns(runsToCreate)
     }
   }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems])
+
+  // Auto-skip QR scan step since we already scanned to enter the inspection
+  useEffect(() => {
+    if (activeRun && activeRun.currentStepId === 'scan_qr' && !hasAutoSkippedQr && !isPending) {
+      setHasAutoSkippedQr(true)
+      // Auto-complete the QR scan step since we already scanned to get here
+      submitStep({
+        orderId,
+        runId: activeRun.id,
+        stepId: 'scan_qr',
+        payload: {
+          qrValue: orderId || 'auto-skipped',
+          qrValidated: true,
+          validatedAt: new Date().toISOString(),
+          shortCode: workspace?.qrCode?.shortCode,
+        },
+        outcome: 'PASS',
+      })
+    }
+  }, [activeRun, hasAutoSkippedQr, isPending, submitStep, orderId, workspace])
 
   // Find the active run that the worker should work on
   const activeRun = useMemo(() => {
@@ -754,8 +779,12 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     return runs[0] || null
   }, [runs])
 
-  // Calculate progress based on Cruz workflow
-  const currentStepIndex = activeRun ? CRUZ_STEP_ORDER.indexOf(activeRun.currentStepId) : -1
+  // State for manual step navigation
+  const [selectedStepId, setSelectedStepId] = useState<CruzStepId | null>(null)
+
+  // Use selected step if set, otherwise use the current step from the run
+  const currentStep = selectedStepId || activeRun?.currentStepId || 'inspection_info'
+  const currentStepIndex = CRUZ_STEP_ORDER.indexOf(currentStep)
   const progress = activeRun ? ((currentStepIndex + 1) / CRUZ_STEP_ORDER.length) * 100 : 0
 
   // Network status
@@ -809,8 +838,9 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     )
   }
 
-  const currentStep = activeRun.currentStepId
-  const stepPayload = activeRun.steps[currentStep as keyof typeof activeRun.steps]
+  // Allow manual navigation override
+  const displayStep = selectedStepId || activeRun.currentStepId
+  const stepPayload = activeRun.steps[displayStep as keyof typeof activeRun.steps]
 
   return (
     <div className="min-h-screen bg-white">
@@ -851,25 +881,27 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         </div>
       )}
 
-      {/* Step Progress Indicators */}
+      {/* Step Progress Indicators - Clickable for navigation */}
       <div className="p-4 bg-gray-50 border-b">
         <div className="flex gap-2 overflow-x-auto pb-2">
-          {CRUZ_STEP_ORDER.map((stepId, idx) => {
+          {CRUZ_STEP_ORDER.filter(stepId => stepId !== 'scan_qr').map((stepId, idx) => {
             const isCompleted = activeRun.steps[stepId] !== undefined
-            const isCurrent = stepId === currentStep
+            const isCurrent = stepId === displayStep
 
             return (
-              <div
+              <button
                 key={stepId}
+                onClick={() => setSelectedStepId(stepId)}
                 className={`
-                  px-3 py-1 rounded-lg text-sm whitespace-nowrap
+                  px-3 py-1 rounded-lg text-sm whitespace-nowrap cursor-pointer
+                  hover:opacity-80 transition-opacity
                   ${isCurrent ? 'bg-blue-600 text-white' : ''}
                   ${isCompleted && !isCurrent ? 'bg-green-100 text-green-800' : ''}
                   ${!isCurrent && !isCompleted ? 'bg-gray-200 text-gray-600' : ''}
                 `}
               >
                 {idx + 1}. {stepId.replace(/_/g, ' ')}
-              </div>
+              </button>
             )
           })}
         </div>
@@ -885,26 +917,30 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
         <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
           <h2 className="text-2xl font-bold mb-2">
-            Step {currentStepIndex + 1}: {currentStep.replace(/_/g, ' ').toUpperCase()}
+            {displayStep === 'scan_qr' ? 'QR SCAN (Auto-Completed)' : `Step: ${displayStep.replace(/_/g, ' ').toUpperCase()}`}
           </h2>
           <p className="text-gray-700">
-            Complete this step to proceed with the inspection workflow.
+            {selectedStepId
+              ? 'You can complete any step in any order. Changes will be saved.'
+              : 'Complete this step to proceed with the inspection workflow.'}
           </p>
         </div>
 
         {/* Dynamic form rendering based on current step */}
-        {currentStep === 'scan_qr' && (
-          <ScanQrStepForm
-            run={activeRun}
-            payload={stepPayload as CruzStepPayloadMap['scan_qr']}
-            orderId={orderId}
-            onSubmit={(payload) => handleSubmit('scan_qr', payload, 'PASS')}
-            isPending={isPending}
-            bindRun={bindRun}
-          />
+        {displayStep === 'scan_qr' && (
+          <div className="text-center py-8">
+            <div className="text-green-600 text-lg font-semibold">✓ QR Scan Already Completed</div>
+            <p className="text-gray-600 mt-2">You scanned the QR code to enter this inspection.</p>
+            <Button
+              className="mt-4"
+              onClick={() => setSelectedStepId('inspection_info')}
+            >
+              Continue to Next Step
+            </Button>
+          </div>
         )}
 
-        {currentStep === 'inspection_info' && (
+        {displayStep === 'inspection_info' && (
           <InspectionInfoStepForm
             run={activeRun}
             payload={stepPayload as CruzStepPayloadMap['inspection_info']}
@@ -914,7 +950,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           />
         )}
 
-        {currentStep === 'verify_packing_label' && (
+        {displayStep === 'verify_packing_label' && (
           <VerifyPackingLabelStepForm
             run={activeRun}
             payload={stepPayload as CruzStepPayloadMap['verify_packing_label']}
@@ -924,7 +960,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           />
         )}
 
-        {currentStep === 'verify_product_label' && (
+        {displayStep === 'verify_product_label' && (
           <VerifyProductLabelStepForm
             run={activeRun}
             payload={stepPayload as CruzStepPayloadMap['verify_product_label']}
@@ -934,7 +970,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           />
         )}
 
-        {currentStep === 'lot_number' && (
+        {displayStep === 'lot_number' && (
           <LotNumberStepForm
             run={activeRun}
             payload={stepPayload as CruzStepPayloadMap['lot_number']}
@@ -944,7 +980,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           />
         )}
 
-        {currentStep === 'lot_extraction' && (
+        {displayStep === 'lot_extraction' && (
           <LotExtractionStepForm
             run={activeRun}
             payload={stepPayload as CruzStepPayloadMap['lot_extraction']}

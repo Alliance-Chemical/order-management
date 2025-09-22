@@ -10,9 +10,9 @@ interface CapturedPhoto {
 }
 
 interface PreShipPhotoCaptureProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
-  fileInputRef: React.RefObject<HTMLInputElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   showCamera: boolean;
   isProcessing: boolean;
   capturedPhotos: CapturedPhoto[];

@@ -13,12 +13,25 @@ interface FormData {
   datePerformed: string
   inspector: string
   packingSlipVerified: boolean
+  packingSlipChecks: {
+    shipToOk: boolean
+    companyOk: boolean
+    orderNumberOk: boolean
+    productDescriptionOk: boolean
+  }
   lotNumbers: string
   coaStatus: string
   productInspection: {
-    check_label_info: boolean
+    grade_correct: boolean
+    un_number_correct: boolean
+    packing_group_correct: boolean
     lid_inspection: boolean
     ghs_labels: boolean
+  }
+  containerQR: {
+    scanned: boolean
+    qrData: string
+    matches_label: boolean
   }
   lidPhotos: Array<{ url: string; name: string; timestamp: string }>
   lotNumberPhoto: { url: string; base64?: string; timestamp: string } | null
@@ -71,7 +84,7 @@ export function useInspection({
   const [showScanner, setShowScanner] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
   const [currentFailedItem, setCurrentFailedItem] = useState<InspectionItem | null>(null)
-  const [networkStatus, setNetworkStatus] = useState(navigator.onLine)
+  const [networkStatus, setNetworkStatus] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [queueStatus, setQueueStatus] = useState(inspectionQueue.getStatus())
   const [showMeasurementsModal, setShowMeasurementsModal] = useState(false)
   const [pendingCompletion, setPendingCompletion] = useState<{
@@ -85,13 +98,26 @@ export function useInspection({
   const [formData, setFormData] = useState<FormData>({
     datePerformed: new Date().toISOString().split('T')[0],
     inspector: '',
-    packingSlipVerified: false,
+    packingSlipVerified: true,
+    packingSlipChecks: {
+      shipToOk: true,
+      companyOk: true,
+      orderNumberOk: true,
+      productDescriptionOk: true,
+    },
     lotNumbers: '',
     coaStatus: '',
     productInspection: {
-      check_label_info: false,
+      grade_correct: false,
+      un_number_correct: false,
+      packing_group_correct: false,
       lid_inspection: false,
       ghs_labels: false
+    },
+    containerQR: {
+      scanned: false,
+      qrData: '',
+      matches_label: false
     },
     lidPhotos: [],
     lotNumberPhoto: null,
@@ -113,6 +139,10 @@ export function useInspection({
     
     const handleOffline = () => {
       setNetworkStatus(false)
+    }
+
+    if (typeof window === 'undefined') {
+      return
     }
 
     window.addEventListener('online', handleOnline)
@@ -150,24 +180,29 @@ export function useInspection({
     
     if (currentItem.id === 'scan_destination_qr') return 'destination'
     if (currentItem.id === 'scan_master_label') return 'order_master'
+    if (currentItem.id === 'scan_qr') return 'order_master'
     
     return undefined
   }
 
-  const requiresQRScan = inspectionState.currentItem && (
-    inspectionState.currentItem.id === 'scan_destination_qr' ||
-    inspectionState.currentItem.id === 'scan_master_label'
-  )
+  const qrScanStepIds = new Set(['scan_qr', 'scan_destination_qr', 'scan_master_label'])
+  const requiresQRScan = qrScanStepIds.has(inspectionState.currentItem?.id ?? '')
 
   // Form field update functions
   const updateFormField = (field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  const updateNestedField = (parent: string, field: string, value: any) => {
+  const updateNestedField = <
+    Parent extends 'productInspection' | 'containerQR',
+    Key extends keyof FormData[Parent]
+  >(parent: Parent, field: Key, value: FormData[Parent][Key]) => {
     setFormData(prev => ({
       ...prev,
-      [parent]: { ...prev[parent as keyof FormData], [field]: value }
+      [parent]: {
+        ...(prev[parent] as FormData[Parent]),
+        [field]: value
+      }
     }))
   }
 
@@ -256,23 +291,46 @@ export function useInspection({
   // QR scan handling
   const handleQRScan = (data: any, shortCode?: string) => {
     if (data) {
-      inspectionState.recordQRScan(inspectionState.currentItem.id, shortCode || JSON.stringify(data))
-      inspectionState.recordResult(inspectionState.currentItem.id, 'pass')
-      
-      inspectionQueue.enqueue({
-        type: 'qr_scan',
-        orderId,
-        data: {
-          stepId: inspectionState.currentItem.id,
-          qrData: data,
-          shortCode,
-          timestamp: new Date().toISOString()
-        }
-      })
+      // Check if this is a container QR scan during product inspection
+      if (inspectionState.currentItem?.id === 'product_inspection' && formData.containerQR.scanned) {
+        // Handle container QR verification
+        updateFormField('containerQR', {
+          ...formData.containerQR,
+          qrData: shortCode || JSON.stringify(data),
+          scanned: true
+        })
+
+        inspectionQueue.enqueue({
+          type: 'container_qr_scan',
+          orderId,
+          data: {
+            stepId: 'product_inspection_container_qr',
+            qrData: data,
+            shortCode,
+            timestamp: new Date().toISOString()
+          }
+        })
+      } else {
+        // Handle regular workflow QR scans (if any still exist)
+        inspectionState.recordQRScan(inspectionState.currentItem.id, shortCode || JSON.stringify(data))
+        inspectionState.recordResult(inspectionState.currentItem.id, 'pass')
+
+        inspectionQueue.enqueue({
+          type: 'qr_scan',
+          orderId,
+          data: {
+            stepId: inspectionState.currentItem.id,
+            qrData: data,
+            shortCode,
+            timestamp: new Date().toISOString()
+          }
+        })
+
+        inspectionState.nextStep()
+      }
     }
-    
+
     setShowScanner(false)
-    inspectionState.nextStep()
   }
 
   const handleSkipQRScan = (reason: string) => {

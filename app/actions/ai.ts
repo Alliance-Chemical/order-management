@@ -127,8 +127,13 @@ export async function extractLotNumbers(data: {
 }) {
   try {
     const { imageBase64, mimeType } = data
-    
-    const prompt = `Extract all lot numbers, batch codes, and serial numbers visible in this image. 
+
+    const openaiApiKey = process.env.OPENAI_API_KEY || process.env.OPEN_AI_KEY
+    if (!openaiApiKey) {
+      throw new Error('OpenAI API key not configured')
+    }
+
+    const prompt = `Extract all lot numbers, batch codes, and serial numbers visible in this image.
 Look for:
 - Lot numbers (LOT, L#, Lot#)
 - Batch codes (BATCH, B#)
@@ -138,20 +143,43 @@ Look for:
 
 Return ONLY a JSON array of the extracted codes, like: ["LOT123", "BATCH456"]
 If no codes are found, return an empty array: []`
-    
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          mimeType,
-          data: imageBase64
-        }
-      }
-    ])
-    
-    const response = await result.response
-    const text = response.text()
-    
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-5-nano-2025-08-07',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: prompt
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${imageBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 300
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+    }
+
+    const result = await response.json()
+    const text = result.choices[0]?.message?.content || ''
+
     // Try to parse as JSON array
     let lotNumbers = []
     try {
@@ -164,7 +192,7 @@ If no codes are found, return an empty array: []`
       const matches = text.match(/[A-Z0-9]{4,}/gi) || []
       lotNumbers = matches
     }
-    
+
     return {
       success: true,
       lotNumbers

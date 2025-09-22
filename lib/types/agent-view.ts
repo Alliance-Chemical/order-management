@@ -4,6 +4,7 @@ export interface InspectionItem {
   id: string;
   label: string;
   description: string;
+  details?: string[];
 }
 
 export interface InspectionResults {

@@ -2,11 +2,12 @@
 
 import { WorkspaceService } from '@/lib/services/workspace/service'
 import { getOptimizedDb } from '@/lib/db/neon'
-import { documents } from '@/lib/db/schema/qr-workspace'
+import { documents, workspaces } from '@/lib/db/schema/qr-workspace'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 const workspaceService = new WorkspaceService()
 
@@ -245,7 +246,63 @@ export async function getWorkspaceDocuments(orderId: string) {
   }
 }
 
-export async function deleteDocument(documentId: number, orderId: string) {
+export async function deleteDocument(documentId: string) {
+  try {
+    const db = getOptimizedDb()
+    const [document] = await db
+      .delete(documents)
+      .where(eq(documents.id, documentId))
+      .returning()
+
+    if (!document) {
+      return { success: false, error: 'Document not found' }
+    }
+
+    if (document.s3Key && s3Client && process.env.AWS_S3_BUCKET) {
+      try {
+        const deleteCommand = new DeleteObjectCommand({
+          Bucket: process.env.AWS_S3_BUCKET,
+          Key: document.s3Key,
+        })
+        await s3Client.send(deleteCommand)
+      } catch (error) {
+        console.error('Failed to delete S3 object for document', documentId, error)
+      }
+    }
+
+    let workspacePath: string | null = null
+    if (document.workspaceId) {
+      const workspace = await db.query.workspaces.findFirst({ where: eq(workspaces.id, document.workspaceId) })
+      if (workspace) {
+        workspacePath = `/workspace/${workspace.orderId}`
+        await workspaceService.repository.logActivity({
+          workspaceId: workspace.id,
+          activityType: 'document_deleted',
+          performedBy: 'system',
+          metadata: {
+            documentId,
+            documentType: document.documentType,
+            fileName: (document as any).fileName ?? document.documentName,
+          },
+        })
+      }
+    }
+
+    if (workspacePath) {
+      revalidatePath(workspacePath)
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting document:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete document',
+    }
+  }
+}
+
+export async function deleteWorkspaceDocument(documentId: number, orderId: string) {
   try {
     const db = getOptimizedDb()
     

@@ -94,6 +94,19 @@ module.exports = {
         'success-check': 'successCheck 0.5s ease-out',
         'error-shake': 'errorShake 0.5s ease-out',
         'loading-truck': 'loadingTruck 1.5s ease-in-out infinite',
+        'accordion-down': 'accordionDown 0.2s ease-out',
+        'accordion-up': 'accordionUp 0.2s ease-out',
+        // Sheet/Dialog animations
+        'fade-in': 'fadeIn 0.2s ease-out',
+        'fade-out': 'fadeOut 0.2s ease-out',
+        'slide-in-from-top': 'slideInFromTop 0.3s ease-out',
+        'slide-in-from-bottom': 'slideInFromBottom 0.3s ease-out',
+        'slide-in-from-left': 'slideInFromLeft 0.3s ease-out',
+        'slide-in-from-right': 'slideInFromRight 0.3s ease-out',
+        'slide-out-to-top': 'slideOutToTop 0.3s ease-out',
+        'slide-out-to-bottom': 'slideOutToBottom 0.3s ease-out',
+        'slide-out-to-left': 'slideOutToLeft 0.3s ease-out',
+        'slide-out-to-right': 'slideOutToRight 0.3s ease-out',
       },
       keyframes: {
         buttonPress: {
@@ -118,6 +131,55 @@ module.exports = {
         loadingTruck: {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(100%)' },
+        },
+        accordionDown: {
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' },
+        },
+        accordionUp: {
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' },
+        },
+        // Sheet/Dialog keyframes
+        fadeIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        fadeOut: {
+          from: { opacity: '1' },
+          to: { opacity: '0' },
+        },
+        slideInFromTop: {
+          from: { transform: 'translateY(-100%)' },
+          to: { transform: 'translateY(0)' },
+        },
+        slideInFromBottom: {
+          from: { transform: 'translateY(100%)' },
+          to: { transform: 'translateY(0)' },
+        },
+        slideInFromLeft: {
+          from: { transform: 'translateX(-100%)' },
+          to: { transform: 'translateX(0)' },
+        },
+        slideInFromRight: {
+          from: { transform: 'translateX(100%)' },
+          to: { transform: 'translateX(0)' },
+        },
+        slideOutToTop: {
+          from: { transform: 'translateY(0)' },
+          to: { transform: 'translateY(-100%)' },
+        },
+        slideOutToBottom: {
+          from: { transform: 'translateY(0)' },
+          to: { transform: 'translateY(100%)' },
+        },
+        slideOutToLeft: {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(-100%)' },
+        },
+        slideOutToRight: {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(100%)' },
         },
       },
       screens: {

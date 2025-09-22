@@ -41,9 +41,9 @@ export function usePreShipInspection({ orderId, onComplete }: UsePreShipInspecti
       : `${Date.now()}_${Math.random().toString(36).slice(2,9)}`
   );
   
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Auto-start camera when reaching photo step
   useEffect(() => {

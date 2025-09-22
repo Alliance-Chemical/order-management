@@ -8,6 +8,7 @@ import { drizzle } from 'drizzle-orm/neon-http';
 import * as qrSchema from '../../../lib/db/schema/qr-workspace';
 import * as freightSchema from '../../../lib/db/schema/freight';
 import * as ragSchema from '../../../lib/db/schema/rag-embeddings';
+import * as iso9001Schema from '../../../lib/db/schema/iso9001';
 
 // connectionString will be evaluated inside initializeDb() to ensure env vars are loaded
 
@@ -36,7 +37,7 @@ function initializeDb() {
       fullResults: !isEdge, // Smaller payloads for Edge
     });
     
-    const schema = { ...qrSchema, ...freightSchema, ...ragSchema };
+    const schema = { ...qrSchema, ...freightSchema, ...ragSchema, ...iso9001Schema };
     _db = drizzle(_sql, { schema });
   }
   
