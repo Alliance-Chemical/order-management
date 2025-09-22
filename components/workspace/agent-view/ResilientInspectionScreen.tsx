@@ -374,7 +374,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        <p className="font-medium text-slate-800">Verify Physical Package</p>
+        <p className="font-medium text-slate-800">Package Match Verification</p>
         <p>Confirm the physical package matches this order information above.</p>
       </div>
 
@@ -605,7 +605,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        <p className="font-medium text-slate-800">Verify Product Labels</p>
+        <p className="font-medium text-slate-800">Product Label Compliance</p>
         <p>Confirm the physical labels match the expected regulatory information above.</p>
       </div>
 
@@ -986,7 +986,7 @@ function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orde
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-800">Packing Label Review</p>
+            <p className="text-sm font-semibold text-slate-800">Package Match Verification</p>
             {statusBadge(packing?.gate1Outcome ?? 'PENDING', packing?.gate1Outcome)}
           </div>
           <p className="mt-2 text-sm text-slate-600">
@@ -1001,7 +1001,7 @@ function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orde
 
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-800">Product Label Review</p>
+            <p className="text-sm font-semibold text-slate-800">Product Label Compliance</p>
             {statusBadge(product?.gate2Outcome ?? 'PENDING', product?.gate2Outcome)}
           </div>
           <p className="mt-2 text-sm text-slate-600">

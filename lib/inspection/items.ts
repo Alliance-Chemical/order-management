@@ -15,33 +15,33 @@ export function buildInspectionItems(workspace: WorkspaceLike, _selectedItem?: O
     inspectionItems = [
       {
         id: 'scan_qr',
-        label: 'Scan QR',
-        description: 'Scan and validate the QR to bind this run automatically before moving on.'
+        label: 'QR Bind & Verify',
+        description: 'Scan or enter the container QR code so the run is bound before any checks begin.'
       },
       {
         id: 'inspection_info',
-        label: 'Inspection Information',
-        description: 'Confirm the auto-filled order number and timestamp look right, then select yourself as the inspector before moving on.'
+        label: 'Inspection Header',
+        description: 'Confirm the order number, timestamp, and assigned inspector details up front.'
       },
       {
         id: 'verify_packing_label',
-        label: 'Verify / Compare (Packing Label)',
-        description: 'Work the checklist: Ship-To, company, order number, and description must all match or you document the mismatch with photos.'
+        label: 'Package Match Verification',
+        description: 'Compare the physical package to the order—ship-to, company, order number, and product description must align or be documented.'
       },
       {
         id: 'verify_product_label',
-        label: 'Verify Product Label (Checklist + Photo Gate)',
-        description: 'Confirm grade, UN, packing group, lid, and GHS labels—with photo evidence—and flag anything off before continuing.'
+        label: 'Product Label Compliance',
+        description: 'Check grade, UN number, packing group, closure integrity, and GHS labels with supporting photos.'
       },
       {
         id: 'lot_number',
-        label: 'LOT Number',
-        description: 'Capture printed lot numbers once—use the camera assist or type them in exactly as shown.'
+        label: 'Lot Capture',
+        description: 'Record the printed lot numbers—type them exactly as shown or use the AI assist.'
       },
       {
         id: 'final_review',
         label: 'Final Review & Sign Off',
-        description: 'Review all inspection data, reconfirm lots, and finalize the run.'
+        description: 'Review the inspection summary, reconfirm the lot entries, and sign off before completion.'
       }
     ];
   } else {

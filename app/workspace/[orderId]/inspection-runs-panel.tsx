@@ -48,11 +48,11 @@ interface CreateRunFormState {
 }
 
 const STEP_LABELS: Record<CruzStepId, string> = {
-  scan_qr: 'Scan QR',
-  inspection_info: 'Inspection Information',
-  verify_packing_label: 'Verify / Compare (Packing Label)',
-  verify_product_label: 'Verify Product Label (Checklist + Photo Gate)',
-  lot_number: 'LOT Number',
+  scan_qr: 'QR Bind & Verify',
+  inspection_info: 'Inspection Header',
+  verify_packing_label: 'Package Match Verification',
+  verify_product_label: 'Product Label Compliance',
+  lot_number: 'Lot Capture',
   final_review: 'Final Review & Sign Off',
 }
 
@@ -972,7 +972,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        <p className="font-medium text-slate-800">Packing label checklist</p>
+        <p className="font-medium text-slate-800">Package Match Verification</p>
         <p>Toggle off anything that does not match the packing slip. Any unchecked item automatically records this step as a FAIL.</p>
         <p className="mt-2 text-xs text-slate-500">Current status: {finalOutcome === 'PASS' ? 'PASS — all items match.' : 'FAIL — at least one mismatch needs documentation.'}</p>
       </div>
@@ -1145,7 +1145,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        <p className="font-medium text-slate-800">Product label checklist</p>
+        <p className="font-medium text-slate-800">Product Label Compliance</p>
         <p>Confirm every regulatory element on the product label. Any unchecked item automatically records this step as a FAIL and keeps the run in re-verify.</p>
         <p className="mt-2 text-xs text-slate-500">Current status: {finalOutcome === 'PASS' ? 'PASS — all requirements satisfied.' : 'FAIL — at least one label element needs follow-up.'}</p>
       </div>
@@ -1369,7 +1369,7 @@ function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orde
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-800">Packing Label Review</p>
+            <p className="text-sm font-semibold text-slate-800">Package Match Verification</p>
             {statusBadge(packing?.gate1Outcome ?? 'PENDING', packing?.gate1Outcome)}
           </div>
           <p className="mt-2 text-sm text-slate-600">
@@ -1384,7 +1384,7 @@ function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orde
 
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-800">Product Label Review</p>
+            <p className="text-sm font-semibold text-slate-800">Product Label Compliance</p>
             {statusBadge(product?.gate2Outcome ?? 'PENDING', product?.gate2Outcome)}
           </div>
           <p className="mt-2 text-sm text-slate-600">
