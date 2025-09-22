@@ -570,13 +570,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
       ? `${fallbackCdnBase.replace(/\/$/, '')}/${primaryItem.sku.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`
       : null
 
-  // Extract regulatory info from product name/description if available
   const productName = primaryItem?.name || 'Product'
-  const hasUN = productName.includes('UN') || primaryItem?.sku?.includes('UN')
-  const unNumber = hasUN ? productName.match(/UN\d{4}/)?.[0] || 'UN####' : 'N/A'
-  const grade = productName.includes('ACS') ? 'ACS' :
-               productName.includes('USP') ? 'USP' :
-               productName.includes('Food') ? 'Food Grade' : 'Tech Grade'
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -596,21 +590,9 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
           )}
           <div className="flex-1 space-y-2">
             <h3 className="text-lg font-bold text-purple-900">{productName}</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="bg-white rounded p-2 border border-purple-200">
-                <span className="text-purple-600 font-medium">SKU:</span>
-                <span className="ml-1 font-mono">{primaryItem?.sku || 'N/A'}</span>
-              </div>
-              <div className="bg-white rounded p-2 border border-purple-200">
-                <span className="text-purple-600 font-medium">Grade:</span>
-                <span className="ml-1">{grade}</span>
-              </div>
-              {hasUN && (
-                <div className="bg-white rounded p-2 border border-purple-200">
-                  <span className="text-purple-600 font-medium">UN:</span>
-                  <span className="ml-1">{unNumber}</span>
-                </div>
-              )}
+            <div className="text-sm text-purple-700">
+              <div className="font-mono">{primaryItem?.sku || 'Product SKU'}</div>
+              <div className="mt-1">{primaryItem?.quantity || 1} {primaryItem?.unitOfMeasure || 'units'}</div>
             </div>
           </div>
         </div>
@@ -629,7 +611,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
             onChange={(event) => updateCheck('gradeOk', event.target.checked)}
             className="w-5 h-5"
           />
-          Grade matches: <span className="text-purple-700 font-semibold">{grade}</span>
+          Grade correct (ACS, Tech, USP, Food, etc.)
         </label>
         <label className="flex items-center gap-3 text-base font-medium text-slate-700">
           <input
@@ -638,7 +620,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
             onChange={(event) => updateCheck('unOk', event.target.checked)}
             className="w-5 h-5"
           />
-          UN number correct: <span className="text-purple-700 font-semibold">{hasUN ? unNumber : 'Not hazmat'}</span>
+          UN number correct (if applicable)
         </label>
         <label className="flex items-center gap-3 text-base font-medium text-slate-700">
           <input
