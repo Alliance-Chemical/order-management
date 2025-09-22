@@ -39,9 +39,9 @@ export function buildInspectionItems(workspace: WorkspaceLike, _selectedItem?: O
         description: 'Capture printed lot numbers once—use the camera assist or type them in exactly as shown.'
       },
       {
-        id: 'lot_extraction',
-        label: 'Lot Entry & Confirm',
-        description: 'Review the captured lots, acknowledge each one, and finalize the run.'
+        id: 'final_review',
+        label: 'Final Review & Sign Off',
+        description: 'Review all inspection data, reconfirm lots, and finalize the run.'
       }
     ];
   } else {

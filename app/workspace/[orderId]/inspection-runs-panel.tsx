@@ -25,7 +25,6 @@ import {
   type CruzStepId,
   type CruzStepPayloadMap,
   type InspectionPhoto,
-  type ConfirmedLotEntry,
   normalizeInspectionState,
 } from '@/lib/inspection/cruz'
 import { INSPECTORS } from '@/lib/inspection/inspectors'
@@ -54,7 +53,7 @@ const STEP_LABELS: Record<CruzStepId, string> = {
   verify_packing_label: 'Verify / Compare (Packing Label)',
   verify_product_label: 'Verify Product Label (Checklist + Photo Gate)',
   lot_number: 'LOT Number',
-  lot_extraction: 'Lot Entry & Confirm',
+  final_review: 'Final Review & Sign Off',
 }
 
 interface StepFormProps<StepId extends CruzStepId = CruzStepId> {
@@ -666,12 +665,12 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
               />
             )}
 
-            {currentStep === 'lot_extraction' && (
-              <LotExtractionStepForm
+            {currentStep === 'final_review' && (
+              <FinalReviewStepForm
                 run={run}
-                payload={stepPayload as CruzStepPayloadMap['lot_extraction']}
+                payload={stepPayload as CruzStepPayloadMap['final_review']}
                 orderId={orderId}
-                onSubmit={(payload) => handleSubmit('lot_extraction', payload, 'PASS')}
+                onSubmit={(payload) => handleSubmit('final_review', payload, 'PASS')}
                 isPending={isPending}
               />
             )}
@@ -1224,11 +1223,9 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
   )
 }
 
-function LotNumberStepForm({ run, payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_number'>) {
+function LotNumberStepForm({ run: _run, payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_number'>) {
   const [lots, setLots] = useState(() => payload?.lots?.map((lot) => lot.lotRaw) || [''])
   const [sameForAll, setSameForAll] = useState(payload?.sameForAll ?? false)
-  const previouslyConfirmedLots = (run.steps?.lot_extraction?.lots ?? []) as ConfirmedLotEntry[]
-  const hasPriorConfirmation = previouslyConfirmedLots.length > 0
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1279,64 +1276,64 @@ function LotNumberStepForm({ run, payload, onSubmit, isPending, orderId: _orderI
         </Button>
       </div>
 
-      {hasPriorConfirmation && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <p className="font-medium text-amber-900">Lots already confirmed</p>
-          <p className="mt-1 text-xs">You confirmed {previouslyConfirmedLots.length} lot{previouslyConfirmedLots.length === 1 ? '' : 's'} in the next step. Only edit if something changed.</p>
-          <div className="mt-3 space-y-1 text-xs">
-            {previouslyConfirmedLots.map((lot: ConfirmedLotEntry, index: number) => (
-              <div key={lot.id ?? index} className="font-mono">• {lot.lotRaw}</div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="space-y-3">
         <Button type="submit" disabled={isPending || lots.some((lotValue: string) => !lotValue.trim())}>
           {isPending ? 'Saving…' : 'Save lots'}
         </Button>
-        {hasPriorConfirmation && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              onSubmit(
-                {
-                  lots: lots.map((lotValue: string, index: number) => ({
-                    id: payload?.lots?.[index]?.id ?? `lot_${index}_${Date.now()}`,
-                    lotRaw: lotValue.trim(),
-                  })),
-                  sameForAll,
-                  completedAt: new Date().toISOString(),
-                },
-                'PASS'
-              )
-            }}
-            disabled={isPending}
-          >
-            Skip — reuse confirmed lots
-          </Button>
-        )}
       </div>
     </form>
   )
 }
 
-function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_extraction'>) {
-  const sourceLots = run.steps.lot_number?.lots ?? []
-  const confirmedLots = payload?.lots ?? sourceLots.map((lot) => ({ ...lot, confirmed: false }))
-  const [lots, setLots] = useState(confirmedLots)
+function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'final_review'>) {
+  const inspectionInfo = run.steps.inspection_info
+  const packing = run.steps.verify_packing_label
+  const product = run.steps.verify_product_label
+  const lotData = run.steps.lot_number
+
+  const [approvals, setApprovals] = useState(() => ({
+    packingLabel: payload?.approvals?.packingLabel ?? false,
+    productLabel: payload?.approvals?.productLabel ?? false,
+    lotNumbers: payload?.approvals?.lotNumbers ?? false,
+  }))
+  const [finalNotes, setFinalNotes] = useState(payload?.finalNotes ?? '')
+
+  const lotNumbers = lotData?.lots ?? []
+  const allApproved = approvals.packingLabel && approvals.productLabel && approvals.lotNumbers
+
+  const statusBadge = (label: string, outcome?: 'PASS' | 'FAIL') => (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+        outcome === 'PASS'
+          ? 'bg-green-100 text-green-700'
+          : outcome === 'FAIL'
+            ? 'bg-amber-100 text-amber-700'
+            : 'bg-slate-100 text-slate-600'
+      }`}
+    >
+      {label}
+    </span>
+  )
+
+  const handleCheckboxChange = (key: keyof typeof approvals) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const checked = event.target.checked
+    setApprovals((prev) => ({ ...prev, [key]: checked }))
+  }
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (lots.some((lotEntry: ConfirmedLotEntry) => !lotEntry.confirmed)) {
+    if (!allApproved) {
       return
     }
 
     onSubmit(
       {
-        lots: lots.map((lot: ConfirmedLotEntry) => ({ ...lot, confirmed: true })),
-        parseMode: 'none',
+        approvals: {
+          packingLabel: approvals.packingLabel,
+          productLabel: approvals.productLabel,
+          lotNumbers: approvals.lotNumbers,
+        },
+        finalNotes: finalNotes.trim() || undefined,
         completedAt: new Date().toISOString(),
       },
       'PASS'
@@ -1344,28 +1341,107 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-slate-600">Confirm each recorded lot. All lots must be acknowledged before the run can complete.</p>
-
-      <div className="space-y-3">
-        {lots.map((lot: ConfirmedLotEntry, index: number) => (
-          <label key={lot.id ?? index} className="flex items-center gap-3 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={lot.confirmed}
-              onChange={(event) => {
-                const next = [...lots]
-                next[index] = { ...lot, confirmed: event.target.checked }
-                setLots(next)
-              }}
-            />
-            <span className="font-mono text-sm">{lot.lotRaw}</span>
-          </label>
-        ))}
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-medium text-slate-800">Inspection Summary</p>
+        <div className="mt-3 grid gap-3 text-sm text-slate-700 md:grid-cols-2">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Inspector</p>
+            <p>{inspectionInfo?.inspector || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Performed</p>
+            <p>
+              {inspectionInfo?.datePerformed || '—'} {inspectionInfo?.timePerformed ? `@ ${inspectionInfo.timePerformed}` : ''}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Order Number</p>
+            <p>{inspectionInfo?.orderNumber || workspace.orderNumber || orderId}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Notes</p>
+            <p>{inspectionInfo?.notes || 'None recorded'}</p>
+          </div>
+        </div>
       </div>
 
-      <Button type="submit" disabled={isPending || lots.some((lotEntry: ConfirmedLotEntry) => !lotEntry.confirmed)}>
-        {isPending ? 'Saving…' : 'Finalize lot confirmation'}
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-800">Packing Label Review</p>
+            {statusBadge(packing?.gate1Outcome ?? 'PENDING', packing?.gate1Outcome)}
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            Ship-to, company, order number, and description were checked against the physical package.
+          </p>
+          {packing?.mismatchReason && (
+            <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">
+              Reported issue: {packing.mismatchReason}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-800">Product Label Review</p>
+            {statusBadge(product?.gate2Outcome ?? 'PENDING', product?.gate2Outcome)}
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            Grade, UN, packing group, lid security, and GHS labels were reviewed with photo evidence.
+          </p>
+          {product?.issueReason && (
+            <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">
+              Reported issue: {product.issueReason}
+            </p>
+          )}
+        </div>
+
+        <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm font-semibold text-slate-800">Lot Numbers Captured</p>
+          {lotNumbers.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-600">No lot numbers recorded yet. Return to the previous step to add them.</p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {lotNumbers.map((lot, index) => (
+                <li key={lot.id ?? index} className="font-mono">
+                  • {lot.lotRaw}
+                </li>
+              ))}
+            </ul>
+          )}
+          {lotData?.sameForAll && lotNumbers.length > 0 && (
+            <p className="mt-2 text-xs text-slate-500">Same lot applies to all containers.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs uppercase tracking-wide text-slate-500">Final Acknowledgements</p>
+        <label className="flex items-start gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={approvals.packingLabel} onChange={handleCheckboxChange('packingLabel')} />
+          <span>I confirm the packing label findings above are complete.</span>
+        </label>
+        <label className="flex items-start gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={approvals.productLabel} onChange={handleCheckboxChange('productLabel')} />
+          <span>I confirm the product label review is complete.</span>
+        </label>
+        <label className="flex items-start gap-3 text-sm text-slate-700">
+          <input type="checkbox" checked={approvals.lotNumbers} onChange={handleCheckboxChange('lotNumbers')} />
+          <span>I confirm the recorded lot number(s) are accurate.</span>
+        </label>
+        {!allApproved && (
+          <p className="text-xs text-amber-700">Acknowledge each item to finalize the inspection.</p>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700">Final notes (optional)</label>
+        <Textarea value={finalNotes} onChange={(event) => setFinalNotes(event.target.value)} rows={3} placeholder="Any final observations before completing the run" />
+      </div>
+
+      <Button type="submit" disabled={isPending || !allApproved}>
+        {isPending ? 'Saving…' : 'Complete Inspection ✓'}
       </Button>
     </form>
   )

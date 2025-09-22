@@ -6,7 +6,7 @@ export const CRUZ_STEP_ORDER = [
   'verify_packing_label',
   'verify_product_label',
   'lot_number',
-  'lot_extraction',
+  'final_review',
 ] as const;
 
 export type CruzStepId = (typeof CRUZ_STEP_ORDER)[number];
@@ -83,13 +83,13 @@ export interface LotNumberStepPayload {
   completedAt: string;
 }
 
-export interface ConfirmedLotEntry extends LotNumberEntry {
-  confirmed: boolean;
-}
-
-export interface LotExtractionStepPayload {
-  lots: ConfirmedLotEntry[];
-  parseMode: 'none';
+export interface FinalReviewStepPayload {
+  approvals: {
+    packingLabel: boolean;
+    productLabel: boolean;
+    lotNumbers: boolean;
+  };
+  finalNotes?: string;
   completedAt: string;
 }
 
@@ -99,7 +99,7 @@ export type CruzStepPayloadMap = {
   verify_packing_label: VerifyPackingLabelStepPayload;
   verify_product_label: VerifyProductLabelStepPayload;
   lot_number: LotNumberStepPayload;
-  lot_extraction: LotExtractionStepPayload;
+  final_review: FinalReviewStepPayload;
 };
 
 export type CruzStepPayload = CruzStepPayloadMap[CruzStepId];
@@ -227,7 +227,7 @@ export function computeRunStatusAfterStep(
     return 'needs_reverify';
   }
 
-  if (stepId === 'lot_extraction' && outcome === 'PASS') {
+  if (stepId === 'final_review' && outcome === 'PASS') {
     return 'completed';
   }
 
@@ -351,15 +351,13 @@ const lotNumberSchema = z.object({
   completedAt: z.string(),
 });
 
-const lotExtractionSchema = z.object({
-  lots: z.array(
-    z.object({
-      id: z.string(),
-      lotRaw: z.string().min(1),
-      confirmed: z.literal(true),
-    })
-  ).min(1),
-  parseMode: z.literal('none'),
+const finalReviewSchema = z.object({
+  approvals: z.object({
+    packingLabel: z.literal(true),
+    productLabel: z.literal(true),
+    lotNumbers: z.literal(true),
+  }),
+  finalNotes: z.string().optional(),
   completedAt: z.string(),
 });
 
@@ -411,8 +409,8 @@ export function validateStepPayload(stepId: CruzStepId, payload: unknown) {
         .parse(payload);
     case 'lot_number':
       return lotNumberSchema.parse(payload);
-    case 'lot_extraction':
-      return lotExtractionSchema.parse(payload);
+    case 'final_review':
+      return finalReviewSchema.parse(payload);
     default:
       return payload;
   }

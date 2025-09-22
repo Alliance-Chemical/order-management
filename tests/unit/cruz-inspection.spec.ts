@@ -106,12 +106,13 @@ describe('computeRunStatusAfterStep', () => {
     expect(status).toBe('needs_reverify')
   })
 
-  it('returns completed when lot extraction passes', () => {
-    const status = computeRunStatusAfterStep(baseRun, 'lot_extraction', {
-      lots: [
-        { id: 'lot-1', lotRaw: 'ABC123', confirmed: true },
-      ],
-      parseMode: 'none',
+  it('returns completed when final review passes', () => {
+    const status = computeRunStatusAfterStep(baseRun, 'final_review', {
+      approvals: {
+        packingLabel: true,
+        productLabel: true,
+        lotNumbers: true,
+      },
       completedAt: new Date().toISOString(),
     }, 'PASS')
 
