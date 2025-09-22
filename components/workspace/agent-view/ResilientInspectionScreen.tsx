@@ -467,7 +467,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
   )
 }
 
-function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'verify_product_label'>) {
+function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems }: StepFormProps<'verify_product_label'> & { orderItems?: any[] }) {
   const [checks, setChecks] = useState({
     gradeOk: payload?.gradeOk ?? true,
     unOk: payload?.unOk ?? true,
@@ -561,33 +561,111 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
     setChecks((prev) => ({ ...prev, [key]: value }))
   }
 
+  // Get product info for display
+  const primaryItem = orderItems?.[0]
+  const fallbackCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE
+  const productImage = primaryItem?.imageUrl
+    ? primaryItem.imageUrl
+    : primaryItem?.sku && fallbackCdnBase
+      ? `${fallbackCdnBase.replace(/\/$/, '')}/${primaryItem.sku.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`
+      : null
+
+  // Extract regulatory info from product name/description if available
+  const productName = primaryItem?.name || 'Product'
+  const hasUN = productName.includes('UN') || primaryItem?.sku?.includes('UN')
+  const unNumber = hasUN ? productName.match(/UN\d{4}/)?.[0] || 'UN####' : 'N/A'
+  const grade = productName.includes('ACS') ? 'ACS' :
+               productName.includes('USP') ? 'USP' :
+               productName.includes('Food') ? 'Food Grade' : 'Tech Grade'
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Product Info Display with Image */}
+      <div className="rounded-lg border-2 border-purple-200 bg-purple-50 p-4">
+        <div className="flex gap-4">
+          {productImage && (
+            <div className="flex-shrink-0">
+              <img
+                src={productImage}
+                alt={primaryItem?.name || 'Product'}
+                className="h-32 w-32 rounded-lg object-cover border-2 border-purple-200"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+              <p className="text-xs text-purple-700 mt-1 text-center">Product Image</p>
+            </div>
+          )}
+          <div className="flex-1 space-y-2">
+            <h3 className="text-lg font-bold text-purple-900">{productName}</h3>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="bg-white rounded p-2 border border-purple-200">
+                <span className="text-purple-600 font-medium">SKU:</span>
+                <span className="ml-1 font-mono">{primaryItem?.sku || 'N/A'}</span>
+              </div>
+              <div className="bg-white rounded p-2 border border-purple-200">
+                <span className="text-purple-600 font-medium">Grade:</span>
+                <span className="ml-1">{grade}</span>
+              </div>
+              {hasUN && (
+                <div className="bg-white rounded p-2 border border-purple-200">
+                  <span className="text-purple-600 font-medium">UN:</span>
+                  <span className="ml-1">{unNumber}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        <p className="font-medium text-slate-800">Product label checklist</p>
-        <p>Confirm every regulatory element on the product label.</p>
+        <p className="font-medium text-slate-800">Verify Product Labels</p>
+        <p>Confirm the physical labels match the expected regulatory information above.</p>
       </div>
 
       <div className="space-y-3">
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.gradeOk} onChange={(event) => updateCheck('gradeOk', event.target.checked)} />
-          Grade correct (ACS, Food, USP, etc.)
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.gradeOk}
+            onChange={(event) => updateCheck('gradeOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          Grade matches: <span className="text-purple-700 font-semibold">{grade}</span>
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.unOk} onChange={(event) => updateCheck('unOk', event.target.checked)} />
-          UN number correct
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.unOk}
+            onChange={(event) => updateCheck('unOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          UN number correct: <span className="text-purple-700 font-semibold">{hasUN ? unNumber : 'Not hazmat'}</span>
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.pgOk} onChange={(event) => updateCheck('pgOk', event.target.checked)} />
-          Packing group (PG) correct
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.pgOk}
+            onChange={(event) => updateCheck('pgOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          Packing Group (PG) label present and correct
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.lidOk} onChange={(event) => updateCheck('lidOk', event.target.checked)} />
-          Lid inspection passed
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.lidOk}
+            onChange={(event) => updateCheck('lidOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          Lid/closure properly secured
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.ghsOk} onChange={(event) => updateCheck('ghsOk', event.target.checked)} />
-          GHS labels correct
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.ghsOk}
+            onChange={(event) => updateCheck('ghsOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          GHS hazard labels visible and intact
         </label>
       </div>
 
@@ -1090,6 +1168,8 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               run={activeRun}
               payload={stepPayload as CruzStepPayloadMap['verify_product_label']}
               orderId={orderId}
+              orderNumber={orderNumber}
+              orderItems={orderItems}
               onSubmit={(payload, outcome) => {
                 handleSubmit('verify_product_label', payload, outcome)
                 // Auto-advance to next step after successful save
