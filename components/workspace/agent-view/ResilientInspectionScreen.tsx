@@ -592,7 +592,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
       </div>
 
       <div className="space-y-2">
-        <label className="mb-2 block text-sm font-medium text-slate-700">Photo evidence (required)</label>
+        <label className="mb-2 block text-base font-medium text-slate-700">Photo evidence of labels (required) 📷</label>
         <div className="flex flex-wrap gap-2">
           {photos.map((photo) => (
             <span key={photo.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
