@@ -56,12 +56,57 @@ const STEP_LABELS: Record<CruzStepId, string> = {
   final_review: 'Final Review & Sign Off',
 }
 
+type ShipmentAddress = {
+  name?: string;
+  company?: string;
+  street1?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string;
+};
+
+const formatAddressLines = (address?: ShipmentAddress): string[] => {
+  if (!address) {
+    return ['Not provided'];
+  }
+
+  const lines: string[] = [];
+  if (address.name) {
+    lines.push(address.name);
+  }
+  if (address.company && address.company !== address.name) {
+    lines.push(address.company);
+  }
+  const streetParts = [address.street1, address.street2].filter(Boolean);
+  if (streetParts.length) {
+    lines.push(streetParts.join(', '));
+  }
+  const cityState = [address.city, address.state].filter(Boolean).join(', ');
+  const locationLine = [cityState, address.postalCode].filter(Boolean).join(' ');
+  if (locationLine.trim()) {
+    lines.push(locationLine.trim());
+  }
+  if (address.country) {
+    lines.push(address.country);
+  }
+  if (address.phone) {
+    lines.push(`Phone: ${address.phone}`);
+  }
+  return lines.length ? lines : ['Not provided'];
+};
+
 interface StepFormProps<StepId extends CruzStepId = CruzStepId> {
   run: CruzInspectionRun
   payload?: CruzStepPayloadMap[StepId]
   onSubmit: (payload: CruzStepPayloadMap[StepId], outcome: 'PASS' | 'FAIL' | 'HOLD') => void
   isPending: boolean
   orderId: string
+  shipTo?: ShipmentAddress
+  shipFrom?: ShipmentAddress
+  customerEmail?: string
 }
 
 function StatusBadge({ run }: { run: CruzInspectionRun }) {
@@ -118,6 +163,11 @@ export function InspectionRunsPanel({ orderId, workspace, initialState }: Inspec
     () => normalizeInspectionState(initialState ?? (workspace.moduleStates as Record<string, unknown> | undefined)?.inspection),
     [initialState, workspace.moduleStates]
   )
+
+  const shipstationData = workspace.shipstationData as any
+  const shipToAddress = shipstationData?.shipTo ?? shipstationData?.billTo
+  const shipFromAddress = shipstationData?.shipFrom ?? shipstationData?.warehouse ?? shipstationData?.originAddress
+  const customerEmail = shipstationData?.customerEmail
 
   const skuImageMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -630,6 +680,9 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['inspection_info']}
                 orderId={orderId}
+                shipTo={shipToAddress}
+                shipFrom={shipFromAddress}
+                customerEmail={customerEmail}
                 onSubmit={(payload) => handleSubmit('inspection_info', payload, 'PASS')}
                 isPending={isPending}
               />
@@ -777,7 +830,7 @@ function ScanQrStepForm({ run, payload, onSubmit, isPending, orderId: _orderId, 
   )
 }
 
-function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'inspection_info'>) {
+function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, shipTo, shipFrom, customerEmail }: StepFormProps<'inspection_info'>) {
   const now = useMemo(() => new Date(), [])
   const formatDate = useCallback((date: Date) => {
     const year = date.getFullYear()
@@ -815,6 +868,9 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId }: 
       'PASS'
     )
   }
+
+  const shipToLines = formatAddressLines(shipTo)
+  const shipFromLines = formatAddressLines(shipFrom)
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -868,6 +924,31 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId }: 
           )}
         </div>
       </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-medium text-slate-800">Ship To</p>
+          <div className="mt-2 space-y-1 text-sm text-slate-600">
+            {shipToLines.map((line, index) => (
+              <p key={`super-ship-to-${index}`}>{line}</p>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-medium text-slate-800">Ship From</p>
+          <div className="mt-2 space-y-1 text-sm text-slate-600">
+            {shipFromLines.map((line, index) => (
+              <p key={`super-ship-from-${index}`}>{line}</p>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {customerEmail && (
+        <p className="text-xs text-slate-500">
+          Customer email: <a className="text-indigo-600 hover:underline" href={`mailto:${customerEmail}`}>{customerEmail}</a>
+        </p>
+      )}
 
       <div>
         <label className="mb-2 block text-sm font-medium text-slate-700">Notes (optional)</label>
