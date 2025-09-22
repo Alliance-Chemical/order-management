@@ -247,7 +247,7 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, or
   )
 }
 
-function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'verify_packing_label'>) {
+function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems, customerName }: StepFormProps<'verify_packing_label'> & { orderItems?: any[], customerName?: string }) {
   const [checks, setChecks] = useState({
     shipToOk: payload?.shipToOk ?? true,
     companyOk: payload?.companyOk ?? true,
@@ -335,29 +335,81 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
     setChecks((prev) => ({ ...prev, [key]: value }))
   }
 
+  // Get first order item for display
+  const primaryItem = orderItems?.[0]
+  const fallbackCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE
+  const productImage = primaryItem?.imageUrl
+    ? primaryItem.imageUrl
+    : primaryItem?.sku && fallbackCdnBase
+      ? `${fallbackCdnBase.replace(/\/$/, '')}/${primaryItem.sku.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`
+      : null
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Order Info Display */}
+      <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 space-y-3">
+        <div className="flex gap-4">
+          {productImage && (
+            <img
+              src={productImage}
+              alt={primaryItem?.name || 'Product'}
+              className="h-24 w-24 rounded-lg object-cover border border-blue-200"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+          )}
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-blue-900">Order #{orderNumber || orderId}</h3>
+            <p className="text-blue-800 font-medium">{customerName || 'Customer'}</p>
+            {primaryItem && (
+              <p className="text-sm text-blue-700 mt-1">
+                {primaryItem.name} - {primaryItem.quantity} {primaryItem.unitOfMeasure || 'units'}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        <p className="font-medium text-slate-800">Packing label checklist</p>
-        <p>Toggle off anything that does not match the packing slip.</p>
+        <p className="font-medium text-slate-800">Verify Physical Package</p>
+        <p>Confirm the physical package matches this order information above.</p>
       </div>
 
       <div className="space-y-3">
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.shipToOk} onChange={(event) => updateCheck('shipToOk', event.target.checked)} />
-          Ship-to matches packing label
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.orderNumberOk}
+            onChange={(event) => updateCheck('orderNumberOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          This physical package is for Order #{orderNumber || orderId}
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.companyOk} onChange={(event) => updateCheck('companyOk', event.target.checked)} />
-          Company name matches
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.shipToOk}
+            onChange={(event) => updateCheck('shipToOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          Shipping destination: <span className="text-blue-700">{customerName || 'Customer'}</span> ✓
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.orderNumberOk} onChange={(event) => updateCheck('orderNumberOk', event.target.checked)} />
-          Order number matches
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.productDescriptionOk}
+            onChange={(event) => updateCheck('productDescriptionOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          Product matches: <span className="text-blue-700">{primaryItem?.name || 'Product'}</span>
         </label>
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input type="checkbox" checked={checks.productDescriptionOk} onChange={(event) => updateCheck('productDescriptionOk', event.target.checked)} />
-          Product description matches
+        <label className="flex items-center gap-3 text-base font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={checks.companyOk}
+            onChange={(event) => updateCheck('companyOk', event.target.checked)}
+            className="w-5 h-5"
+          />
+          Quantity correct: <span className="text-blue-700">{primaryItem?.quantity || 1} {primaryItem?.unitOfMeasure || 'units'}</span>
         </label>
       </div>
 
@@ -1002,6 +1054,9 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               run={activeRun}
               payload={stepPayload as CruzStepPayloadMap['verify_packing_label']}
               orderId={orderId}
+              orderNumber={orderNumber}
+              orderItems={orderItems}
+              customerName={customerName}
               onSubmit={(payload, outcome) => {
                 handleSubmit('verify_packing_label', payload, outcome)
                 // Auto-advance to next step after successful save
