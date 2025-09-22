@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { WorkspaceData, ViewMode, InspectionResults } from '@/lib/types/agent-view';
 import EntryScreen from '@/components/workspace/agent-view/EntryScreen';
 import ResilientInspectionScreen from '@/components/workspace/agent-view/ResilientInspectionScreen';
@@ -16,6 +16,7 @@ import ErrorBoundary from '@/components/error-boundary';
 import { buildInspectionItems } from '@/lib/inspection/items';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { Home, Package, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 
 type WorkerStep = 'entry' | 'inspection' | 'complete';
 
@@ -29,6 +30,24 @@ function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
 }
 
+const WORKER_VIEW_PHASES = new Set<WorkspaceData['workflowPhase']>([
+  'pending',
+  'planning',
+  'pre_mix',
+  'pre_ship',
+  'ready',
+  'ready_to_ship',
+  'shipping'
+]);
+
+const resolveWorkerInspectionPhase = (
+  phase: WorkspaceData['workflowPhase']
+): 'pre_mix' | 'pre_ship' => (
+  phase === 'pre_ship' || phase === 'ready_to_ship' || phase === 'shipping'
+    ? 'pre_ship'
+    : 'pre_mix'
+);
+
 export default function WorkspaceContent({ workspace, orderId, onModuleStateChange }: WorkspaceContentProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('worker');
   const [workerStep, setWorkerStep] = useState<WorkerStep>('entry');
@@ -36,20 +55,26 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
   const handleWorkerInspectionComplete = async (results: InspectionResults) => {
-    const workflowModule = workspace.workflowPhase === 'pre_mix' ? 'pre_mix' : 'pre_ship';
+    const workflowModule = resolveWorkerInspectionPhase(workspace.workflowPhase);
     await onModuleStateChange(workflowModule, results as unknown as Record<string, any>);
     setWorkerStep('complete');
   };
 
+  const workerInspectionPhase = resolveWorkerInspectionPhase(workspace.workflowPhase);
+  const canShowWorkerView = WORKER_VIEW_PHASES.has(workspace.workflowPhase);
+  const workerWorkspace: WorkspaceData = canShowWorkerView
+    ? { ...workspace, workflowPhase: workerInspectionPhase }
+    : workspace;
+
   // Worker View Routing
   if (viewMode === 'worker') {
-    if (workspace.workflowPhase === 'pre_mix' || workspace.workflowPhase === 'pre_ship') {
+    if (canShowWorkerView) {
       return (
         <ErrorBoundary>
           {workerStep === 'entry' ? (
             <>
               <EntryScreen 
-                workspace={workspace}
+                workspace={workerWorkspace}
                 onStart={() => setWorkerStep('inspection')}
                 onSwitchToSupervisor={() => setViewMode('supervisor')}
                 onSelectItem={(item) => {
@@ -66,14 +91,15 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
                 orderNumber={workspace.orderNumber}
                 customerName={workspace.shipstationData?.shipTo?.name}
                 orderItems={selectedItem ? [selectedItem] : (workspace.shipstationData?.items || [])}
-                workflowPhase={workspace.workflowPhase}
+                workflowPhase={workerInspectionPhase}
                 workflowType={workspace.workflowType}
-                items={buildInspectionItems(workspace as any, selectedItem)}
+                items={buildInspectionItems(workerWorkspace as any, selectedItem)}
                 onComplete={(results) => {
                   handleWorkerInspectionComplete(results);
                   setSelectedItem(null);
                 }}
                 onSwitchToSupervisor={() => setViewMode('supervisor')}
+                workspace={workerWorkspace}
               />
               <ConnectionStatus />
             </>
@@ -104,6 +130,29 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
         </ErrorBoundary>
       );
     }
+
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="max-w-md text-center space-y-4 px-6">
+          <h1 className="text-2xl font-semibold text-slate-900">Supervisor Phase Active</h1>
+          <p className="text-sm text-slate-600">
+            Worker tools unlock when an order is in Pre-Mix or Pre-Ship. The current phase is
+            {' '}
+            <span className="font-medium text-slate-800">{workspace.workflowPhase.replace('_', ' ')}</span>.
+            Switch to the Supervisor View to continue.
+          </p>
+          <button
+            onClick={() => {
+              setViewMode('supervisor');
+              setWorkerStep('entry');
+            }}
+            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+          >
+            Go to Supervisor View
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Supervisor View
@@ -185,13 +234,13 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem>
-                  <a
+                  <Link
                     href="/"
                     className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
                   >
                     <Home className="h-4 w-4" />
                     Work Queue
-                  </a>
+                  </Link>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator>
                   <ChevronRight className="h-4 w-4" />
@@ -266,6 +315,7 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
               workspace={workspace}
               initialState={activeTab === 'inspection_runs' ? workspace.moduleStates?.inspection : workspace.moduleStates?.[activeTab] || {}}
               onStateChange={(state: Record<string, any>) => onModuleStateChange(activeTab, state)}
+              onStateChangeAction={(state: Record<string, any>) => onModuleStateChange(activeTab, state)}
             />
           )}
         </main>

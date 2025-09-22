@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 
-// Initialize OpenAI with GPT-5-nano
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
+const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,22 +31,40 @@ export async function POST(request: NextRequest) {
       ["LOT123456", "BATCH-789", "2024-001"]
     `;
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-5-nano-2025-08-07',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: image } }
-          ]
-        }
-      ],
-      max_tokens: 500,
-      temperature: 0.1
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPEN_AI_KEY;
+    if (!apiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+
+    const response = await fetch(OPENAI_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-5-nano-2025-08-07',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: image } }
+            ]
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.1
+      })
     });
 
-    const text = completion.choices[0]?.message?.content || '[]';
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => response.statusText);
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const payload = await response.json();
+    const text = payload.choices?.[0]?.message?.content || '[]';
     
     // Parse the response to extract lot numbers
     let lotNumbers: string[] = [];

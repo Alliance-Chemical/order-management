@@ -5,6 +5,7 @@ import { useFreightOrder } from '@/lib/swr/hooks';
 import { generateQR } from '@/app/actions/qr';
 // import { toast } from 'sonner';
 import Image from 'next/image';
+import { ImageViewer } from '@/components/ui/image-viewer';
 import type { OrderWorkspace } from '@/lib/types/workspace';
 
 type ShipStationAddress = {
@@ -64,7 +65,7 @@ interface OrderOverviewProps {
 
 export default function OrderOverview({ orderId, workspace }: OrderOverviewProps) {
   const [isGeneratingQR, setIsGeneratingQR] = useState(false);
-  const order = workspace.shipstationData || {};
+  const order = workspace.shipstationData as any || {};
   const shipTo = order.shipTo || {};
   const items = order.items || [];
   
@@ -285,24 +286,31 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {items.map((item, index) => (
+              {items.map((item: any, index: number) => (
                 <tr key={index} className="hover:bg-slate-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       {item.imageUrl && (
-                        <Image 
+                        <ImageViewer
                           src={item.imageUrl}
                           alt={item.name ?? 'Product image'}
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 rounded object-cover mr-3"
-                        />
+                          title={item.name ?? 'Product'}
+                          subtitle={`SKU: ${item.sku ?? 'N/A'} • ${item.quantity ?? 1} units`}
+                        >
+                          <Image
+                            src={item.imageUrl}
+                            alt={item.name ?? 'Product image'}
+                            width={80}
+                            height={80}
+                            className="h-20 w-20 rounded-lg object-cover mr-4 border border-gray-200 cursor-pointer hover:opacity-90 transition-opacity"
+                          />
+                        </ImageViewer>
                       )}
                       <div>
                         <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                        {item.options?.length > 0 && (
+                        {item.options && item.options.length > 0 && (
                           <p className="text-xs text-slate-500">
-                            {item.options.map((opt) => `${opt.name}: ${opt.value}`).join(', ')}
+                            {item.options.map((opt: any) => `${opt.name}: ${opt.value}`).join(', ')}
                           </p>
                         )}
                       </div>
@@ -323,7 +331,7 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
 
 
       {/* Tags */}
-      {order.tagIds?.length > 0 && (
+      {order?.tagIds && Array.isArray(order.tagIds) && order.tagIds.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Tags</h3>
           <div className="flex flex-wrap gap-2">

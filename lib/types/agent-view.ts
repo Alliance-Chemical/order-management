@@ -62,7 +62,7 @@ export interface WorkspaceData {
   orderNumber: string;
   status: 'pending' | 'active' | 'ready_to_ship' | 'shipped' | 'completed';
   workflowType?: 'pump_and_fill' | 'direct_resell';
-  workflowPhase: 'pending' | 'pre_mix' | 'pre_ship' | 'ready' | 'shipped';
+  workflowPhase: 'pending' | 'planning' | 'pre_mix' | 'pre_ship' | 'ready' | 'ready_to_ship' | 'shipping' | 'completed' | 'shipped';
   shipstationData: {
     orderDate?: string;
     shipTo?: {

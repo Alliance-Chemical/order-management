@@ -4,6 +4,7 @@ import React from 'react';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import StatusLight from '@/components/ui/StatusLight';
 import { Button } from '@/components/ui/button';
+import { ImageViewer } from '@/components/ui/image-viewer';
 
 interface TaskListItemProps {
   item: {
@@ -102,15 +103,14 @@ export default function TaskListItem({
       <div className="flex flex-col lg:flex-row gap-6">
         {item.imageUrl && (
           <div className="self-center lg:self-start">
-            <img
+            <ImageViewer
               src={item.imageUrl}
               alt={item.name}
-              className="h-28 w-28 rounded-lg border border-gray-200 object-cover"
-              onError={(event) => {
-                const target = event.target as HTMLImageElement
-                target.style.display = 'none'
-              }}
+              className="h-44 w-44 rounded-lg border-2 border-gray-200 object-cover"
+              title={item.name}
+              subtitle={`SKU: ${item.sku || 'N/A'} • ${item.quantity || 1} units`}
             />
+            <p className="text-xs text-gray-500 mt-1 text-center">Tap to enlarge</p>
           </div>
         )}
         <div className="flex-1">

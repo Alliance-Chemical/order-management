@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react'
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import { useCruzInspection } from '@/hooks/useCruzInspection'
 import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner'
 import { InspectionItem } from '@/lib/types/agent-view'
@@ -10,15 +10,19 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { INSPECTORS } from '@/lib/inspection/inspectors'
 import { uploadDocument, deleteDocument } from '@/app/actions/documents'
+import { useToast } from '@/hooks/use-toast'
+import { ImageViewer } from '@/components/ui/image-viewer'
 import {
   CRUZ_STEP_ORDER,
   type CruzInspectionRun,
   type CruzStepId,
   type CruzStepPayloadMap,
   type InspectionPhoto,
+  type ConfirmedLotEntry,
   normalizeInspectionState,
 } from '@/lib/inspection/cruz'
 import type { RecordStepParams, BindRunToQrParams } from '@/app/actions/cruz-inspection'
+import { Loader2 } from 'lucide-react'
 
 interface ResilientInspectionScreenProps {
   orderId: string
@@ -249,10 +253,10 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, or
 
 function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems, customerName }: StepFormProps<'verify_packing_label'> & { orderItems?: any[], customerName?: string }) {
   const [checks, setChecks] = useState({
-    shipToOk: payload?.shipToOk ?? true,
-    companyOk: payload?.companyOk ?? true,
-    orderNumberOk: payload?.orderNumberOk ?? true,
-    productDescriptionOk: payload?.productDescriptionOk ?? true,
+    shipToOk: payload?.shipToOk ?? false,
+    companyOk: payload?.companyOk ?? false,
+    orderNumberOk: payload?.orderNumberOk ?? false,
+    productDescriptionOk: payload?.productDescriptionOk ?? false,
   })
   const [mismatchReason, setMismatchReason] = useState(payload?.mismatchReason ?? '')
   const [photos, setPhotos] = useState<InspectionPhoto[]>(payload?.photos ?? [])
@@ -350,11 +354,12 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
       <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 space-y-3">
         <div className="flex gap-4">
           {productImage && (
-            <img
+            <ImageViewer
               src={productImage}
               alt={primaryItem?.name || 'Product'}
-              className="h-24 w-24 rounded-lg object-cover border border-blue-200"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              className="h-40 w-40 rounded-lg object-cover border-2 border-blue-200"
+              title={primaryItem?.name || 'Product'}
+              subtitle={`SKU: ${primaryItem?.sku || 'N/A'} • ${primaryItem?.quantity || 1} ${primaryItem?.unitOfMeasure || 'units'}`}
             />
           )}
           <div className="flex-1">
@@ -375,6 +380,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
       </div>
 
       <div className="space-y-3">
+        <p className="text-xs text-slate-500">Check each box after verifying the detail on the physical packing label.</p>
         <label className="flex items-center gap-3 text-base font-medium text-slate-700">
           <input
             type="checkbox"
@@ -469,11 +475,11 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
 
 function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems }: StepFormProps<'verify_product_label'> & { orderItems?: any[] }) {
   const [checks, setChecks] = useState({
-    gradeOk: payload?.gradeOk ?? true,
-    unOk: payload?.unOk ?? true,
-    pgOk: payload?.pgOk ?? true,
-    lidOk: payload?.lidOk ?? true,
-    ghsOk: payload?.ghsOk ?? true,
+    gradeOk: payload?.gradeOk ?? false,
+    unOk: payload?.unOk ?? false,
+    pgOk: payload?.pgOk ?? false,
+    lidOk: payload?.lidOk ?? false,
+    ghsOk: payload?.ghsOk ?? false,
   })
   const [issueReason, setIssueReason] = useState(payload?.issueReason ?? '')
   const [photos, setPhotos] = useState<InspectionPhoto[]>(payload?.photos ?? [])
@@ -579,13 +585,14 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
         <div className="flex gap-4">
           {productImage && (
             <div className="flex-shrink-0">
-              <img
+              <ImageViewer
                 src={productImage}
                 alt={primaryItem?.name || 'Product'}
-                className="h-32 w-32 rounded-lg object-cover border-2 border-purple-200"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                className="h-48 w-48 rounded-lg object-cover border-2 border-purple-200"
+                title={productName}
+                subtitle={`SKU: ${primaryItem?.sku || 'Product SKU'} • ${primaryItem?.quantity || 1} ${primaryItem?.unitOfMeasure || 'units'}`}
               />
-              <p className="text-xs text-purple-700 mt-1 text-center">Product Image</p>
+              <p className="text-xs text-purple-700 mt-1 text-center">Product Image • Tap to enlarge</p>
             </div>
           )}
           <div className="flex-1 space-y-2">
@@ -604,6 +611,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
       </div>
 
       <div className="space-y-3">
+        <p className="text-xs text-slate-500">Mark each item only after confirming it on the product label.</p>
         <label className="flex items-center gap-3 text-base font-medium text-slate-700">
           <input
             type="checkbox"
@@ -702,21 +710,108 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
   )
 }
 
-function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_number'>) {
+function LotNumberStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'lot_number'>) {
   const [lots, setLots] = useState(() => payload?.lots?.map((lot) => lot.lotRaw) || [''])
   const [sameForAll, setSameForAll] = useState(payload?.sameForAll ?? false)
+  const [isExtracting, setIsExtracting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const { toast } = useToast()
+
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result
+        if (typeof result === 'string') {
+          resolve(result)
+        } else {
+          reject(new Error('Unsupported file format'))
+        }
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsDataURL(file)
+    })
+
+  const handleExtractFromPhoto = async (file: File) => {
+    try {
+      setIsExtracting(true)
+      const dataUrl = await readFileAsDataUrl(file)
+
+      const response = await fetch('/api/ai/extract-lot-numbers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          image: dataUrl,
+          orderId
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Lot extraction failed (${response.status})`)
+      }
+
+      const result = await response.json()
+      const extracted: string[] = Array.isArray(result?.lotNumbers) ? result.lotNumbers : []
+
+      if (!extracted.length) {
+        toast({
+          title: 'No lot numbers found',
+          description: 'Double-check the photo and try again or type the lot manually.',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      const merged = Array.from(
+        new Set([
+          ...lots.map((lotValue: string) => lotValue.trim()).filter(Boolean),
+          ...extracted.map((lot) => `${lot}`.trim()).filter(Boolean)
+        ])
+      )
+
+      setLots(merged.length ? merged : [''])
+      toast({
+        title: 'Lot numbers extracted',
+        description: merged.join(', ')
+      })
+    } catch (error) {
+      console.error('Error extracting lot numbers', error)
+      toast({
+        title: 'Extraction error',
+        description: 'We could not read the lot number from the photo. Try again or enter it manually.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsExtracting(false)
+    }
+  }
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    await handleExtractFromPhoto(file)
+    event.target.value = ''
+  }
+
+  const previouslyConfirmedLots = (run?.steps?.lot_extraction?.lots ?? []) as ConfirmedLotEntry[]
+  const hasPriorConfirmation = previouslyConfirmedLots.length > 0
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (lots.some((lot) => !lot.trim())) {
+    if (lots.some((lotValue: string) => !lotValue.trim())) {
       return
     }
 
     onSubmit(
       {
-        lots: lots.map((lot, index) => ({
+        lots: lots.map((lotValue: string, index: number) => ({
           id: payload?.lots?.[index]?.id ?? `lot_${index}_${Date.now()}`,
-          lotRaw: lot.trim(),
+          lotRaw: lotValue.trim(),
         })),
         sameForAll,
         completedAt: new Date().toISOString(),
@@ -740,9 +835,9 @@ function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: 
       </label>
 
       <div className="space-y-3">
-        {lots.map((lot, index) => (
+        {lots.map((lotValue: string, index: number) => (
           <div key={index} className="flex gap-2">
-            <Input value={lot} onChange={(event) => updateLot(index, event.target.value)} placeholder="LOT number" required />
+            <Input value={lotValue} onChange={(event) => updateLot(index, event.target.value)} placeholder="LOT number" required />
             {lots.length > 1 && (
               <Button type="button" variant="ghost" onClick={() => setLots(lots.filter((_, i) => i !== index))}>
                 Remove
@@ -755,13 +850,95 @@ function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: 
         </Button>
       </div>
 
-      <Button
-        type="submit"
-        disabled={isPending || lots.some((lot) => !lot.trim())}
-        className="w-full h-16 text-xl font-semibold bg-green-600 hover:bg-green-700"
-      >
-        {isPending ? 'Saving…' : 'Save and Continue →'}
-      </Button>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-medium text-slate-700">Use AI to extract lot numbers</p>
+        <p className="mt-1 text-xs text-slate-600">
+          Upload a clear photo of the product or packing label. We will fill in the lot fields for you.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isPending || isExtracting}
+          >
+            {isExtracting ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Extracting…
+              </span>
+            ) : (
+              'Upload label photo'
+            )}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+            disabled={isPending || isExtracting}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setLots([''])}
+            disabled={isPending || isExtracting}
+          >
+            Clear lot fields
+          </Button>
+        </div>
+        {isExtracting && (
+          <p className="mt-2 text-xs text-slate-500">Hang tight—this usually takes a few seconds.</p>
+        )}
+      </div>
+
+      {hasPriorConfirmation && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <p className="font-medium text-amber-900">Lots already confirmed</p>
+          <p className="mt-1 text-xs">You have already confirmed {previouslyConfirmedLots.length} lot{previouslyConfirmedLots.length === 1 ? '' : 's'} in the next step. Edit them here only if something changed.</p>
+          <div className="mt-3 space-y-1 text-xs">
+            {previouslyConfirmedLots.map((lot: ConfirmedLotEntry, index: number) => (
+              <div key={lot.id ?? index} className="font-mono">• {lot.lotRaw}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <Button
+          type="submit"
+          disabled={isPending || lots.some((lotValue: string) => !lotValue.trim())}
+          className="w-full h-16 text-xl font-semibold bg-green-600 hover:bg-green-700"
+        >
+          {isPending ? 'Saving…' : 'Save lots'}
+        </Button>
+        {hasPriorConfirmation && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-12"
+            onClick={() => {
+              onSubmit(
+                {
+                  lots: lots.map((lotValue: string, index: number) => ({
+                    id: payload?.lots?.[index]?.id ?? `lot_${index}_${Date.now()}`,
+                    lotRaw: lotValue.trim(),
+                  })),
+                  sameForAll,
+                  completedAt: new Date().toISOString(),
+                },
+                'PASS'
+              )
+            }}
+            disabled={isPending}
+          >
+            Skip — reuse confirmed lots
+          </Button>
+        )}
+      </div>
     </form>
   )
 }
@@ -773,13 +950,13 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (lots.some((lot) => !lot.confirmed)) {
+    if (lots.some((lotEntry: ConfirmedLotEntry) => !lotEntry.confirmed)) {
       return
     }
 
     onSubmit(
       {
-        lots: lots.map((lot) => ({ ...lot, confirmed: true })),
+        lots: lots.map((lot: ConfirmedLotEntry) => ({ ...lot, confirmed: true })),
         parseMode: 'none',
         completedAt: new Date().toISOString(),
       },
@@ -792,7 +969,7 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
       <p className="text-sm text-slate-600">Confirm each recorded lot before completing the run.</p>
 
       <div className="space-y-3">
-        {lots.map((lot, index) => (
+        {lots.map((lot: ConfirmedLotEntry, index: number) => (
           <label key={lot.id ?? index} className="flex items-center gap-3 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -810,7 +987,7 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
 
       <Button
         type="submit"
-        disabled={isPending || lots.some((lot) => !lot.confirmed)}
+        disabled={isPending || lots.some((lotEntry: ConfirmedLotEntry) => !lotEntry.confirmed)}
         className="w-full h-16 text-xl font-semibold bg-green-600 hover:bg-green-700"
       >
         {isPending ? 'Saving…' : 'Complete Inspection ✓'}

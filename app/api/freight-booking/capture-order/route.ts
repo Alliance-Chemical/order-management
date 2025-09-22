@@ -40,6 +40,7 @@ type CapturedOrderData = {
   orderNumber?: string;
   carrier?: string;
   serviceType?: string;
+  carrierService?: string;
   originStop?: OrderStop;
   destinationStop?: OrderStop;
   quoteUnits?: QuoteUnit[];

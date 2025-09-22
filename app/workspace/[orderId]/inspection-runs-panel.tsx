@@ -25,6 +25,7 @@ import {
   type CruzStepId,
   type CruzStepPayloadMap,
   type InspectionPhoto,
+  type ConfirmedLotEntry,
   normalizeInspectionState,
 } from '@/lib/inspection/cruz'
 import { INSPECTORS } from '@/lib/inspection/inspectors'
@@ -883,10 +884,10 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId }: 
 
 function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'verify_packing_label'>) {
   const [checks, setChecks] = useState({
-    shipToOk: payload?.shipToOk ?? true,
-    companyOk: payload?.companyOk ?? true,
-    orderNumberOk: payload?.orderNumberOk ?? true,
-    productDescriptionOk: payload?.productDescriptionOk ?? true,
+    shipToOk: payload?.shipToOk ?? false,
+    companyOk: payload?.companyOk ?? false,
+    orderNumberOk: payload?.orderNumberOk ?? false,
+    productDescriptionOk: payload?.productDescriptionOk ?? false,
   })
   const [mismatchReason, setMismatchReason] = useState(payload?.mismatchReason ?? '')
   const [photos, setPhotos] = useState<InspectionPhoto[]>(payload?.photos ?? [])
@@ -978,6 +979,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
       </div>
 
       <div className="space-y-3">
+        <p className="text-xs text-slate-500">Confirm each packing label element before marking it.</p>
         <label className="flex items-center gap-3 text-sm text-slate-700">
           <input type="checkbox" checked={checks.shipToOk} onChange={(event) => updateCheck('shipToOk', event.target.checked)} />
           Ship-to matches packing label
@@ -1049,11 +1051,11 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
 
 function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId }: StepFormProps<'verify_product_label'>) {
   const [checks, setChecks] = useState({
-    gradeOk: payload?.gradeOk ?? true,
-    unOk: payload?.unOk ?? true,
-    pgOk: payload?.pgOk ?? true,
-    lidOk: payload?.lidOk ?? true,
-    ghsOk: payload?.ghsOk ?? true,
+    gradeOk: payload?.gradeOk ?? false,
+    unOk: payload?.unOk ?? false,
+    pgOk: payload?.pgOk ?? false,
+    lidOk: payload?.lidOk ?? false,
+    ghsOk: payload?.ghsOk ?? false,
   })
   const [issueReason, setIssueReason] = useState(payload?.issueReason ?? '')
   const [photos, setPhotos] = useState<InspectionPhoto[]>(payload?.photos ?? [])
@@ -1150,6 +1152,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
       </div>
 
       <div className="space-y-3">
+        <p className="text-xs text-slate-500">Check each product label requirement after visually confirming it.</p>
         <label className="flex items-center gap-3 text-sm text-slate-700">
           <input type="checkbox" checked={checks.gradeOk} onChange={(event) => updateCheck('gradeOk', event.target.checked)} />
           Grade correct (ACS, Food, USP, etc.)
@@ -1221,21 +1224,23 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
   )
 }
 
-function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_number'>) {
+function LotNumberStepForm({ run, payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'lot_number'>) {
   const [lots, setLots] = useState(() => payload?.lots?.map((lot) => lot.lotRaw) || [''])
   const [sameForAll, setSameForAll] = useState(payload?.sameForAll ?? false)
+  const previouslyConfirmedLots = (run.steps?.lot_extraction?.lots ?? []) as ConfirmedLotEntry[]
+  const hasPriorConfirmation = previouslyConfirmedLots.length > 0
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (lots.some((lot) => !lot.trim())) {
+    if (lots.some((lotValue: string) => !lotValue.trim())) {
       return
     }
 
     onSubmit(
       {
-        lots: lots.map((lot, index) => ({
+        lots: lots.map((lotValue: string, index: number) => ({
           id: payload?.lots?.[index]?.id ?? `lot_${index}_${Date.now()}`,
-          lotRaw: lot.trim(),
+          lotRaw: lotValue.trim(),
         })),
         sameForAll,
         completedAt: new Date().toISOString(),
@@ -1259,9 +1264,9 @@ function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: 
       </label>
 
       <div className="space-y-3">
-        {lots.map((lot, index) => (
+        {lots.map((lotValue: string, index: number) => (
           <div key={index} className="flex gap-2">
-            <Input value={lot} onChange={(event) => updateLot(index, event.target.value)} placeholder="LOT number" required />
+            <Input value={lotValue} onChange={(event) => updateLot(index, event.target.value)} placeholder="LOT number" required />
             {lots.length > 1 && (
               <Button type="button" variant="ghost" onClick={() => setLots(lots.filter((_, i) => i !== index))}>
                 Remove
@@ -1274,9 +1279,45 @@ function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: 
         </Button>
       </div>
 
-      <Button type="submit" disabled={isPending || lots.some((lot) => !lot.trim())}>
-        {isPending ? 'Saving…' : 'Save lot numbers'}
-      </Button>
+      {hasPriorConfirmation && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <p className="font-medium text-amber-900">Lots already confirmed</p>
+          <p className="mt-1 text-xs">You confirmed {previouslyConfirmedLots.length} lot{previouslyConfirmedLots.length === 1 ? '' : 's'} in the next step. Only edit if something changed.</p>
+          <div className="mt-3 space-y-1 text-xs">
+            {previouslyConfirmedLots.map((lot: ConfirmedLotEntry, index: number) => (
+              <div key={lot.id ?? index} className="font-mono">• {lot.lotRaw}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <Button type="submit" disabled={isPending || lots.some((lotValue: string) => !lotValue.trim())}>
+          {isPending ? 'Saving…' : 'Save lots'}
+        </Button>
+        {hasPriorConfirmation && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              onSubmit(
+                {
+                  lots: lots.map((lotValue: string, index: number) => ({
+                    id: payload?.lots?.[index]?.id ?? `lot_${index}_${Date.now()}`,
+                    lotRaw: lotValue.trim(),
+                  })),
+                  sameForAll,
+                  completedAt: new Date().toISOString(),
+                },
+                'PASS'
+              )
+            }}
+            disabled={isPending}
+          >
+            Skip — reuse confirmed lots
+          </Button>
+        )}
+      </div>
     </form>
   )
 }
@@ -1288,13 +1329,13 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (lots.some((lot) => !lot.confirmed)) {
+    if (lots.some((lotEntry: ConfirmedLotEntry) => !lotEntry.confirmed)) {
       return
     }
 
     onSubmit(
       {
-        lots: lots.map((lot) => ({ ...lot, confirmed: true })),
+        lots: lots.map((lot: ConfirmedLotEntry) => ({ ...lot, confirmed: true })),
         parseMode: 'none',
         completedAt: new Date().toISOString(),
       },
@@ -1307,7 +1348,7 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
       <p className="text-sm text-slate-600">Confirm each recorded lot. All lots must be acknowledged before the run can complete.</p>
 
       <div className="space-y-3">
-        {lots.map((lot, index) => (
+        {lots.map((lot: ConfirmedLotEntry, index: number) => (
           <label key={lot.id ?? index} className="flex items-center gap-3 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -1323,7 +1364,7 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
         ))}
       </div>
 
-      <Button type="submit" disabled={isPending || lots.some((lot) => !lot.confirmed)}>
+      <Button type="submit" disabled={isPending || lots.some((lotEntry: ConfirmedLotEntry) => !lotEntry.confirmed)}>
         {isPending ? 'Saving…' : 'Finalize lot confirmation'}
       </Button>
     </form>

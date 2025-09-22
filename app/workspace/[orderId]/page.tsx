@@ -23,6 +23,24 @@ function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
 }
 
+const WORKER_VIEW_PHASES = new Set<WorkspaceData['workflowPhase']>([
+  'pending',
+  'planning',
+  'pre_mix',
+  'pre_ship',
+  'ready',
+  'ready_to_ship',
+  'shipping'
+]);
+
+const resolveWorkerInspectionPhase = (
+  phase: WorkspaceData['workflowPhase']
+): 'pre_mix' | 'pre_ship' => (
+  phase === 'pre_ship' || phase === 'ready_to_ship' || phase === 'shipping'
+    ? 'pre_ship'
+    : 'pre_mix'
+);
+
 export default function WorkspacePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -204,11 +222,11 @@ export default function WorkspacePage() {
 
   const handleWorkerInspectionComplete = async (results: InspectionResults) => {
     if (!workspace) return;
-    
+
     // Save inspection results
-    const workflowModule = workspace.workflowPhase === 'pre_mix' ? 'pre_mix' : 'pre_ship';
+    const workflowModule = resolveWorkerInspectionPhase(workspace.workflowPhase);
     await handleModuleStateChange(workflowModule, results as unknown as Record<string, any>);
-    
+
     // Move to complete state
     setWorkerStep('complete');
   };
@@ -232,14 +250,20 @@ export default function WorkspacePage() {
     );
   }
 
+  const workerInspectionPhase = resolveWorkerInspectionPhase(workspace.workflowPhase);
+  const canShowWorkerView = WORKER_VIEW_PHASES.has(workspace.workflowPhase);
+  const workerWorkspace: WorkspaceData = canShowWorkerView
+    ? { ...workspace, workflowPhase: workerInspectionPhase }
+    : workspace;
+
   // Worker View Routing based on workflowPhase
   if (viewMode === 'worker') {
-    if (workspace.workflowPhase === 'pre_mix' || workspace.workflowPhase === 'pre_ship') {
+    if (canShowWorkerView) {
       if (workerStep === 'entry') {
         return (
           <>
           <EntryScreen 
-            workspace={workspace}
+            workspace={workerWorkspace}
             onStart={() => setWorkerStep('inspection')}
             onSwitchToSupervisor={switchToSupervisor}
             onSelectItem={(item) => {
@@ -251,12 +275,8 @@ export default function WorkspacePage() {
           </>
         );
       } else if (workerStep === 'inspection') {
-        // Get inspection items based on workflow phase
-        // Dynamically adjust inspection items based on workflow assignments
-        const sourceAssignments = (workspace.moduleStates as any)?.sourceAssignments || [];
-        
         // Build inspection items via shared helper
-        const inspectionItems = buildInspectionItems(workspace as any);
+        const inspectionItems = buildInspectionItems(workerWorkspace as any);
 
         // If a specific item was selected, show only that item
         const itemsToInspect = selectedItem ? [selectedItem] : (workspace.shipstationData?.items || []);
@@ -268,10 +288,10 @@ export default function WorkspacePage() {
             orderNumber={workspace.orderNumber}
             customerName={workspace.shipstationData?.shipTo?.name}
             orderItems={itemsToInspect}
-            workflowPhase={workspace.workflowPhase}
+            workflowPhase={workerInspectionPhase}
             workflowType={workspace.workflowType}
             items={inspectionItems}
-            workspace={workspace}
+            workspace={workerWorkspace}
             onComplete={(results) => {
               handleWorkerInspectionComplete(results);
               // After completing inspection for this item, go back to task list
@@ -311,6 +331,26 @@ export default function WorkspacePage() {
         );
       }
     }
+
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="max-w-md text-center space-y-4 px-6">
+          <h1 className="text-2xl font-semibold text-slate-900">Supervisor Phase Active</h1>
+          <p className="text-sm text-slate-600">
+            Worker tools unlock when an order is in Pre-Mix or Pre-Ship. The current phase is
+            {' '}
+            <span className="font-medium text-slate-800">{workspace.workflowPhase.replace('_', ' ')}</span>.
+            Switch to the Supervisor View to continue.
+          </p>
+          <button
+            onClick={switchToSupervisor}
+            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+          >
+            Go to Supervisor View
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Supervisor View (Original tabbed interface)
@@ -419,6 +459,7 @@ export default function WorkspacePage() {
           workspace={workspace}
           initialState={workspace.moduleStates?.[activeTab] || {}}
           onStateChange={(state: Record<string, any>) => handleModuleStateChange(activeTab, state)}
+          onStateChangeAction={(state: Record<string, any>) => handleModuleStateChange(activeTab, state)}
         />
       </main>
 

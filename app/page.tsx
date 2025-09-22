@@ -110,7 +110,7 @@ export default function WorkQueueDashboard() {
       return;
     }
 
-    router.push(`/workspace/${orderId}`);
+    router.push(`/workspace/${orderId}?view=worker`);
   };
 
   const enrichedOrders = orders

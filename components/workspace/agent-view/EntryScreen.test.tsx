@@ -5,13 +5,37 @@ import EntryScreen from './EntryScreen'
 describe('EntryScreen Component', () => {
   const mockWorkspace = {
     id: 'test-id',
+    orderId: 12345,
     orderNumber: 'TEST-001',
     shipStationOrderId: 'TEST-001',
     shipStationOrderKey: 'key-TEST-001',
-    status: 'pending',
-    workflowPhase: 'pre_mix',
+    status: 'pending' as const,
+    workflowPhase: 'pre_mix' as const,
     currentUsers: [],
     currentViewMode: 'worker',
+    shipstationData: {
+      orderDate: '2024-01-15T10:00:00Z',
+      shipTo: {
+        name: 'Test Customer Corp',
+        street1: '123 Main St',
+        city: 'Austin',
+        state: 'TX',
+        postalCode: '78701',
+        country: 'US'
+      },
+      items: [
+        {
+          name: 'Chemical Product X',
+          quantity: 5,
+          sku: 'CHEM-001',
+          unitPrice: 1000.00
+        }
+      ]
+    },
+    moduleStates: {},
+    documents: [],
+    activities: [],
+    totalDocumentSize: 0,
     modules: {
       inspection: {
         status: 'not_started',
@@ -55,17 +79,23 @@ describe('EntryScreen Component', () => {
         }
       ]
     },
-    createdAt: new Date('2024-01-15T10:00:00Z'),
-    updatedAt: new Date('2024-01-15T10:00:00Z')
+    createdAt: '2024-01-15T10:00:00Z',
+    updatedAt: '2024-01-15T10:00:00Z'
   }
 
-  const mockOnStartInspection = vi.fn()
+  const mockOnStart = vi.fn()
+  const mockOnSwitchToSupervisor = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it('should display order information correctly', () => {
     render(
-      <EntryScreen 
-        workspace={mockWorkspace} 
-        onStartInspection={mockOnStartInspection}
+      <EntryScreen
+        workspace={mockWorkspace}
+        onStart={mockOnStart}
+        onSwitchToSupervisor={mockOnSwitchToSupervisor}
       />
     )
 
@@ -83,9 +113,10 @@ describe('EntryScreen Component', () => {
   it('should show correct phase-based button text', () => {
     // Test Pre-Mix phase
     render(
-      <EntryScreen 
-        workspace={mockWorkspace} 
-        onStartInspection={mockOnStartInspection}
+      <EntryScreen
+        workspace={mockWorkspace}
+        onStart={mockOnStart}
+        onSwitchToSupervisor={mockOnSwitchToSupervisor}
       />
     )
     
@@ -98,13 +129,14 @@ describe('EntryScreen Component', () => {
   it('should show Pre-Ship inspection for pre_ship phase', () => {
     const preShipWorkspace = {
       ...mockWorkspace,
-      workflowPhase: 'pre_ship'
+      workflowPhase: 'pre_ship' as const
     }
     
     render(
-      <EntryScreen 
-        workspace={preShipWorkspace} 
-        onStartInspection={mockOnStartInspection}
+      <EntryScreen
+        workspace={preShipWorkspace}
+        onStart={mockOnStart}
+        onSwitchToSupervisor={mockOnSwitchToSupervisor}
       />
     )
     
@@ -113,23 +145,25 @@ describe('EntryScreen Component', () => {
 
   it('should call onStartInspection when button is clicked', () => {
     render(
-      <EntryScreen 
-        workspace={mockWorkspace} 
-        onStartInspection={mockOnStartInspection}
+      <EntryScreen
+        workspace={mockWorkspace}
+        onStart={mockOnStart}
+        onSwitchToSupervisor={mockOnSwitchToSupervisor}
       />
     )
     
     const startButton = screen.getByRole('button', { name: /Start Pre-Mix Inspection/i })
     fireEvent.click(startButton)
-    
-    expect(mockOnStartInspection).toHaveBeenCalledTimes(1)
+
+    expect(mockOnStart).toHaveBeenCalledTimes(1)
   })
 
   it('should display order date in readable format', () => {
     render(
-      <EntryScreen 
-        workspace={mockWorkspace} 
-        onStartInspection={mockOnStartInspection}
+      <EntryScreen
+        workspace={mockWorkspace}
+        onStart={mockOnStart}
+        onSwitchToSupervisor={mockOnSwitchToSupervisor}
       />
     )
     
@@ -139,9 +173,10 @@ describe('EntryScreen Component', () => {
 
   it('should be accessible with proper ARIA attributes', () => {
     render(
-      <EntryScreen 
-        workspace={mockWorkspace} 
-        onStartInspection={mockOnStartInspection}
+      <EntryScreen
+        workspace={mockWorkspace}
+        onStart={mockOnStart}
+        onSwitchToSupervisor={mockOnSwitchToSupervisor}
       />
     )
     
