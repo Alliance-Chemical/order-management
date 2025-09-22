@@ -236,9 +236,11 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, or
         <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
       </div>
 
-      <Button type="submit" disabled={isPending || !derivedOrderNumber.trim() || !inspector.trim()}>
-        {isPending ? 'Saving…' : 'Save inspection information'}
-      </Button>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={isPending || !derivedOrderNumber.trim() || !inspector.trim()}>
+          {isPending ? 'Saving…' : 'Save and Continue'}
+        </Button>
+      </div>
     </form>
   )
 }
@@ -945,54 +947,152 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         )}
 
         {displayStep === 'inspection_info' && (
-          <InspectionInfoStepForm
-            run={activeRun}
-            payload={stepPayload as CruzStepPayloadMap['inspection_info']}
-            orderId={orderId}
-            orderNumber={orderNumber}
-            onSubmit={(payload) => handleSubmit('inspection_info', payload, 'PASS')}
-            isPending={isPending}
-          />
+          <>
+            <InspectionInfoStepForm
+              run={activeRun}
+              payload={stepPayload as CruzStepPayloadMap['inspection_info']}
+              orderId={orderId}
+              orderNumber={orderNumber}
+              onSubmit={(payload) => {
+                handleSubmit('inspection_info', payload, 'PASS')
+                // Auto-advance to next step after successful save
+                setTimeout(() => setSelectedStepId('verify_packing_label'), 100)
+              }}
+              isPending={isPending}
+            />
+            <div className="mt-4 flex justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedStepId('scan_qr')}
+                disabled={isPending}
+              >
+                Previous
+              </Button>
+              <Button
+                onClick={() => setSelectedStepId('verify_packing_label')}
+                disabled={isPending}
+              >
+                Skip to Next →
+              </Button>
+            </div>
+          </>
         )}
 
         {displayStep === 'verify_packing_label' && (
-          <VerifyPackingLabelStepForm
-            run={activeRun}
-            payload={stepPayload as CruzStepPayloadMap['verify_packing_label']}
-            orderId={orderId}
-            onSubmit={(payload, outcome) => handleSubmit('verify_packing_label', payload, outcome)}
-            isPending={isPending}
-          />
+          <>
+            <VerifyPackingLabelStepForm
+              run={activeRun}
+              payload={stepPayload as CruzStepPayloadMap['verify_packing_label']}
+              orderId={orderId}
+              onSubmit={(payload, outcome) => {
+                handleSubmit('verify_packing_label', payload, outcome)
+                // Auto-advance to next step after successful save
+                setTimeout(() => setSelectedStepId('verify_product_label'), 100)
+              }}
+              isPending={isPending}
+            />
+            <div className="mt-4 flex justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedStepId('inspection_info')}
+                disabled={isPending}
+              >
+                ← Previous
+              </Button>
+              <Button
+                onClick={() => setSelectedStepId('verify_product_label')}
+                disabled={isPending}
+              >
+                Skip to Next →
+              </Button>
+            </div>
+          </>
         )}
 
         {displayStep === 'verify_product_label' && (
-          <VerifyProductLabelStepForm
-            run={activeRun}
-            payload={stepPayload as CruzStepPayloadMap['verify_product_label']}
-            orderId={orderId}
-            onSubmit={(payload, outcome) => handleSubmit('verify_product_label', payload, outcome)}
-            isPending={isPending}
-          />
+          <>
+            <VerifyProductLabelStepForm
+              run={activeRun}
+              payload={stepPayload as CruzStepPayloadMap['verify_product_label']}
+              orderId={orderId}
+              onSubmit={(payload, outcome) => {
+                handleSubmit('verify_product_label', payload, outcome)
+                // Auto-advance to next step after successful save
+                setTimeout(() => setSelectedStepId('lot_number'), 100)
+              }}
+              isPending={isPending}
+            />
+            <div className="mt-4 flex justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedStepId('verify_packing_label')}
+                disabled={isPending}
+              >
+                ← Previous
+              </Button>
+              <Button
+                onClick={() => setSelectedStepId('lot_number')}
+                disabled={isPending}
+              >
+                Skip to Next →
+              </Button>
+            </div>
+          </>
         )}
 
         {displayStep === 'lot_number' && (
-          <LotNumberStepForm
-            run={activeRun}
-            payload={stepPayload as CruzStepPayloadMap['lot_number']}
-            orderId={orderId}
-            onSubmit={(payload) => handleSubmit('lot_number', payload, 'PASS')}
-            isPending={isPending}
-          />
+          <>
+            <LotNumberStepForm
+              run={activeRun}
+              payload={stepPayload as CruzStepPayloadMap['lot_number']}
+              orderId={orderId}
+              onSubmit={(payload) => {
+                handleSubmit('lot_number', payload, 'PASS')
+                // Auto-advance to next step after successful save
+                setTimeout(() => setSelectedStepId('lot_extraction'), 100)
+              }}
+              isPending={isPending}
+            />
+            <div className="mt-4 flex justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedStepId('verify_product_label')}
+                disabled={isPending}
+              >
+                ← Previous
+              </Button>
+              <Button
+                onClick={() => setSelectedStepId('lot_extraction')}
+                disabled={isPending}
+              >
+                Skip to Next →
+              </Button>
+            </div>
+          </>
         )}
 
         {displayStep === 'lot_extraction' && (
-          <LotExtractionStepForm
-            run={activeRun}
-            payload={stepPayload as CruzStepPayloadMap['lot_extraction']}
-            orderId={orderId}
-            onSubmit={(payload) => handleSubmit('lot_extraction', payload, 'PASS')}
-            isPending={isPending}
-          />
+          <>
+            <LotExtractionStepForm
+              run={activeRun}
+              payload={stepPayload as CruzStepPayloadMap['lot_extraction']}
+              orderId={orderId}
+              onSubmit={(payload) => handleSubmit('lot_extraction', payload, 'PASS')}
+              isPending={isPending}
+            />
+            <div className="mt-4 flex justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedStepId('lot_number')}
+                disabled={isPending}
+              >
+                ← Previous
+              </Button>
+              <div className="text-sm text-gray-600">
+                Final Step - Complete inspection above
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
