@@ -236,11 +236,13 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, or
         <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
       </div>
 
-      <div className="flex gap-2">
-        <Button type="submit" disabled={isPending || !derivedOrderNumber.trim() || !inspector.trim()}>
-          {isPending ? 'Saving…' : 'Save and Continue'}
-        </Button>
-      </div>
+      <Button
+        type="submit"
+        disabled={isPending || !derivedOrderNumber.trim() || !inspector.trim()}
+        className="w-full h-16 text-xl font-semibold bg-green-600 hover:bg-green-700"
+      >
+        {isPending ? 'Saving…' : 'Save and Continue →'}
+      </Button>
     </form>
   )
 }
@@ -399,12 +401,15 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
           isPending ||
           (finalOutcome === 'FAIL' && (!mismatchReason.trim() || photos.length === 0))
         }
+        className={`w-full h-16 text-xl font-semibold ${
+          finalOutcome === 'FAIL' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+        }`}
       >
         {isPending
           ? 'Saving…'
           : finalOutcome === 'FAIL'
-            ? 'Record mismatch and hold run'
-            : 'Checklist complete — continue'}
+            ? 'Record Mismatch ⚠'
+            : 'Save and Continue →'}
       </Button>
     </form>
   )
@@ -571,12 +576,15 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
           photos.length === 0 ||
           (finalOutcome === 'FAIL' && !issueReason.trim())
         }
+        className={`w-full h-16 text-xl font-semibold ${
+          finalOutcome === 'FAIL' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+        }`}
       >
         {isPending
           ? 'Saving…'
           : finalOutcome === 'FAIL'
-            ? 'Document issue and hold run'
-            : 'Checklist complete — continue'}
+            ? 'Document Issue ⚠'
+            : 'Save and Continue →'}
       </Button>
     </form>
   )
@@ -635,8 +643,12 @@ function LotNumberStepForm({ payload, onSubmit, isPending, orderId: _orderId }: 
         </Button>
       </div>
 
-      <Button type="submit" disabled={isPending || lots.some((lot) => !lot.trim())}>
-        {isPending ? 'Saving…' : 'Save lot numbers'}
+      <Button
+        type="submit"
+        disabled={isPending || lots.some((lot) => !lot.trim())}
+        className="w-full h-16 text-xl font-semibold bg-green-600 hover:bg-green-700"
+      >
+        {isPending ? 'Saving…' : 'Save and Continue →'}
       </Button>
     </form>
   )
@@ -684,8 +696,12 @@ function LotExtractionStepForm({ run, payload, onSubmit, isPending, orderId: _or
         ))}
       </div>
 
-      <Button type="submit" disabled={isPending || lots.some((lot) => !lot.confirmed)}>
-        {isPending ? 'Saving…' : 'Finalize lot confirmation'}
+      <Button
+        type="submit"
+        disabled={isPending || lots.some((lot) => !lot.confirmed)}
+        className="w-full h-16 text-xl font-semibold bg-green-600 hover:bg-green-700"
+      >
+        {isPending ? 'Saving…' : 'Complete Inspection ✓'}
       </Button>
     </form>
   )
@@ -960,19 +976,21 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               }}
               isPending={isPending}
             />
-            <div className="mt-4 flex justify-between">
+            <div className="mt-8 space-y-3">
+              <Button
+                onClick={() => setSelectedStepId('verify_packing_label')}
+                disabled={isPending}
+                className="w-full h-16 text-xl font-semibold bg-blue-600 hover:bg-blue-700"
+              >
+                Skip to Next Step →
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setSelectedStepId('scan_qr')}
                 disabled={isPending}
+                className="w-full h-14 text-lg"
               >
-                Previous
-              </Button>
-              <Button
-                onClick={() => setSelectedStepId('verify_packing_label')}
-                disabled={isPending}
-              >
-                Skip to Next →
+                ← Back to Previous
               </Button>
             </div>
           </>
@@ -991,19 +1009,21 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               }}
               isPending={isPending}
             />
-            <div className="mt-4 flex justify-between">
+            <div className="mt-8 space-y-3">
+              <Button
+                onClick={() => setSelectedStepId('verify_product_label')}
+                disabled={isPending}
+                className="w-full h-16 text-xl font-semibold bg-blue-600 hover:bg-blue-700"
+              >
+                Skip to Next Step →
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setSelectedStepId('inspection_info')}
                 disabled={isPending}
+                className="w-full h-14 text-lg"
               >
-                ← Previous
-              </Button>
-              <Button
-                onClick={() => setSelectedStepId('verify_product_label')}
-                disabled={isPending}
-              >
-                Skip to Next →
+                ← Back to Previous
               </Button>
             </div>
           </>
@@ -1022,19 +1042,21 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               }}
               isPending={isPending}
             />
-            <div className="mt-4 flex justify-between">
+            <div className="mt-8 space-y-3">
+              <Button
+                onClick={() => setSelectedStepId('lot_number')}
+                disabled={isPending}
+                className="w-full h-16 text-xl font-semibold bg-blue-600 hover:bg-blue-700"
+              >
+                Skip to Next Step →
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setSelectedStepId('verify_packing_label')}
                 disabled={isPending}
+                className="w-full h-14 text-lg"
               >
-                ← Previous
-              </Button>
-              <Button
-                onClick={() => setSelectedStepId('lot_number')}
-                disabled={isPending}
-              >
-                Skip to Next →
+                ← Back to Previous
               </Button>
             </div>
           </>
@@ -1053,19 +1075,21 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               }}
               isPending={isPending}
             />
-            <div className="mt-4 flex justify-between">
+            <div className="mt-8 space-y-3">
+              <Button
+                onClick={() => setSelectedStepId('lot_extraction')}
+                disabled={isPending}
+                className="w-full h-16 text-xl font-semibold bg-blue-600 hover:bg-blue-700"
+              >
+                Skip to Final Step →
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setSelectedStepId('verify_product_label')}
                 disabled={isPending}
+                className="w-full h-14 text-lg"
               >
-                ← Previous
-              </Button>
-              <Button
-                onClick={() => setSelectedStepId('lot_extraction')}
-                disabled={isPending}
-              >
-                Skip to Next →
+                ← Back to Previous
               </Button>
             </div>
           </>
@@ -1080,17 +1104,18 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               onSubmit={(payload) => handleSubmit('lot_extraction', payload, 'PASS')}
               isPending={isPending}
             />
-            <div className="mt-4 flex justify-between">
+            <div className="mt-8 space-y-3">
+              <div className="text-center text-lg font-semibold text-green-600 py-4">
+                ✓ Final Step - Complete inspection above
+              </div>
               <Button
                 variant="outline"
                 onClick={() => setSelectedStepId('lot_number')}
                 disabled={isPending}
+                className="w-full h-14 text-lg"
               >
-                ← Previous
+                ← Back to Previous
               </Button>
-              <div className="text-sm text-gray-600">
-                Final Step - Complete inspection above
-              </div>
             </div>
           </>
         )}
