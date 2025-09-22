@@ -745,6 +745,23 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     }
   }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems])
 
+  // Find the active run that the worker should work on
+  const activeRun = useMemo(() => {
+    // First priority: runs that need reverification
+    const needsReverify = runs.find(run => run.status === 'needs_reverify')
+    if (needsReverify) return needsReverify
+
+    // Second priority: active runs
+    const active = runs.find(run => run.status === 'active')
+    if (active) return active
+
+    // Third priority: first run if any exist
+    return runs[0] || null
+  }, [runs])
+
+  // State for manual step navigation
+  const [selectedStepId, setSelectedStepId] = useState<CruzStepId | null>(null)
+
   // Auto-skip QR scan step since we already scanned to enter the inspection
   useEffect(() => {
     if (activeRun && activeRun.currentStepId === 'scan_qr' && !hasAutoSkippedQr && !isPending) {
@@ -764,23 +781,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
       })
     }
   }, [activeRun, hasAutoSkippedQr, isPending, submitStep, orderId, workspace])
-
-  // Find the active run that the worker should work on
-  const activeRun = useMemo(() => {
-    // First priority: runs that need reverification
-    const needsReverify = runs.find(run => run.status === 'needs_reverify')
-    if (needsReverify) return needsReverify
-
-    // Second priority: active runs
-    const active = runs.find(run => run.status === 'active')
-    if (active) return active
-
-    // Third priority: first run if any exist
-    return runs[0] || null
-  }, [runs])
-
-  // State for manual step navigation
-  const [selectedStepId, setSelectedStepId] = useState<CruzStepId | null>(null)
 
   // Use selected step if set, otherwise use the current step from the run
   const currentStep = selectedStepId || activeRun?.currentStepId || 'inspection_info'
