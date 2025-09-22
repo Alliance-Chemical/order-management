@@ -49,7 +49,7 @@ const productInspectionItems = [
   { id: 'ghs_labels', label: 'GHS Labels' },
 ];
 
-export default function PreMixInspection({ orderId, initialState, onStateChange }: PreMixInspectionProps) {
+export default function PreMixInspection({ orderId, initialState, onStateChange: onStateChangeAction }: PreMixInspectionProps) {
   const { toast } = useToast();
 
   const [state, setState] = useState<PreMixInspectionState>({
@@ -75,7 +75,7 @@ export default function PreMixInspection({ orderId, initialState, onStateChange 
       },
     };
     setState(newState);
-    onStateChange(newState);
+    onStateChangeAction(newState);
   };
 
   const handleProductInspectionChange = (itemId: string, checked: boolean) => {
@@ -87,7 +87,7 @@ export default function PreMixInspection({ orderId, initialState, onStateChange 
       },
     };
     setState(newState);
-    onStateChange(newState);
+    onStateChangeAction(newState);
   };
 
   const handleFieldChange = (
@@ -96,13 +96,13 @@ export default function PreMixInspection({ orderId, initialState, onStateChange 
   ) => {
     const newState = { ...state, [field]: value };
     setState(newState);
-    onStateChange(newState);
+    onStateChangeAction(newState);
   };
 
   const handleNotesChange = (notes: string) => {
     const newState = { ...state, notes };
     setState(newState);
-    onStateChange(newState);
+    onStateChangeAction(newState);
   };
 
   const handleLidPhotoUpload = async (file: File) => {
@@ -113,7 +113,7 @@ export default function PreMixInspection({ orderId, initialState, onStateChange 
       lidPhotos: [...state.lidPhotos, { url: photoUrl, name: file.name, timestamp: new Date().toISOString() }],
     };
     setState(newState);
-    onStateChange(newState);
+    onStateChangeAction(newState);
   };
 
   const handleComplete = async () => {
@@ -172,7 +172,7 @@ export default function PreMixInspection({ orderId, initialState, onStateChange 
       completedBy: 'current_user', // Replace with actual user
     };
     setState(newState);
-    onStateChange(newState);
+    onStateChangeAction(newState);
 
     // Trigger notification using server action
     const hasFailures = false; // You may need to calculate this based on inspection results
@@ -399,7 +399,7 @@ export default function PreMixInspection({ orderId, initialState, onStateChange 
             <div>
               <p className="text-sm font-medium text-green-900">Inspection Completed</p>
               <p className="text-sm text-green-700">
-                By {state.completedBy} on {new Date(state.completedAt).toLocaleString()}
+                By {state.completedBy} on {state.completedAt ? new Date(state.completedAt).toLocaleString() : 'N/A'}
               </p>
             </div>
           </div>
