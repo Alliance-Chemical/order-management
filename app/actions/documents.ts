@@ -5,10 +5,15 @@ import { getOptimizedDb } from '@/lib/db/neon'
 import { documents, workspaces } from '@/lib/db/schema/qr-workspace'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { resolveDocumentName } from '@/lib/utils/document-name'
+import {
+  validateImageFile,
+  uploadToS3WithRetry,
+  generateS3Key
+} from '@/lib/utils/upload-helpers'
 
 const workspaceService = new WorkspaceService()
 
@@ -62,32 +67,49 @@ export async function uploadDocument(data: {
 
     // Upload to S3 if configured
     if (s3Client && s3DocumentsBucket) {
-      const buffer = Buffer.from(await file.arrayBuffer())
-      s3Key = `workspaces/${orderId}/documents/${Date.now()}-${file.name}`
-      
-      const uploadCommand = new PutObjectCommand({
-        Bucket: s3DocumentsBucket,
-        Key: s3Key,
-        Body: buffer,
-        ContentType: file.type,
-        Metadata: {
-          workspaceId: workspace.id.toString(),
-          orderId: orderId,
-          documentType: documentType
-        }
-      })
+      try {
+        // Validate file before upload
+        validateImageFile(file);
 
-      await s3Client.send(uploadCommand)
-      
-      // Generate presigned URL for access
-      const getCommand = new GetObjectCommand({
-        Bucket: s3DocumentsBucket,
-        Key: s3Key
-      })
-      
-      documentUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 * 24 * 7 }) // 7 days
-      storedS3Url = `https://${bucketUsed}.s3.amazonaws.com/${s3Key}`
-      bucketUsed = s3DocumentsBucket
+        const buffer = Buffer.from(await file.arrayBuffer())
+        s3Key = generateS3Key(orderId, documentType, file.name);
+
+        // Upload with retry logic and progress tracking
+        const uploadResult = await uploadToS3WithRetry(s3Client, {
+          bucket: s3DocumentsBucket,
+          key: s3Key,
+          body: buffer,
+          contentType: file.type,
+          metadata: {
+            workspaceId: workspace.id.toString(),
+            orderId: orderId,
+            documentType: documentType,
+            originalName: file.name,
+            uploadedAt: new Date().toISOString()
+          }
+        });
+
+        if (!uploadResult.success) {
+          throw new Error(uploadResult.error || 'Upload failed');
+        }
+
+        documentUrl = uploadResult.url!;
+        storedS3Url = uploadResult.s3Url!;
+        bucketUsed = s3DocumentsBucket;
+
+        if (uploadResult.retries && uploadResult.retries > 0) {
+          console.log(`Document uploaded to S3 after ${uploadResult.retries} retries`);
+        }
+      } catch (uploadError) {
+        console.error('S3 upload failed, falling back to inline storage:', uploadError);
+
+        // Fallback to inline storage if S3 fails
+        const buffer = Buffer.from(await file.arrayBuffer())
+        documentUrl = `data:${file.type};base64,${buffer.toString('base64')}`
+        s3Key = `inline/${orderId}/${Date.now()}-${file.name}`
+        bucketUsed = 'inline-storage-fallback'
+        storedS3Url = documentUrl
+      }
     } else {
       // Fallback: store as base64 in database (not recommended for production)
       const buffer = Buffer.from(await file.arrayBuffer())
