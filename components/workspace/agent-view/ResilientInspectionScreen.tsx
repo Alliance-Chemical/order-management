@@ -340,7 +340,8 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, or
   )
 }
 
-function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems, customerName }: StepFormProps<'verify_packing_label'> & { orderItems?: any[], customerName?: string }) {
+function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems, customerName, shipTo }: StepFormProps<'verify_packing_label'> & { orderItems?: any[], customerName?: string, shipTo?: ShipmentAddress }) {
+  const { toast } = useToast()
   const [checks, setChecks] = useState({
     shipToOk: payload?.shipToOk ?? false,
     companyOk: payload?.companyOk ?? false,
@@ -391,6 +392,11 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
       }
     } catch (err) {
       console.error('Failed to upload inspection photos', err)
+      toast({
+        title: "Upload Failed",
+        description: err instanceof Error ? err.message : "Failed to upload photo. Please try again or contact support.",
+        variant: "destructive"
+      })
     } finally {
       setUploading(false)
       event.target.value = ''
@@ -486,7 +492,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
             onChange={(event) => updateCheck('shipToOk', event.target.checked)}
             className="w-5 h-5"
           />
-          Shipping destination: <span className="text-blue-700">{customerName || 'Customer'}</span> ✓
+          Shipping destination: <span className="text-blue-700">{shipTo ? formatAddressLines(shipTo).join(', ') : customerName || 'Address not provided'}</span>
         </label>
         <label className="flex items-center gap-3 text-base font-medium text-slate-700">
           <input
@@ -563,6 +569,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
 }
 
 function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems }: StepFormProps<'verify_product_label'> & { orderItems?: any[] }) {
+  const { toast } = useToast()
   const [checks, setChecks] = useState({
     gradeOk: payload?.gradeOk ?? false,
     unOk: payload?.unOk ?? false,
@@ -614,6 +621,11 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
       }
     } catch (err) {
       console.error('Failed to upload product label photos', err)
+      toast({
+        title: "Upload Failed",
+        description: err instanceof Error ? err.message : "Failed to upload photo. Please try again or contact support.",
+        variant: "destructive"
+      })
     } finally {
       setUploading(false)
       event.target.value = ''
@@ -717,7 +729,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
             onChange={(event) => updateCheck('unOk', event.target.checked)}
             className="w-5 h-5"
           />
-          UN number correct (if applicable)
+          UN number and Packing Group match
         </label>
         <label className="flex items-center gap-3 text-base font-medium text-slate-700">
           <input
@@ -726,7 +738,7 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
             onChange={(event) => updateCheck('pgOk', event.target.checked)}
             className="w-5 h-5"
           />
-          Packing Group (PG) label present and correct
+          NON-HAZMAT (NON-DOT REG.)
         </label>
         <label className="flex items-center gap-3 text-base font-medium text-slate-700">
           <input
@@ -838,7 +850,9 @@ function LotNumberStepForm({ run: _run, payload, onSubmit, isPending, orderId }:
       })
 
       if (!response.ok) {
-        throw new Error(`Lot extraction failed (${response.status})`)
+        const errorData = await response.json().catch(() => null)
+        const errorMessage = errorData?.error || `Extraction service error (${response.status})`
+        throw new Error(errorMessage)
       }
 
       const result = await response.json()
@@ -867,9 +881,14 @@ function LotNumberStepForm({ run: _run, payload, onSubmit, isPending, orderId }:
       })
     } catch (error) {
       console.error('Error extracting lot numbers', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       toast({
-        title: 'Extraction error',
-        description: 'We could not read the lot number from the photo. Try again or enter it manually.',
+        title: 'AI Extraction Failed',
+        description: errorMessage.includes('503') || errorMessage.includes('service')
+          ? 'The AI service is temporarily unavailable. Please enter lot numbers manually or try again in a moment.'
+          : errorMessage.includes('rate limit')
+          ? 'Too many requests. Please wait a moment before trying again.'
+          : `Unable to extract lot numbers: ${errorMessage}. Please enter manually.`,
         variant: 'destructive'
       })
     } finally {
@@ -1490,6 +1509,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               orderNumber={orderNumber}
               orderItems={orderItems}
               customerName={customerName}
+              shipTo={shipToAddress}
               onSubmit={(payload, outcome) => {
                 handleSubmit('verify_packing_label', payload, outcome)
                 // Auto-advance to next step after successful save
