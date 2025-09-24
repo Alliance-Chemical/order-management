@@ -68,6 +68,11 @@ const nextConfig: NextConfig = {
     // Allow production builds to complete even with TypeScript errors
     ignoreBuildErrors: true,
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '4mb',
+    },
+  },
 };
 
 // Export with PWA configuration only (Sentry now handled by instrumentation.ts)

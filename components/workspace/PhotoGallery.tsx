@@ -33,14 +33,35 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
   }, [orderId, moduleState]);
 
   const loadPhotos = async () => {
+    let hadModulePhotos = false;
     try {
       setLoading(true);
       setError(null);
 
-      // Get photos from module state if available
-      if (moduleState?.preShip?.photos) {
-        setPhotos(moduleState.preShip.photos);
-        return;
+      const modulePhotos = Array.isArray(moduleState?.preShip?.photos)
+        ? moduleState.preShip.photos
+        : [];
+
+      const mappedModulePhotos = modulePhotos.map((photo: any) => ({
+        id: String(
+          photo.id ??
+          photo.documentId ??
+          (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`)
+        ),
+        documentName: photo.documentName ?? photo.fileName ?? 'Inspection Photo',
+        s3Url: photo.s3Url,
+        s3Key: photo.s3Key,
+        lotNumbers: photo.lotNumbers,
+        capturedAt: photo.capturedAt,
+        uploadedAt: photo.uploadedAt,
+        documentId: photo.documentId ?? photo.id
+      }));
+
+      if (mappedModulePhotos.length > 0) {
+        hadModulePhotos = true;
+        setPhotos(mappedModulePhotos);
       }
 
       // Otherwise fetch from documents server action
@@ -55,19 +76,42 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
         (doc: any) => doc.documentType === 'pre_ship_photo'
       ) || [];
       
-      setPhotos(preShipPhotos.map((doc: any) => ({
-        id: doc.id,
-        documentName: doc.fileName,
-        s3Url: doc.documentUrl,
-        s3Key: doc.s3Key,
-        lotNumbers: doc.metadata?.lotNumbers,
-        capturedAt: doc.metadata?.capturedAt,
-        uploadedAt: doc.createdAt,
-        documentId: doc.id
-      })));
+      const modulePhotoMap = new Map<string, Photo>();
+      mappedModulePhotos.forEach((photo) => {
+        if (photo.documentId) {
+          modulePhotoMap.set(String(photo.documentId), photo);
+        }
+        modulePhotoMap.set(photo.id, photo);
+      });
+
+      const mergedPhotos: Photo[] = preShipPhotos.map((doc: any) => {
+        const docId = String(doc.id);
+        const modulePhoto = modulePhotoMap.get(docId);
+
+        return {
+          id: docId,
+          documentName: doc.fileName ?? doc.documentName ?? modulePhoto?.documentName ?? 'Inspection Photo',
+          s3Url: doc.documentUrl,
+          s3Key: doc.s3Key,
+          lotNumbers: modulePhoto?.lotNumbers || doc.metadata?.lotNumbers || doc.lotNumbers,
+          capturedAt: modulePhoto?.capturedAt || doc.metadata?.capturedAt || doc.capturedAt,
+          uploadedAt: doc.createdAt || modulePhoto?.uploadedAt,
+          documentId: docId
+        };
+      });
+
+      // Include any module photos that don't have a matching document record yet.
+      const unmatchedModulePhotos = mappedModulePhotos.filter((photo) => {
+        const docId = photo.documentId ? String(photo.documentId) : photo.id;
+        return !mergedPhotos.some((merged) => merged.documentId === docId);
+      });
+
+      setPhotos([...mergedPhotos, ...unmatchedModulePhotos]);
     } catch (err: any) {
       console.error('Error loading photos:', err);
-      setError(err.message || 'Failed to load photos');
+      if (!hadModulePhotos) {
+        setError(err.message || 'Failed to load photos');
+      }
     } finally {
       setLoading(false);
     }

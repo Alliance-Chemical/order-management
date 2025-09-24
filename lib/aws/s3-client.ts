@@ -1,11 +1,18 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
+const sanitizeEnvValue = (value?: string | null) =>
+  value ? value.replace(/[\r\n]+/g, '').trim() : undefined;
+
+const awsRegion = sanitizeEnvValue(process.env.AWS_REGION) || 'us-east-2';
+const awsAccessKeyId = sanitizeEnvValue(process.env.AWS_ACCESS_KEY_ID) || '';
+const awsSecretAccessKey = sanitizeEnvValue(process.env.AWS_SECRET_ACCESS_KEY) || '';
+
 export const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-2',
+  region: awsRegion,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    accessKeyId: awsAccessKeyId,
+    secretAccessKey: awsSecretAccessKey,
   },
 });
 
@@ -16,7 +23,7 @@ export async function uploadToS3(bucket: string, key: string, file: Buffer | Uin
     Body: file,
     ContentType: contentType,
   });
-  
+
   return await s3Client.send(command);
 }
 
@@ -25,7 +32,7 @@ export async function getPresignedUrl(bucket: string, key: string, expiresIn: nu
     Bucket: bucket,
     Key: key,
   });
-  
+
   return await getSignedUrl(s3Client, command, { expiresIn });
 }
 
@@ -34,7 +41,7 @@ export async function deleteFromS3(bucket: string, key: string) {
     Bucket: bucket,
     Key: key,
   });
-  
+
   return await s3Client.send(command);
 }
 
@@ -43,7 +50,7 @@ export async function listS3Objects(bucket: string, prefix?: string) {
     Bucket: bucket,
     Prefix: prefix,
   });
-  
+
   return await s3Client.send(command);
 }
 

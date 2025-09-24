@@ -23,6 +23,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+interface DropdownItem {
+  name: string;
+  href: string;
+  description?: string;
+  external?: boolean;
+}
+
 interface NavigationItem {
   name: string;
   href: string;
@@ -32,6 +39,8 @@ interface NavigationItem {
   description?: string;
   external?: boolean;
   section: 'primary' | 'tools';
+  isDropdown?: boolean;
+  dropdownItems?: DropdownItem[];
 }
 
 const navigationItems: NavigationItem[] = [
@@ -93,6 +102,36 @@ const navigationItems: NavigationItem[] = [
     bgColor: 'hover:bg-orange-50',
     description: 'Critical for DOT compliance',
     section: 'tools'
+  },
+  {
+    name: 'Chemical Tools',
+    href: '#',
+    icon: BeakerIcon,
+    color: 'text-indigo-600 hover:text-indigo-700',
+    bgColor: 'hover:bg-indigo-50',
+    description: 'Lot numbers & dilution calculator',
+    section: 'tools',
+    isDropdown: true,
+    dropdownItems: [
+      {
+        name: 'Lot Number Request',
+        href: 'https://tool.alliancechemical.com/lot-number',
+        description: 'Request and print lot numbers',
+        external: true
+      },
+      {
+        name: 'Lot Number Reference',
+        href: 'https://tool.alliancechemical.com/warehouse-outgoing',
+        description: 'Look up existing lot numbers',
+        external: true
+      },
+      {
+        name: 'Dilution Calculator',
+        href: 'https://tool.alliancechemical.com/dilution',
+        description: 'Calculate chemical dilutions',
+        external: true
+      }
+    ]
   },
   {
     name: 'Hazmat Chat',
@@ -264,6 +303,59 @@ export default function FreightNavigation({
                 const Icon = item.icon;
                 const isActive = !item.external && (pathname === item.href || pathname?.startsWith(`${item.href}/`));
 
+                // Handle dropdown items
+                if (item.isDropdown && item.dropdownItems) {
+                  return (
+                    <div key={item.name}>
+                      <div className="px-3 py-2">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-slate-700">
+                              {item.name}
+                            </span>
+                            {item.description && (
+                              <span className="text-xs text-slate-500">{item.description}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="ml-12 space-y-1 mb-2">
+                        {item.dropdownItems.map((subItem) => (
+                          <DropdownMenuItem
+                            key={subItem.name}
+                            asChild
+                            className="rounded-xl px-3 py-2 focus:bg-blue-50 focus:text-blue-700"
+                          >
+                            <a
+                              href={subItem.href}
+                              target={subItem.external ? "_blank" : undefined}
+                              rel={subItem.external ? "noopener noreferrer" : undefined}
+                              className="flex items-center gap-2"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-sm text-slate-700">
+                                  {subItem.name}
+                                </span>
+                                {subItem.description && (
+                                  <span className="text-xs text-slate-500">{subItem.description}</span>
+                                )}
+                              </div>
+                              {subItem.external && (
+                                <ArrowTopRightOnSquareIcon className="ml-auto h-3 w-3 text-slate-400" />
+                              )}
+                            </a>
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                      <DropdownMenuSeparator className="bg-slate-200" />
+                    </div>
+                  );
+                }
+
+                // Regular items
                 const content = (
                   <div className="flex items-center gap-3">
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { geminiService } from '@/lib/services/ai/gemini-service';
+import { openaiService } from '@/lib/services/ai/openai-service';
 import { workspaceService } from '@/lib/services/workspace/service';
 // AWS SNS removed - log notifications instead
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       const audioBuffer = await audioFile.arrayBuffer();
       const audioBase64 = Buffer.from(audioBuffer).toString('base64');
       
-      const voiceAnalysis = await geminiService.processVoiceNote(audioBase64);
+      const voiceAnalysis = await openaiService.processVoiceNote(audioBase64);
       issueReport.voiceAnalysis = voiceAnalysis as VoiceAnalysis;
     }
 
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       const imageBuffer = await imageFile.arrayBuffer();
       const imageBase64 = Buffer.from(imageBuffer).toString('base64');
       
-      const imageAnalysis = await geminiService.analyzeInspectionImage(
+      const imageAnalysis = await openaiService.analyzeInspectionImage(
         imageBase64,
         context || 'Inspection failure'
       );

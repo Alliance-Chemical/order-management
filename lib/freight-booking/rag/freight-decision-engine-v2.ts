@@ -1,17 +1,5 @@
 import { getEdgeSql } from "@/lib/db/neon-edge";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// Initialize Google Gemini
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
-
-// For embeddings, we'll use Google's text-embedding-004 model
-// Dimensions: 768 (more efficient than OpenAI's 1536)
-const embeddingModel = genAI.getGenerativeModel({
-  model: "text-embedding-004",
-});
-
-// For decision generation, use Gemini Pro
-const geminiPro = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+import { openaiEmbedding, openaiChat } from '@/lib/services/ai/openai-service'
 
 export interface FreightDecisionContext {
   orderId: string;
@@ -140,7 +128,7 @@ type AlternativeRecommendation = Record<string, unknown> & {
   estimatedCost?: number;
 };
 
-interface GeminiDecision {
+interface AIRecommendation {
   containers?: FreightContainerRecommendation[];
   carrier?: string;
   carrierService?: string;
@@ -167,21 +155,12 @@ export class FreightDecisionEngineV2 {
     }
 
     try {
-      // Google's text-embedding-004 is currently one of the best
-      // 768 dimensions, highly performant
-      const result = await embeddingModel.embedContent(contextText);
-      const embedding = result.embedding.values;
-
-      // Cache the result
-      this.embeddingCache.set(contextText, embedding);
-
-      return embedding;
+      const embedding = await openaiEmbedding(contextText)
+      this.embeddingCache.set(contextText, embedding)
+      return embedding
     } catch (error) {
-      console.error("Google embedding failed, trying fallback:", error);
-
-      // Fallback to Voyage AI or Cohere if you have API keys
-      // Otherwise use a local model
-      return this.fallbackEmbedding(contextText);
+      console.error("OpenAI embedding failed, trying fallback:", error)
+      return this.fallbackEmbedding(contextText)
     }
   }
 
@@ -233,7 +212,7 @@ export class FreightDecisionEngineV2 {
     }
 
     // Final fallback: Use a hash-based approach (not ideal but keeps system running)
-    return this.hashBasedEmbedding(text, 768);
+    return this.hashBasedEmbedding(text, 1536);
   }
 
   // Simple hash-based embedding as last resort
@@ -298,19 +277,19 @@ export class FreightDecisionEngineV2 {
       // Format embedding as PostgreSQL array string
       const embeddingString = `[${contextEmbedding.join(',')}]`;
 
-      // Use pgvector for similarity search with Google's 768-dimension embeddings
+      // Use pgvector for similarity search with OpenAI's 1536-dimension embeddings
       const sql = getEdgeSql();
       const results = await sql`
         WITH semantic_search AS (
           SELECT 
             *,
-            1 - (embedding <=> ${embeddingString}::vector(768)) as similarity
+            1 - (embedding <=> ${embeddingString}::vector(1536)) as similarity
           FROM mycarrier_historical_shipments
           WHERE 
             -- Pre-filter for efficiency
             destination_state = ${context.destination.state}
             AND origin_state = ${context.origin.state}
-          ORDER BY embedding <=> ${embeddingString}::vector(768)
+          ORDER BY embedding <=> ${embeddingString}::vector(1536)
           LIMIT ${limit * 2}
         )
         SELECT * FROM semantic_search
@@ -393,12 +372,12 @@ export class FreightDecisionEngineV2 {
         ),
         semantic_matches AS (
           SELECT *,
-                 1 - (embedding <=> ${embeddingString}::vector(768)) as semantic_score
+                 1 - (embedding <=> ${embeddingString}::vector(1536)) as semantic_score
           FROM mycarrier_historical_shipments
           WHERE 
             destination_state = ${context.destination.state}
             AND origin_state = ${context.origin.state}
-          ORDER BY embedding <=> ${embeddingString}::vector(768)
+          ORDER BY embedding <=> ${embeddingString}::vector(1536)
           LIMIT 50
         ),
         combined AS (
@@ -419,7 +398,7 @@ export class FreightDecisionEngineV2 {
     }
   }
 
-  // Generate decision using Gemini with RAG context
+  // Generate decision using OpenAI with RAG context
   async makeDecision(
     context: FreightDecisionContext,
   ): Promise<FreightDecision> {
@@ -430,8 +409,8 @@ export class FreightDecisionEngineV2 {
       // Step 2: Analyze patterns
       const patterns = this.analyzePatterns(similarShipments);
 
-      // Step 3: Generate decision with Gemini
-      const decision = await this.generateDecisionWithGemini(
+      // Step 3: Generate decision with OpenAI
+      const decision = await this.generateDecisionWithAI(
         context,
         similarShipments,
         patterns,
@@ -450,8 +429,8 @@ export class FreightDecisionEngineV2 {
     }
   }
 
-  // Use Gemini for decision generation
-  private async generateDecisionWithGemini(
+  // Use OpenAI for decision generation
+  private async generateDecisionWithAI(
     context: FreightDecisionContext,
     similarShipments: HistoricalShipment[],
     patterns: ShipmentPatterns,
@@ -511,48 +490,52 @@ Based on this data, provide your recommendation in JSON format with the followin
 `;
 
     try {
-      const result = await geminiPro.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
+      const text = await openaiChat([
+        {
+          role: 'user',
+          content: [{ type: 'text', text: prompt }],
+        },
+      ], {
+        maxTokens: 900,
+      })
 
-      // Extract JSON from response
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
-        throw new Error("No JSON found in Gemini response");
+        throw new Error("No JSON found in OpenAI response")
       }
 
-      const geminiDecision = JSON.parse(jsonMatch[0]) as GeminiDecision;
+      const aiDecision = JSON.parse(jsonMatch[0]) as AIRecommendation;
 
       return {
         recommendation: {
           containers:
-            geminiDecision.containers || this.getDefaultContainers(patterns),
-          carrier: geminiDecision.carrier || patterns.mostCommonCarrier,
-          carrierService: geminiDecision.carrierService || "Standard",
+            aiDecision.containers || this.getDefaultContainers(patterns),
+          carrier: aiDecision.carrier || patterns.mostCommonCarrier,
+          carrierService: aiDecision.carrierService || "Standard",
           accessorials:
-            geminiDecision.accessorials || patterns.commonAccessorials,
-          estimatedCost: geminiDecision.estimatedCost || patterns.avgCost,
+            aiDecision.accessorials || patterns.commonAccessorials,
+          estimatedCost: aiDecision.estimatedCost || patterns.avgCost,
           estimatedTransitDays:
-            geminiDecision.estimatedTransitDays || patterns.avgTransitDays,
-          addressType: geminiDecision.addressType || "Business",
+            aiDecision.estimatedTransitDays || patterns.avgTransitDays,
+          addressType: aiDecision.addressType || "Business",
         },
         confidence: this.calculateConfidence(
           similarShipments,
           patterns,
-          geminiDecision.confidenceFactors,
+          aiDecision.confidenceFactors,
         ),
         reasoning:
-          geminiDecision.reasoning ||
+          aiDecision.reasoning ||
           this.generateReasoning(patterns, similarShipments),
         similarShipments: similarShipments.slice(0, 5).map((s) => ({
           referenceId: s.reference_id,
           similarity: s.similarity || 0.85,
           outcome: s.on_time_delivery ? "successful" : "delayed",
         })),
-        alternatives: this.generateAlternatives(patterns, geminiDecision),
+        alternatives: this.generateAlternatives(patterns, aiDecision),
       };
     } catch (error) {
-      console.error("Gemini decision generation failed:", error);
+      console.error("OpenAI decision generation failed:", error);
       return this.fallbackDecision(context, patterns, similarShipments);
     }
   }
@@ -719,7 +702,7 @@ Based on this data, provide your recommendation in JSON format with the followin
       confidence += 0.1; // Consistent carrier usage
     }
 
-    // Apply confidence factors from Gemini if available
+    // Apply confidence factors from AI if available
     if (confidenceFactors) {
       if (confidenceFactors.dataSufficiency === "low") confidence *= 0.8;
       if (confidenceFactors.patternStrength === "low") confidence *= 0.8;
@@ -732,7 +715,7 @@ Based on this data, provide your recommendation in JSON format with the followin
   // Generate alternative recommendations
   private generateAlternatives(
     patterns: ShipmentPatterns,
-    primaryDecision: GeminiDecision,
+    primaryDecision: AIRecommendation,
   ): AlternativeRecommendation[] {
     const alternatives: AlternativeRecommendation[] = [];
 

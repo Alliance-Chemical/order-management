@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { IssueModalProps, InspectionItem } from '@/lib/types/agent-view';
-import { Button } from '@/components/ui/button';
+import { Button } from '../../ui/button';
 import { notifyWorkspace } from '@/app/actions/workspace';
 
 export default function IssueModal({ 

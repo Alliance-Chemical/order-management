@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { geminiService } from '@/lib/services/ai/gemini-service';
+import { openaiService } from '@/lib/services/ai/openai-service';
 import { db } from '@/lib/db';
 import { workspaces, activityLog } from '@/lib/db/schema/qr-workspace';
 import { gte, sql } from 'drizzle-orm';
@@ -26,7 +26,7 @@ type AggregatedInspection = {
   total_inspections: number;
 };
 
-type AnomalyReport = Awaited<ReturnType<typeof geminiService.detectAnomalies>>;
+type AnomalyReport = Awaited<ReturnType<typeof openaiService.detectAnomalies>>;
 type RiskPattern = AnomalyReport['risk_patterns'][number];
 type AlertEntry = {
   product: string;
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Run AI anomaly detection
-    const anomalyReport = await geminiService.detectAnomalies(dataForAnalysis);
+    const anomalyReport = await openaiService.detectAnomalies(dataForAnalysis);
 
     // Process high-risk combinations
     const alerts: AlertEntry[] = [];

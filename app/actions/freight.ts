@@ -3,8 +3,8 @@
 import { workspaceFreightLinker } from "@/lib/services/workspace-freight-linking"
 import { KVCache } from "@/lib/cache/kv-cache"
 import { revalidatePath } from "next/cache"
-import { GoogleGenerativeAI } from "@google/generative-ai"
 import { getEdgeSql, withEdgeRetry } from "@/lib/db/neon-edge"
+import { openaiEmbedding } from '@/lib/services/ai/openai-service'
 
 type Address = {
   address?: string
@@ -409,12 +409,6 @@ export async function checkFreightBookingStatus(orderId: string) {
   }
 }
 
-// Initialize Gemini AI for embeddings
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!)
-const embeddingModel = genAI.getGenerativeModel({
-  model: "text-embedding-004",
-})
-
 function formatOrderForEmbedding(order: CapturedFreightOrder): string {
   const origin = order.originStop || {}
   const dest = order.destinationStop || {}
@@ -706,8 +700,7 @@ export async function captureFreightOrder(orderData: CapturedFreightOrder) {
     const searchableText = formatOrderForEmbedding(orderData)
 
     // Generate embedding using Google's text-embedding-004
-    const result = await embeddingModel.embedContent(searchableText)
-    const embedding = result.embedding.values
+    const embedding = await openaiEmbedding(searchableText)
 
     // Store in intelligence schema with retry logic
     await withEdgeRetry(async () => {

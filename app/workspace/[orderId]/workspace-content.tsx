@@ -68,70 +68,67 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
 
   // Worker View Routing
   if (viewMode === 'worker') {
-    if (canShowWorkerView) {
-      return (
-        <ErrorBoundary>
-          {workerStep === 'entry' ? (
-            <>
-              <EntryScreen 
-                workspace={workerWorkspace}
-                onStart={() => setWorkerStep('inspection')}
-                onSwitchToSupervisor={() => setViewMode('supervisor')}
-                onSelectItem={(item) => {
-                  setSelectedItem(item);
-                  setWorkerStep('inspection');
-                }}
-              />
-              <ConnectionStatus />
-            </>
-          ) : workerStep === 'inspection' ? (
-            <>
-              <ResilientInspectionScreen
-                orderId={orderId}
-                orderNumber={workspace.orderNumber}
-                customerName={workspace.shipstationData?.shipTo?.name}
-                orderItems={selectedItem ? [selectedItem] : (workspace.shipstationData?.items || [])}
-                workflowPhase={workerInspectionPhase}
-                workflowType={workspace.workflowType}
-                items={buildInspectionItems(workerWorkspace as any, selectedItem)}
-                onComplete={(results) => {
-                  handleWorkerInspectionComplete(results);
+    // Always show the view toggle header in worker mode
+    const workerContent = canShowWorkerView ? (
+      <ErrorBoundary>
+        {workerStep === 'entry' ? (
+          <>
+            <EntryScreen
+              workspace={workerWorkspace}
+              onStart={() => setWorkerStep('inspection')}
+              onSwitchToSupervisor={() => setViewMode('supervisor')}
+              onSelectItem={(item) => {
+                setSelectedItem(item);
+                setWorkerStep('inspection');
+              }}
+            />
+            <ConnectionStatus />
+          </>
+        ) : workerStep === 'inspection' ? (
+          <>
+            <ResilientInspectionScreen
+              orderId={orderId}
+              orderNumber={workspace.orderNumber}
+              customerName={workspace.shipstationData?.shipTo?.name}
+              orderItems={selectedItem ? [selectedItem] : (workspace.shipstationData?.items || [])}
+              workflowPhase={workerInspectionPhase}
+              workflowType={workspace.workflowType}
+              items={buildInspectionItems(workerWorkspace as any, selectedItem)}
+              onComplete={(results) => {
+                handleWorkerInspectionComplete(results);
+                setSelectedItem(null);
+              }}
+              onSwitchToSupervisor={() => setViewMode('supervisor')}
+              workspace={workerWorkspace}
+            />
+            <ConnectionStatus />
+          </>
+        ) : (
+          <div className="min-h-screen bg-white flex items-center justify-center">
+            <div className="text-center">
+              <div className="mb-6">
+                <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
+                  <svg className="w-16 h-16 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </div>
+              <h1 className="text-4xl font-bold text-slate-900 mb-4">Inspection Complete!</h1>
+              <p className="text-xl text-slate-600 mb-8">Order #{workspace.orderNumber} has been processed</p>
+              <button
+                onClick={() => {
+                  setWorkerStep('entry');
                   setSelectedItem(null);
                 }}
-                onSwitchToSupervisor={() => setViewMode('supervisor')}
-                workspace={workerWorkspace}
-              />
-              <ConnectionStatus />
-            </>
-          ) : (
-            <div className="min-h-screen bg-white flex items-center justify-center">
-              <div className="text-center">
-                <div className="mb-6">
-                  <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
-                    <svg className="w-16 h-16 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                </div>
-                <h1 className="text-4xl font-bold text-slate-900 mb-4">Inspection Complete!</h1>
-                <p className="text-xl text-slate-600 mb-8">Order #{workspace.orderNumber} has been processed</p>
-                <button
-                  onClick={() => {
-                    setWorkerStep('entry');
-                    setSelectedItem(null);
-                  }}
-                  className="px-8 py-4 bg-green-600 text-white text-xl font-bold rounded-lg hover:bg-green-700"
-                >
-                  START NEW INSPECTION
-                </button>
-              </div>
+                className="px-8 py-4 bg-green-600 text-white text-xl font-bold rounded-lg hover:bg-green-700"
+              >
+                START NEW INSPECTION
+              </button>
             </div>
-          )}
-        </ErrorBoundary>
-      );
-    }
-
-    return (
+          </div>
+        )}
+      </ErrorBoundary>
+    ) : (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="max-w-md text-center space-y-4 px-6">
           <h1 className="text-2xl font-semibold text-slate-900">Supervisor Phase Active</h1>
@@ -139,19 +136,34 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
             Worker tools unlock when an order is in Pre-Mix or Pre-Ship. The current phase is
             {' '}
             <span className="font-medium text-slate-800">{workspace.workflowPhase.replace('_', ' ')}</span>.
-            Switch to the Supervisor View to continue.
           </p>
-          <button
-            onClick={() => {
-              setViewMode('supervisor');
-              setWorkerStep('entry');
-            }}
-            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-          >
-            Go to Supervisor View
-          </button>
         </div>
       </div>
+    );
+
+    return (
+      <>
+        {/* View Mode Toggle - Always visible in worker view */}
+        <div className="bg-slate-600 text-white px-4 py-2">
+          <div className="max-w-7xl mx-auto flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium">Current View: Worker</span>
+              <div data-testid="worker-view" className="hidden"></div>
+            </div>
+            <button
+              data-testid="view-toggle"
+              onClick={() => {
+                setViewMode('supervisor');
+                setWorkerStep('entry');
+              }}
+              className="text-sm underline hover:no-underline"
+            >
+              Switch to Supervisor View
+            </button>
+          </div>
+        </div>
+        {workerContent}
+      </>
     );
   }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { geminiService } from '@/lib/services/ai/gemini-service';
+import { openaiService } from '@/lib/services/ai/openai-service';
 import { workspaceService } from '@/lib/services/workspace/service';
 import { s3Client } from '@/lib/aws/s3-client';
 import sharp from 'sharp';
@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
       documentBase64 = optimizedBuffer.toString('base64');
     }
 
-    // Extract data using Gemini
-    const extractedData = await geminiService.extractDocumentData(
+    // Extract data using OpenAI
+    const extractedData = await openaiService.extractDocumentData(
       documentBase64,
       documentType
     );

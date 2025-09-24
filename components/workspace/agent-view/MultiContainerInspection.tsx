@@ -3,7 +3,7 @@
 import React from 'react';
 import { FastQRScanner } from '@/components/qr/FastQRScanner';
 import IssueModal from './IssueModal';
-import { Button } from '@/components/ui/button';
+import { Button } from '../../ui/button';
 import { useMultiContainerInspection } from '@/hooks/useMultiContainerInspection';
 import { ContainerList } from '@/components/inspection/ContainerList';
 import { ContainerInspectionForm } from '@/components/inspection/ContainerInspectionForm';

@@ -1,6 +1,8 @@
 import { db } from '@/lib/db';
 import { workspaces, qrCodes, documents, alertConfigs, activityLog } from '@/lib/db/schema/qr-workspace';
 import { eq, and, desc, sql } from 'drizzle-orm';
+import type { DocumentInsert } from '@/types/documents';
+import { resolveDocumentName } from '@/lib/utils/document-name';
 
 export class WorkspaceRepository {
   async findByOrderId(orderId: number) {
@@ -14,9 +16,33 @@ export class WorkspaceRepository {
     });
   }
 
+  async createOrGet(data: typeof workspaces.$inferInsert) {
+    const inserted = await db
+      .insert(workspaces)
+      .values(data)
+      .onConflictDoNothing({ target: workspaces.orderId })
+      .returning();
+
+    if (inserted.length > 0) {
+      return { workspace: inserted[0], created: true } as const;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.orderId, data.orderId))
+      .limit(1);
+
+    if (!existing) {
+      throw new Error(`Workspace with order ${data.orderId} could not be retrieved after upsert.`);
+    }
+
+    return { workspace: existing, created: false } as const;
+  }
+
   async create(data: typeof workspaces.$inferInsert) {
-    const [workspace] = await db.insert(workspaces).values(data).returning();
-    return workspace;
+    const result = await this.createOrGet(data);
+    return result.workspace;
   }
 
   async update(id: string, data: Partial<typeof workspaces.$inferInsert>) {
@@ -90,8 +116,15 @@ export class WorkspaceRepository {
     return updated;
   }
 
-  async addDocument(data: typeof documents.$inferInsert) {
-    const [doc] = await db.insert(documents).values(data).returning();
+  async addDocument(data: DocumentInsert) {
+    const documentName = data.documentName?.trim() || resolveDocumentName(null, data.s3Key);
+    const [doc] = await db
+      .insert(documents)
+      .values({
+        ...data,
+        documentName,
+      })
+      .returning();
     return doc;
   }
 

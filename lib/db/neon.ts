@@ -16,10 +16,7 @@ function initializeNeonDb() {
   
   if (!sql && connectionString) {
     // Use Neon's serverless driver which handles connection pooling automatically
-    sql = neon(connectionString, {
-      // Enable connection caching for better performance
-      fetchConnectionCache: true,
-    });
+    sql = neon(connectionString);
     
     // Create drizzle instance with the Neon driver
     const schema = { ...qrSchema };
@@ -44,7 +41,6 @@ export function getRawSql() {
   
   if (!sql && connectionString) {
     sql = neon(connectionString, {
-      fetchConnectionCache: true,
       fullResults: true,
     });
   }

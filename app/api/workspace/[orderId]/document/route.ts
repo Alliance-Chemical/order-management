@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 import { uploadToS3, getPresignedUrl } from '@/lib/aws/s3-client';
+import { resolveDocumentName } from '@/lib/utils/document-name';
 import { v4 as uuidv4 } from 'uuid';
 
 const repository = new WorkspaceRepository();
@@ -40,6 +41,7 @@ export async function POST(
     // Generate S3 key
     const fileExtension = file.name.split('.').pop();
     const s3Key = `${workspace.orderNumber}/${documentType}/${uuidv4()}.${fileExtension}`;
+    const documentName = resolveDocumentName(file.name, s3Key);
     
     // Upload to S3
     await uploadToS3(workspace.s3BucketName!, s3Key, buffer, file.type);
@@ -51,7 +53,7 @@ export async function POST(
     const document = await repository.addDocument({
       workspaceId: workspace.id,
       documentType,
-      documentName: file.name,
+      documentName,
       s3Bucket: workspace.s3BucketName!,
       s3Key,
       s3Url: presignedUrl,
@@ -87,14 +89,14 @@ export async function POST(
       performedBy: userId,
       metadata: {
         documentType,
-        fileName: file.name,
+        documentName,
         fileSize: file.size,
       },
     });
 
     return NextResponse.json({
       id: document.id,
-      name: document.documentName,
+      name: documentName,
       type: document.documentType,
       url: presignedUrl,
       size: document.fileSize,

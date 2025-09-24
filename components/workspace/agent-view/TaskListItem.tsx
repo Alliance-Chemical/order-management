@@ -2,9 +2,9 @@
 
 import React from 'react';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
-import StatusLight from '@/components/ui/StatusLight';
-import { Button } from '@/components/ui/button';
-import { ImageViewer } from '@/components/ui/image-viewer';
+import StatusLight from '../../ui/StatusLight';
+import { Button } from '../../ui/button';
+import { ImageViewer } from '../../ui/image-viewer';
 
 interface TaskListItemProps {
   item: {

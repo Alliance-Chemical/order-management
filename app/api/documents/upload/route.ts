@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { s3Client, getS3BucketName, createOrderFolderPath } from '@/lib/aws/s3-client';
+import { resolveDocumentName } from '@/lib/utils/document-name';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
     const fileExtension = file.name.split('.').pop();
     const fileName = `${documentType}-${uuidv4()}.${fileExtension}`;
     const s3Key = `${createOrderFolderPath(orderNumber)}documents/${fileName}`;
+    const documentName = resolveDocumentName(file.name, s3Key);
 
     // Convert file to buffer
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest) {
     const document = await repository.addDocument({
       workspaceId: workspace.id,
       documentType,
-      documentName: file.name,
+      documentName,
       s3Bucket: bucketName,
       s3Key,
       s3Url: `https://${bucketName}.s3.us-east-2.amazonaws.com/${s3Key}`,
@@ -91,13 +93,13 @@ export async function POST(request: NextRequest) {
     await repository.logActivity({
       workspaceId: workspace.id,
       activityType: 'document_uploaded',
-      activityDescription: `Uploaded ${documentType} document: ${file.name}`,
+      activityDescription: `Uploaded ${documentType} document: ${documentName}`,
       performedBy: 'system',
       module: 'documents',
       metadata: {
         documentId: document.id,
         documentType,
-        fileName: file.name,
+        documentName,
         fileSize: file.size,
       },
     });
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
       success: true,
       document: {
         id: document.id,
-        name: file.name,
+      name: documentName,
         type: documentType,
         size: file.size,
         url: document.s3Url,

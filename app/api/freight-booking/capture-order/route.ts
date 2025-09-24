@@ -1,17 +1,11 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { getEdgeSql, withEdgeRetry } from "@/lib/db/neon-edge";
 import { workspaceFreightLinker } from "@/lib/services/workspace-freight-linking";
+import { openaiEmbedding } from '@/lib/services/ai/openai-service'
 
 // Enable Edge Runtime for performance
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
-
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
-const embeddingModel = genAI.getGenerativeModel({
-  model: "text-embedding-004",
-});
 
 type QuoteCommodity = {
   commodityPieces?: number;
@@ -60,9 +54,8 @@ export async function POST(request: NextRequest) {
     // Format the order for embedding
     const searchableText = formatOrderForEmbedding(orderData);
 
-    // Generate embedding using Google's text-embedding-004
-    const result = await embeddingModel.embedContent(searchableText);
-    const embedding = result.embedding.values;
+    // Generate embedding using OpenAI embeddings API
+    const embedding = await openaiEmbedding(searchableText);
 
     // Store in intelligence schema with retry logic
     await withEdgeRetry(async () => {

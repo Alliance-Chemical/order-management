@@ -183,7 +183,12 @@ export default function PrintPreparationModal({
       const containerQRs = qrCodesToPrint.filter(qr => qr.qrType === 'container');
 
       if (containerQRs.length === 0) {
-        throw new Error('No container QR codes found to print');
+        toast({
+          title: 'No container labels',
+          description: 'Generate container QR codes before printing.',
+          variant: 'destructive',
+        })
+        return;
       }
 
       console.log(`[PrintModal] Printing ${containerQRs.length} container QR codes`);

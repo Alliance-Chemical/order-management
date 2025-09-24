@@ -20,6 +20,7 @@ import type { WorkspaceData } from '@/lib/types/agent-view'
 import {
   CONTAINER_TYPES,
   CRUZ_STEP_ORDER,
+  CRUZ_NAVIGABLE_STEPS,
   type ContainerType,
   type CruzInspectionRun,
   type CruzStepId,
@@ -575,15 +576,26 @@ interface RunWizardProps {
 
 function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getRunImage }: RunWizardProps) {
   const [localError, setLocalError] = useState<string | null>(null)
+  const [selectedStepId, setSelectedStepId] = useState<CruzStepId | null>(null)
 
   if (!run) {
     return null
   }
 
   const currentStep = run.currentStepId
+  useEffect(() => {
+    setSelectedStepId(null)
+  }, [currentStep])
+
+  const displayStep = selectedStepId || currentStep
 
   const handleSubmit = <K extends CruzStepId>(stepId: K, payload: CruzStepPayloadMap[K], outcome: 'PASS' | 'FAIL' | 'HOLD' = 'PASS') => {
     setLocalError(null)
+    if (stepId !== currentStep) {
+      setLocalError('Return to the active step before recording changes.')
+      setSelectedStepId(null)
+      return
+    }
     try {
       submitStep({
         orderId,
@@ -598,7 +610,23 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
     }
   }
 
-  const stepPayload = run.steps[currentStep as keyof typeof run.steps] as CruzStepPayloadMap[typeof currentStep] | undefined
+  const stepPayload = run.steps[displayStep as keyof typeof run.steps] as CruzStepPayloadMap[typeof displayStep] | undefined
+  const isViewingPreviousStep = displayStep !== currentStep
+
+  const handleBack = () => {
+    const effectiveStep = displayStep === 'scan_qr' ? CRUZ_NAVIGABLE_STEPS[0] : displayStep
+    const currentIdx = CRUZ_NAVIGABLE_STEPS.indexOf(effectiveStep as (typeof CRUZ_NAVIGABLE_STEPS)[number])
+
+    if (currentIdx > 0) {
+      const previousStep = CRUZ_NAVIGABLE_STEPS[currentIdx - 1]
+      setSelectedStepId(previousStep)
+    }
+  }
+
+  const canGoBack = (() => {
+    const effectiveStep = displayStep === 'scan_qr' ? CRUZ_NAVIGABLE_STEPS[0] : displayStep
+    return CRUZ_NAVIGABLE_STEPS.indexOf(effectiveStep as (typeof CRUZ_NAVIGABLE_STEPS)[number]) > 0
+  })()
 
   return (
     <Dialog open onOpenChange={(open) => (!open ? onClose() : null)}>
@@ -616,23 +644,44 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
           <aside className="md:col-span-4 space-y-2">
             {CRUZ_STEP_ORDER.map((stepId) => {
               const completed = Boolean(run.steps[stepId])
-              const isCurrent = stepId === currentStep
+              const isCurrent = stepId === displayStep
+              const stepIndex = CRUZ_STEP_ORDER.indexOf(stepId)
+              const currentIndex = CRUZ_STEP_ORDER.indexOf(currentStep)
+              const isSelectable = stepIndex <= currentIndex
               return (
-                <div
+                <button
                   key={stepId}
                   className={cn(
-                    'flex items-center justify-between rounded-lg border px-3 py-2 text-sm',
-                    isCurrent ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : completed ? 'border-green-200 bg-green-50 text-green-700' : 'border-slate-200 bg-white'
+                    'flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm text-left',
+                    isCurrent
+                      ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                      : completed
+                        ? 'border-green-200 bg-green-50 text-green-700'
+                        : 'border-slate-200 bg-white',
+                    isSelectable ? 'cursor-pointer hover:opacity-80' : 'cursor-not-allowed opacity-60'
                   )}
+                  onClick={() => {
+                    if (!isSelectable) return
+                    setSelectedStepId(stepId === currentStep ? null : stepId)
+                  }}
+                  disabled={!isSelectable}
                 >
                   <span>{STEP_LABELS[stepId]}</span>
                   {completed && <span className="text-xs">✔</span>}
-                </div>
+                </button>
               )
             })}
           </aside>
 
           <section className="md:col-span-8 space-y-4">
+            <div className="flex items-center justify-between">
+              <Button variant="ghost" onClick={handleBack} disabled={!canGoBack}>
+                ← Back
+              </Button>
+              <Button variant="ghost" onClick={onClose}>
+                Close
+              </Button>
+            </div>
             <div className="flex items-start gap-4">
               {(() => {
                 if (!run) return null
@@ -664,18 +713,18 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
               <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{localError}</div>
             )}
 
-            {currentStep === 'scan_qr' && (
+            {displayStep === 'scan_qr' && (
               <ScanQrStepForm
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['scan_qr']}
                 orderId={orderId}
                 onSubmit={(payload) => handleSubmit('scan_qr', payload, 'PASS')}
-                isPending={isPending}
+                isPending={isPending || isViewingPreviousStep}
                 bindRun={bindRun}
               />
             )}
 
-            {currentStep === 'inspection_info' && (
+            {displayStep === 'inspection_info' && (
               <InspectionInfoStepForm
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['inspection_info']}
@@ -684,55 +733,49 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
                 shipFrom={shipFromAddress}
                 customerEmail={customerEmail}
                 onSubmit={(payload) => handleSubmit('inspection_info', payload, 'PASS')}
-                isPending={isPending}
+                isPending={isPending || isViewingPreviousStep}
               />
             )}
 
-            {currentStep === 'verify_packing_label' && (
+            {displayStep === 'verify_packing_label' && (
               <VerifyPackingLabelStepForm
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['verify_packing_label']}
                 orderId={orderId}
                 onSubmit={(payload, outcome) => handleSubmit('verify_packing_label', payload, outcome)}
-                isPending={isPending}
+                isPending={isPending || isViewingPreviousStep}
               />
             )}
 
-            {currentStep === 'verify_product_label' && (
+            {displayStep === 'verify_product_label' && (
               <VerifyProductLabelStepForm
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['verify_product_label']}
                 orderId={orderId}
                 onSubmit={(payload, outcome) => handleSubmit('verify_product_label', payload, outcome)}
-                isPending={isPending}
+                isPending={isPending || isViewingPreviousStep}
               />
             )}
 
-            {currentStep === 'lot_number' && (
+            {displayStep === 'lot_number' && (
               <LotNumberStepForm
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['lot_number']}
                 orderId={orderId}
                 onSubmit={(payload) => handleSubmit('lot_number', payload, 'PASS')}
-                isPending={isPending}
+                isPending={isPending || isViewingPreviousStep}
               />
             )}
 
-            {currentStep === 'final_review' && (
+            {displayStep === 'final_review' && (
               <FinalReviewStepForm
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['final_review']}
                 orderId={orderId}
                 onSubmit={(payload) => handleSubmit('final_review', payload, 'PASS')}
-                isPending={isPending}
+                isPending={isPending || isViewingPreviousStep}
               />
             )}
-
-            <div className="flex justify-end">
-              <Button variant="ghost" onClick={onClose}>
-                Close
-              </Button>
-            </div>
           </section>
         </div>
       </DialogContent>

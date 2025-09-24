@@ -11,6 +11,10 @@ export const CRUZ_STEP_ORDER = [
 
 export type CruzStepId = (typeof CRUZ_STEP_ORDER)[number];
 
+export const CRUZ_NAVIGABLE_STEPS = CRUZ_STEP_ORDER.filter(
+  (step): step is Exclude<CruzStepId, 'scan_qr'> => step !== 'scan_qr'
+) as Array<Exclude<CruzStepId, 'scan_qr'>>;
+
 export type CruzRunStatus =
   | 'active'
   | 'completed'

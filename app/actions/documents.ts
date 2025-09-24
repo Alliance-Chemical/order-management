@@ -8,17 +8,32 @@ import { revalidatePath } from 'next/cache'
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { resolveDocumentName } from '@/lib/utils/document-name'
 
 const workspaceService = new WorkspaceService()
 
 // Initialize S3 client if AWS credentials are configured
-const s3Client = process.env.AWS_ACCESS_KEY_ID ? new S3Client({
-  region: process.env.AWS_REGION || 'us-east-2',
+const sanitizeEnvValue = (value?: string | null) =>
+  value ? value.replace(/[\r\n]+/g, '').trim() : undefined
+
+const awsAccessKeyId = sanitizeEnvValue(process.env.AWS_ACCESS_KEY_ID)
+const awsSecretAccessKey = sanitizeEnvValue(process.env.AWS_SECRET_ACCESS_KEY)
+const awsRegion = sanitizeEnvValue(process.env.AWS_REGION) || 'us-east-2'
+
+const s3Client = awsAccessKeyId && awsSecretAccessKey ? new S3Client({
+  region: awsRegion,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!
+    accessKeyId: awsAccessKeyId,
+    secretAccessKey: awsSecretAccessKey
   }
 }) : null
+
+const s3DocumentsBucket = sanitizeEnvValue(
+  process.env.S3_DOCUMENTS_BUCKET ||
+  process.env.AWS_S3_BUCKET ||
+  process.env.S3_BUCKET_NAME ||
+  null
+)
 
 type DocumentMetadata = Record<string, unknown>;
 
@@ -42,14 +57,16 @@ export async function uploadDocument(data: {
 
     let documentUrl = ''
     let s3Key = ''
+    let bucketUsed = s3DocumentsBucket || 'inline-storage'
+    let storedS3Url: string | null = null
 
     // Upload to S3 if configured
-    if (s3Client && process.env.AWS_S3_BUCKET) {
+    if (s3Client && s3DocumentsBucket) {
       const buffer = Buffer.from(await file.arrayBuffer())
       s3Key = `workspaces/${orderId}/documents/${Date.now()}-${file.name}`
       
       const uploadCommand = new PutObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET,
+        Bucket: s3DocumentsBucket,
         Key: s3Key,
         Body: buffer,
         ContentType: file.type,
@@ -64,16 +81,23 @@ export async function uploadDocument(data: {
       
       // Generate presigned URL for access
       const getCommand = new GetObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET,
+        Bucket: s3DocumentsBucket,
         Key: s3Key
       })
       
       documentUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 * 24 * 7 }) // 7 days
+      storedS3Url = `https://${bucketUsed}.s3.amazonaws.com/${s3Key}`
+      bucketUsed = s3DocumentsBucket
     } else {
       // Fallback: store as base64 in database (not recommended for production)
       const buffer = Buffer.from(await file.arrayBuffer())
       documentUrl = `data:${file.type};base64,${buffer.toString('base64')}`
+      s3Key = `inline/${orderId}/${Date.now()}-${file.name}`
+      bucketUsed = 'inline-storage'
+      storedS3Url = documentUrl
     }
+
+    const documentName = resolveDocumentName(file.name, s3Key)
 
     // Save document record to database
     const db = getOptimizedDb()
@@ -82,12 +106,12 @@ export async function uploadDocument(data: {
       .values({
         workspaceId: workspace.id,
         documentType,
-        fileName: file.name,
+        documentName,
         fileSize: file.size,
-        mimeType: file.type,
+        mimeType: file.type || 'application/octet-stream',
+        s3Bucket: bucketUsed,
         s3Key,
-        documentUrl,
-        metadata: metadata || {},
+        s3Url: storedS3Url,
         uploadedBy: 'system'
       })
       .returning()
@@ -100,7 +124,7 @@ export async function uploadDocument(data: {
       metadata: {
         documentId: document.id,
         documentType,
-        fileName: file.name
+        documentName
       }
     })
 
@@ -111,9 +135,11 @@ export async function uploadDocument(data: {
       success: true,
       document: {
         id: document.id,
-        fileName: document.fileName,
+        fileName: document.documentName,
+        documentName,
         documentType: document.documentType,
-        url: document.documentUrl
+        url: documentUrl,
+        s3Url: document.s3Url
       }
     }
   } catch (error) {
@@ -152,15 +178,30 @@ export async function addWorkspaceDocument(data: {
     }
 
     // Save document record
+    const bucketForDoc = s3DocumentsBucket || 'external-resource'
+    const keyForDoc = `external/${orderId}/${Date.now()}-${fileName.replace(/\s+/g, '-')}`
+    const documentName = resolveDocumentName(fileName, keyForDoc)
+    const mimeFromUrl = finalUrl?.startsWith('data:')
+      ? finalUrl.match(/^data:(.*?);/)?.[1]
+      : undefined
+    const fileSize = content
+      ? Buffer.byteLength(content)
+      : finalUrl
+        ? Buffer.byteLength(finalUrl)
+        : 0
+
     const db = getOptimizedDb()
     const [document] = await db
       .insert(documents)
       .values({
         workspaceId: workspace.id,
         documentType,
-        fileName,
-        documentUrl: finalUrl,
-        metadata: metadata || {},
+        documentName,
+        s3Bucket: bucketForDoc,
+        s3Key: keyForDoc,
+        s3Url: finalUrl || null,
+        fileSize,
+        mimeType: (metadata?.['mimeType'] as string | undefined) || mimeFromUrl || 'application/octet-stream',
         uploadedBy: 'system'
       })
       .returning()
@@ -173,7 +214,7 @@ export async function addWorkspaceDocument(data: {
       metadata: {
         documentId: document.id,
         documentType,
-        fileName
+        documentName
       }
     })
 
@@ -184,9 +225,11 @@ export async function addWorkspaceDocument(data: {
       success: true,
       document: {
         id: document.id,
-        fileName: document.fileName,
+        fileName: document.documentName,
+        documentName,
         documentType: document.documentType,
-        url: document.documentUrl
+        url: finalUrl ?? document.s3Url ?? undefined,
+        s3Url: document.s3Url
       }
     }
   } catch (error) {
@@ -216,9 +259,11 @@ export async function getWorkspaceDocuments(orderId: string) {
     // Refresh presigned URLs if using S3
     const documentsWithUrls = await Promise.all(
       docs.map(async (doc) => {
-        if (doc.s3Key && s3Client && process.env.AWS_S3_BUCKET) {
+        const bucketForDoc = doc.s3Bucket || s3DocumentsBucket
+
+        if (doc.s3Key && s3Client && bucketForDoc) {
           const getCommand = new GetObjectCommand({
-            Bucket: process.env.AWS_S3_BUCKET,
+            Bucket: bucketForDoc,
             Key: doc.s3Key
           })
           
@@ -233,9 +278,15 @@ export async function getWorkspaceDocuments(orderId: string) {
       })
     )
 
+    const normalizedDocuments = documentsWithUrls.map((doc: any) => ({
+      ...doc,
+      fileName: doc.documentName ?? doc.fileName,
+      documentUrl: doc.documentUrl ?? doc.s3Url
+    }))
+
     return {
       success: true,
-      documents: documentsWithUrls
+      documents: normalizedDocuments
     }
   } catch (error) {
     console.error('Error fetching documents:', error)
@@ -258,10 +309,12 @@ export async function deleteDocument(documentId: string) {
       return { success: false, error: 'Document not found' }
     }
 
-    if (document.s3Key && s3Client && process.env.AWS_S3_BUCKET) {
+    const bucketForDoc = document.s3Bucket || s3DocumentsBucket
+
+    if (document.s3Key && s3Client && bucketForDoc) {
       try {
         const deleteCommand = new DeleteObjectCommand({
-          Bucket: process.env.AWS_S3_BUCKET,
+          Bucket: bucketForDoc,
           Key: document.s3Key,
         })
         await s3Client.send(deleteCommand)
@@ -282,7 +335,7 @@ export async function deleteDocument(documentId: string) {
           metadata: {
             documentId,
             documentType: document.documentType,
-            fileName: (document as any).fileName ?? document.documentName,
+            documentName: document.documentName,
           },
         })
       }
@@ -319,10 +372,12 @@ export async function deleteWorkspaceDocument(documentId: number, orderId: strin
     }
 
     // Delete from S3 if applicable
-    if (doc.s3Key && s3Client && process.env.AWS_S3_BUCKET) {
+    const bucketForDoc = doc.s3Bucket || s3DocumentsBucket
+
+    if (doc.s3Key && s3Client && bucketForDoc) {
       const { DeleteObjectCommand } = await import('@aws-sdk/client-s3')
       const deleteCommand = new DeleteObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET,
+        Bucket: bucketForDoc,
         Key: doc.s3Key
       })
       
@@ -341,7 +396,7 @@ export async function deleteWorkspaceDocument(documentId: number, orderId: strin
       performedBy: 'system',
       metadata: {
         documentId,
-        fileName: doc.fileName,
+        documentName: doc.documentName,
         documentType: doc.documentType
       }
     })

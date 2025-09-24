@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import { loadEnv } from 'vite'
 import path from 'path'
 
+const ROOT_DIR = path.resolve(__dirname, './')
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -42,10 +44,11 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './'),
-      '@/components': path.resolve(__dirname, './components'),
-      '@/lib': path.resolve(__dirname, './lib'),
-      '@/app': path.resolve(__dirname, './app'),
+      '@': ROOT_DIR,
+      '@/components': path.resolve(ROOT_DIR, 'components'),
+      '@/lib': path.resolve(ROOT_DIR, 'lib'),
+      '@/app': path.resolve(ROOT_DIR, 'app'),
+      '@/tests': path.resolve(ROOT_DIR, 'tests'),
     },
   },
 })

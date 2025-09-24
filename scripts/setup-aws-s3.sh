@@ -19,6 +19,8 @@ fi
 
 # Set AWS region
 AWS_REGION=${AWS_REGION:-"us-east-2"}
+export AWS_REGION
+export AWS_DEFAULT_REGION="$AWS_REGION"
 echo "📍 Using AWS Region: $AWS_REGION"
 
 # Bucket names
@@ -62,7 +64,8 @@ echo "--------------------------------"
 echo "Enabling versioning on $DOCUMENTS_BUCKET..."
 aws s3api put-bucket-versioning \
     --bucket "$DOCUMENTS_BUCKET" \
-    --versioning-configuration Status=Enabled
+    --versioning-configuration Status=Enabled \
+    --region "$AWS_REGION"
 
 # Set lifecycle policy for QR docs (archive old files)
 echo "Setting lifecycle policy on $QR_DOCS_BUCKET..."
@@ -70,8 +73,11 @@ cat > /tmp/lifecycle.json << 'EOF'
 {
     "Rules": [
         {
-            "Id": "ArchiveOldOrders",
+            "ID": "ArchiveOldOrders",
             "Status": "Enabled",
+            "Filter": {
+                "Prefix": ""
+            },
             "Transitions": [
                 {
                     "Days": 90,
@@ -89,7 +95,8 @@ EOF
 
 aws s3api put-bucket-lifecycle-configuration \
     --bucket "$QR_DOCS_BUCKET" \
-    --lifecycle-configuration file:///tmp/lifecycle.json
+    --lifecycle-configuration file:///tmp/lifecycle.json \
+    --region "$AWS_REGION"
 
 # Configure CORS for browser uploads
 echo "Configuring CORS..."
@@ -109,11 +116,13 @@ EOF
 
 aws s3api put-bucket-cors \
     --bucket "$DOCUMENTS_BUCKET" \
-    --cors-configuration file:///tmp/cors.json
+    --cors-configuration file:///tmp/cors.json \
+    --region "$AWS_REGION"
 
 aws s3api put-bucket-cors \
     --bucket "$QR_DOCS_BUCKET" \
-    --cors-configuration file:///tmp/cors.json
+    --cors-configuration file:///tmp/cors.json \
+    --region "$AWS_REGION"
 
 # Block public access (security best practice)
 echo "Configuring security settings..."
@@ -121,7 +130,8 @@ for bucket in "$DOCUMENTS_BUCKET" "$QR_DOCS_BUCKET"; do
     aws s3api put-public-access-block \
         --bucket "$bucket" \
         --public-access-block-configuration \
-        "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+        "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
+        --region "$AWS_REGION"
 done
 
 # Clean up temp files

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { MicrophoneIcon, CameraIcon, XMarkIcon } from '@heroicons/react/24/solid';
-import { Button } from '@/components/ui/button';
+import { Button } from '../../ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { reportIssue } from '@/app/actions/ai';
 

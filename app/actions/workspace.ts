@@ -433,7 +433,7 @@ export async function getWorkspaceActivity(orderId: string) {
       where: eq(workspaces.orderId, BigInt(orderId)),
       with: {
         documents: {
-          orderBy: [desc(documents.createdAt)],
+          orderBy: [desc(documents.uploadedAt)],
           limit: 50
         }
       }
@@ -478,7 +478,7 @@ export async function getWorkspaceActivity(orderId: string) {
         action: 'document_uploaded',
         description: `${doc.documentType} uploaded`,
         user: doc.uploadedBy || 'System',
-        timestamp: doc.createdAt
+        timestamp: doc.uploadedAt || doc.createdAt
       })
     })
     

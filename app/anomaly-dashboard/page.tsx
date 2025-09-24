@@ -91,7 +91,7 @@ export default function AnomalyDashboard() {
                 AI Anomaly Detection Dashboard
               </h1>
               <p className="text-gray-600 mt-2">
-                Predictive analysis powered by Google Gemini AI
+                Predictive analysis powered by OpenAI
               </p>
             </div>
             

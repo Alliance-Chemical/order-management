@@ -2,6 +2,7 @@ import { WorkspaceRepository } from './repository';
 import { ShipStationClient, type ShipStationOrder } from '../shipstation/client';
 import { QRGenerator } from '../qr/generator';
 import { getS3BucketName, createOrderFolderPath } from '@/lib/aws/s3-client';
+import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { markFreightStaged, markFreightReady } from '../shipstation/tags';
 
 type ModuleState = Record<string, unknown>;
@@ -19,17 +20,6 @@ export class WorkspaceService {
   }
 
   async createWorkspace(orderId: number, orderNumber: string, userId: string, workflowType: 'pump_and_fill' | 'direct_resell' = 'pump_and_fill') {
-    // Check if workspace exists
-    try {
-      const existing = await this.repository.findByOrderId(orderId);
-      if (existing) {
-        console.log(`Workspace already exists for order ${orderNumber}`);
-        return existing;
-      }
-    } catch {
-      console.log(`No existing workspace for order ${orderNumber}, creating new one`);
-    }
-
     // Fetch ShipStation data
     const shipstationOrder = await this.fetchShipStationData(orderId, orderNumber);
     
@@ -38,7 +28,7 @@ export class WorkspaceService {
     const s3BucketName = getS3BucketName();
     const s3FolderPath = createOrderFolderPath(orderNumber);
     
-    const workspace = await this.repository.create({
+    const creationResult = await this.repository.createOrGet({
       orderId,
       orderNumber,
       workspaceUrl,
@@ -51,14 +41,32 @@ export class WorkspaceService {
       createdBy: userId,
     });
 
-    // Queue QR generation
-    await this.queueQRGeneration(workspace.id, orderId, orderNumber, shipstationOrder);
+    let workspace = creationResult.workspace;
 
-    // Log activity
-    await this.logActivity(workspace.id, 'workspace_created', userId, {
-      orderId,
-      orderNumber,
-    });
+    if (creationResult.created) {
+      // Queue QR generation only for brand-new workspaces
+      await this.queueQRGeneration(workspace.id, orderId, orderNumber, shipstationOrder);
+
+      // Log activity for new workspace
+      await this.logActivity(workspace.id, 'workspace_created', userId, {
+        orderId,
+        orderNumber,
+      });
+    } else {
+      // Refresh key ShipStation fields so mirrored data stays current
+      const updatePayload: Partial<typeof workspaces.$inferInsert> = {
+        lastShipstationSync: new Date(),
+        updatedBy: userId,
+      };
+
+      if (shipstationOrder) {
+        updatePayload.shipstationData = shipstationOrder;
+        updatePayload.shipstationOrderId = shipstationOrder.orderId;
+      }
+
+      workspace = await this.repository.update(workspace.id, updatePayload);
+      console.log(`Workspace already existed for order ${orderNumber}; refreshed metadata instead of creating.`);
+    }
 
     return workspace;
   }

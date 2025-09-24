@@ -5,15 +5,16 @@ import { useCruzInspection } from '@/hooks/useCruzInspection'
 import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner'
 import { InspectionItem } from '@/lib/types/agent-view'
 import { InspectionHeader } from '@/components/inspection/InspectionHeader'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Button } from '../../ui/button'
+import { Input } from '../../ui/input'
+import { Textarea } from '../../ui/textarea'
 import { INSPECTORS } from '@/lib/inspection/inspectors'
 import { uploadDocument, deleteDocument } from '@/app/actions/documents'
 import { useToast } from '@/hooks/use-toast'
-import { ImageViewer } from '@/components/ui/image-viewer'
+import { ImageViewer } from '../../ui/image-viewer'
 import {
   CRUZ_STEP_ORDER,
+  CRUZ_NAVIGABLE_STEPS,
   type CruzInspectionRun,
   type CruzStepId,
   type CruzStepPayloadMap,
@@ -34,6 +35,15 @@ interface ResilientInspectionScreenProps {
   workspace?: any
   onComplete: (results: Record<string, 'pass' | 'fail'>, notes: Record<string, string>) => void
   onSwitchToSupervisor: () => void
+}
+
+const STEP_LABELS: Record<CruzStepId, string> = {
+  scan_qr: 'QR Bind & Verify',
+  inspection_info: 'Inspection Header',
+  verify_packing_label: 'Package Match Verification',
+  verify_product_label: 'Product Label Compliance',
+  lot_number: 'Lot Capture',
+  final_review: 'Final Review & Sign Off',
 }
 
 // Step form components - These are adapted from inspection-runs-panel.tsx
@@ -1158,6 +1168,8 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     onSwitchToSupervisor
   } = props
 
+  const { toast } = useToast()
+
   const shipstationData = workspace?.shipstationData as any
   const shipToAddress = shipstationData?.shipTo ?? shipstationData?.billTo
   const shipFromAddress = shipstationData?.shipFrom ?? shipstationData?.warehouse ?? shipstationData?.originAddress
@@ -1249,10 +1261,12 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
   // Use selected step if set, otherwise use the current step from the run
   const currentStep = selectedStepId || activeRun?.currentStepId || 'inspection_info'
-  const currentStepIndex = CRUZ_STEP_ORDER.indexOf(currentStep)
-  // Adjust for display - we skip QR scan, so subtract 1 from index and total
-  const displayStepIndex = currentStep === 'scan_qr' ? 0 : Math.max(0, currentStepIndex - 1)
-  const visibleStepsCount = CRUZ_STEP_ORDER.length - 1 // Exclude scan_qr from count
+  const effectiveStepForDisplay = currentStep === 'scan_qr' ? CRUZ_NAVIGABLE_STEPS[0] : currentStep
+  const displayStepIndex = Math.max(
+    0,
+    CRUZ_NAVIGABLE_STEPS.indexOf(effectiveStepForDisplay as (typeof CRUZ_NAVIGABLE_STEPS)[number])
+  )
+  const visibleStepsCount = CRUZ_NAVIGABLE_STEPS.length
   const progress = activeRun ? ((displayStepIndex + 1) / visibleStepsCount) * 100 : 0
 
   // Network status
@@ -1266,6 +1280,17 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   ) => {
     if (!activeRun) return
 
+    const expectedStep = activeRun.currentStepId
+    if (expectedStep && expectedStep !== stepId) {
+      toast({
+        title: 'Finish earlier step',
+        description: `Complete “${STEP_LABELS[expectedStep]}” before “${STEP_LABELS[stepId]}”.`,
+        variant: 'destructive',
+      })
+      setSelectedStepId(expectedStep)
+      return
+    }
+
     submitStep({
       orderId,
       runId: activeRun.id,
@@ -1273,7 +1298,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
       payload,
       outcome,
     } as RecordStepParams<K>)
-  }, [activeRun, orderId, submitStep])
+  }, [activeRun, orderId, submitStep, toast, setSelectedStepId])
 
   // Get reference image for the product
   const referenceItem = orderItems && orderItems.length > 0 ? orderItems[0] : null
@@ -1310,6 +1335,17 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const displayStep = selectedStepId || activeRun.currentStepId
   const stepPayload = activeRun.steps[displayStep as keyof typeof activeRun.steps]
 
+  const handleBack = useCallback(() => {
+    const rawStep = selectedStepId || activeRun.currentStepId
+    const effectiveStep = rawStep === 'scan_qr' ? CRUZ_NAVIGABLE_STEPS[0] : rawStep
+    const currentIdx = CRUZ_NAVIGABLE_STEPS.indexOf(effectiveStep as (typeof CRUZ_NAVIGABLE_STEPS)[number])
+
+    if (currentIdx > 0) {
+      const previousStep = CRUZ_NAVIGABLE_STEPS[currentIdx - 1]
+      setSelectedStepId(previousStep)
+    }
+  }, [selectedStepId, activeRun.currentStepId, setSelectedStepId])
+
   return (
     <div className="min-h-screen bg-white">
       <InspectionHeader
@@ -1321,7 +1357,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         networkStatus={networkStatus}
         queueLength={0}
         canUndo={false}
-        onBack={() => {}}
+        onBack={handleBack}
         onUndo={() => {}}
         onSwitchToSupervisor={onSwitchToSupervisor}
       />
@@ -1352,7 +1388,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
       {/* Step Progress Indicators - Clickable for navigation */}
       <div className="p-4 bg-gray-50 border-b">
         <div className="flex gap-2 overflow-x-auto pb-2">
-          {CRUZ_STEP_ORDER.filter(stepId => stepId !== 'scan_qr').map((stepId, idx) => {
+          {CRUZ_NAVIGABLE_STEPS.map((stepId, idx) => {
             const isCompleted = activeRun.steps[stepId] !== undefined
             const isCurrent = stepId === displayStep
 

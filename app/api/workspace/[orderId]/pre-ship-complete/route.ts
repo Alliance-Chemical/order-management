@@ -6,14 +6,23 @@ import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 
-// Initialize S3 client
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-2',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
+const sanitizeEnvValue = (value?: string | null) =>
+  value ? value.replace(/[\r\n]+/g, '').trim() : undefined;
+
+const awsRegion = sanitizeEnvValue(process.env.AWS_REGION) || 'us-east-2';
+const awsAccessKeyId = sanitizeEnvValue(process.env.AWS_ACCESS_KEY_ID);
+const awsSecretAccessKey = sanitizeEnvValue(process.env.AWS_SECRET_ACCESS_KEY);
+
+// Initialize S3 client when credentials are present
+const s3Client = awsAccessKeyId && awsSecretAccessKey
+  ? new S3Client({
+      region: awsRegion,
+      credentials: {
+        accessKeyId: awsAccessKeyId,
+        secretAccessKey: awsSecretAccessKey,
+      },
+    })
+  : null;
 
 type PreShipPhotoInput = {
   base64?: string;
@@ -61,6 +70,13 @@ export async function POST(
       );
     }
 
+    if (!s3Client) {
+      return NextResponse.json(
+        { error: 'AWS S3 is not configured' },
+        { status: 500 }
+      );
+    }
+
     // Extract lot numbers from all photos
     const allLotNumbers = photos.reduce<string[]>((acc, photo) => {
       return [...acc, ...(photo.lotNumbers || [])];
@@ -79,7 +95,7 @@ export async function POST(
           // Generate unique filename
           const photoId = uuidv4();
           const key = `workspaces/${orderId}/pre-ship/${photoId}.jpg`;
-          const bucketName = process.env.S3_DOCUMENTS_BUCKET || 'alliance-chemical-documents';
+          const bucketName = (process.env.S3_DOCUMENTS_BUCKET || 'alliance-chemical-documents').replace(/[\r\n]+/g, '').trim();
           
           // Upload to S3
           await s3Client.send(new PutObjectCommand({

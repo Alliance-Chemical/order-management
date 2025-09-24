@@ -65,7 +65,7 @@ npm run demo:reset            # Reset and reseed demo data
 
 **Services Layer:**
 - `/lib/services/` - Business logic services
-- `/lib/services/ai/` - AI integration (Gemini)
+- `/lib/services/ai/` - AI integration (OpenAI)
 - `/lib/services/qr/` - QR code generation and validation
 - `/lib/services/workspace/` - Workspace management
 
@@ -120,7 +120,7 @@ The application uses a warehouse-optimized design system:
 
 ## AI & Machine Learning
 
-**Gemini Integration:**
+**AI Integration:**
 - Chemical classification and freight determination
 - Document OCR and anomaly detection
 - RAG (Retrieval Augmented Generation) for hazmat data

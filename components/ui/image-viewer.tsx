@@ -6,9 +6,9 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from './dialog'
 import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from './button'
 
 interface ImageViewerProps {
   src: string

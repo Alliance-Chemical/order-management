@@ -14,8 +14,7 @@ function initializeEdgeDb() {
   if (!sql && connectionString) {
     // Neon serverless driver optimized for Edge Runtime
     sql = neon(connectionString, {
-      // Edge Runtime optimizations
-      fetchConnectionCache: true,
+      // Edge Runtime optimizations (connection cache now always on by default)
       fullResults: false, // Smaller payloads for faster responses
     });
     
