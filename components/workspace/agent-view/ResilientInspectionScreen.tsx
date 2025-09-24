@@ -1191,7 +1191,20 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
   const shipstationData = workspace?.shipstationData as any
   const shipToAddress = shipstationData?.shipTo ?? shipstationData?.billTo
-  const shipFromAddress = shipstationData?.shipFrom ?? shipstationData?.warehouse ?? shipstationData?.originAddress
+
+  // Default warehouse address - Alliance Chemical always ships from the same location
+  const defaultWarehouseAddress: ShipmentAddress = {
+    name: 'Alliance Chemical',
+    company: 'Alliance Chemical',
+    street1: '204 South Edmond Street',
+    city: 'Taylor',
+    state: 'Texas',
+    postalCode: '76574',
+    country: 'USA',
+    phone: '512.365.6838'
+  }
+
+  const shipFromAddress = shipstationData?.shipFrom ?? shipstationData?.warehouse ?? shipstationData?.originAddress ?? defaultWarehouseAddress
   const customerEmail = shipstationData?.customerEmail
 
   // Initialize the Cruz inspection state
