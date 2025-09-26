@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
 import { buildInspectionItems } from '@/lib/inspection/items';
-import { getWorkspace } from '@/app/actions/workspace';
+import { getWorkspace, updateWorkspaceModuleState } from '@/app/actions/workspace';
 
 // Import worker view components
 import EntryScreen from '@/components/workspace/agent-view/EntryScreen';
@@ -32,6 +32,11 @@ const WORKER_VIEW_PHASES = new Set<WorkspaceData['workflowPhase']>([
   'ready_to_ship',
   'shipping'
 ]);
+
+const MODULE_STATE_ALIASES: Record<string, string[]> = {
+  pre_mix: ['pre_mix', 'preMix'],
+  pre_ship: ['pre_ship', 'preShip'],
+};
 
 const resolveWorkerInspectionPhase = (
   phase: WorkspaceData['workflowPhase']
@@ -62,6 +67,7 @@ export default function WorkspacePage() {
   const [selectedItem, setSelectedItem] = useState<any>(null); // Track which item is being inspected
   const [showPrintModal, setShowPrintModal] = useState(false);
   const autoStartRef = useRef(false);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     const queryMode: ViewMode = viewQuery === 'supervisor' ? 'supervisor' : 'worker';
@@ -102,6 +108,7 @@ export default function WorkspacePage() {
 
   const switchToWorker = useCallback(() => {
     setWorkerStep('entry');
+    setRedirectCountdown(null);
     updateViewMode('worker');
   }, [updateViewMode]);
 
@@ -200,20 +207,39 @@ export default function WorkspacePage() {
 
   const handleModuleStateChange = async (module: string, state: Record<string, any>) => {
     try {
-      // Since there's no specific server action for updating module states,
-      // we'll update the workspace directly by refetching it
-      // In production, you might want to add an updateModuleState server action
-      console.log('Module state change:', module, state);
-      
-      // Update local state optimistically
-      if (workspace) {
-        setWorkspace({
-          ...workspace,
-          moduleStates: {
-            ...workspace.moduleStates,
-            [module]: state,
-          },
-        });
+      const aliases = MODULE_STATE_ALIASES[module];
+      const canonicalKey = aliases ? aliases[0] : module;
+
+      // Update local state immediately for responsiveness
+      setWorkspace((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const updatedModuleStates: Record<string, unknown> = {
+          ...current.moduleStates,
+          [canonicalKey]: state,
+        };
+
+        if (aliases) {
+          for (const alias of aliases) {
+            if (alias !== canonicalKey && alias in updatedModuleStates) {
+              delete updatedModuleStates[alias];
+            }
+          }
+        }
+
+        return {
+          ...current,
+          moduleStates: updatedModuleStates,
+        };
+      });
+
+      // Save to database
+      const result = await updateWorkspaceModuleState(orderId, module, state);
+      if (!result.success) {
+        console.error('Failed to save module state:', result.error);
+        // Could show a toast notification here
       }
     } catch (error) {
       console.error('Failed to update module state:', error);
@@ -229,7 +255,33 @@ export default function WorkspacePage() {
 
     // Move to complete state
     setWorkerStep('complete');
+    setRedirectCountdown(3);
   };
+
+  useEffect(() => {
+    if (workerStep !== 'complete') {
+      if (redirectCountdown !== null) {
+        setRedirectCountdown(null);
+      }
+      return;
+    }
+
+    if (redirectCountdown === null) {
+      return;
+    }
+
+    if (redirectCountdown <= 0) {
+      setRedirectCountdown(null);
+      router.push('/');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setRedirectCountdown((current) => (current !== null ? Math.max(0, current - 1) : current));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [workerStep, redirectCountdown, router]);
 
   if (loading) {
     return (
@@ -294,9 +346,8 @@ export default function WorkspacePage() {
             workspace={workerWorkspace}
             onComplete={(results) => {
               handleWorkerInspectionComplete(results);
-              // After completing inspection for this item, go back to task list
+              // Clear any item selection; redirect handled after completion
               setSelectedItem(null);
-              setWorkerStep('entry');
             }}
             onSwitchToSupervisor={switchToSupervisor}
           />
@@ -316,15 +367,18 @@ export default function WorkspacePage() {
                 </div>
               </div>
               <h1 className="text-4xl font-bold text-slate-900 mb-4">Inspection Complete!</h1>
-              <p className="text-xl text-slate-600 mb-8">Order #{workspace.orderNumber} has been processed</p>
+              <p className="text-xl text-slate-600 mb-4">Order #{workspace.orderNumber} has been processed</p>
+              <p className="text-sm text-slate-500 mb-8">
+                Returning to the order queue{redirectCountdown !== null ? ` in ${redirectCountdown} ${redirectCountdown === 1 ? 'second' : 'seconds'}` : ' shortly'}.
+              </p>
               <button
                 onClick={() => {
-                  setWorkerStep('entry');
-                  fetchWorkspace(); // Refresh data
+                  setRedirectCountdown(null);
+                  router.push('/');
                 }}
                 className="px-8 py-4 bg-green-600 text-white text-xl font-bold rounded-lg hover:bg-green-700"
               >
-                START NEW INSPECTION
+                RETURN TO ORDER QUEUE
               </button>
             </div>
           </div>
@@ -457,7 +511,18 @@ export default function WorkspacePage() {
         <ActiveComponent
           orderId={orderId}
           workspace={workspace}
-          initialState={workspace.moduleStates?.[activeTab] || {}}
+          initialState={(() => {
+            const aliases = MODULE_STATE_ALIASES[activeTab];
+            if (aliases) {
+              for (const key of aliases) {
+                const candidate = workspace.moduleStates?.[key];
+                if (candidate) {
+                  return candidate;
+                }
+              }
+            }
+            return workspace.moduleStates?.[activeTab] || {};
+          })()}
           onStateChange={(state: Record<string, any>) => handleModuleStateChange(activeTab, state)}
           onStateChangeAction={(state: Record<string, any>) => handleModuleStateChange(activeTab, state)}
         />

@@ -2,8 +2,7 @@
 
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import { useCruzInspection } from '@/hooks/useCruzInspection'
-import { ValidatedQRScanner } from '@/components/qr/ValidatedQRScanner'
-import { InspectionItem } from '@/lib/types/agent-view'
+import { InspectionItem, InspectionResults, WorkspaceData } from '@/lib/types/agent-view'
 import { InspectionHeader } from '@/components/inspection/InspectionHeader'
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
@@ -13,7 +12,6 @@ import { uploadDocument, deleteDocument } from '@/app/actions/documents'
 import { useToast } from '@/hooks/use-toast'
 import { ImageViewer } from '../../ui/image-viewer'
 import {
-  CRUZ_STEP_ORDER,
   CRUZ_NAVIGABLE_STEPS,
   type CruzInspectionRun,
   type CruzStepId,
@@ -21,7 +19,7 @@ import {
   type InspectionPhoto,
   normalizeInspectionState,
 } from '@/lib/inspection/cruz'
-import type { RecordStepParams, BindRunToQrParams } from '@/app/actions/cruz-inspection'
+import type { RecordStepParams } from '@/app/actions/cruz-inspection'
 import { Loader2 } from 'lucide-react'
 
 interface ResilientInspectionScreenProps {
@@ -32,8 +30,8 @@ interface ResilientInspectionScreenProps {
   workflowPhase: string
   workflowType: string
   items: InspectionItem[]
-  workspace?: any
-  onComplete: (results: Record<string, 'pass' | 'fail'>, notes: Record<string, string>) => void
+  workspace?: WorkspaceData
+  onComplete: (results: InspectionResults) => void
   onSwitchToSupervisor: () => void
 }
 
@@ -44,6 +42,84 @@ const STEP_LABELS: Record<CruzStepId, string> = {
   verify_product_label: 'Product Label Compliance',
   lot_number: 'Lot Capture',
   final_review: 'Final Review & Sign Off',
+}
+
+function deriveInspectionResults(
+  runs: CruzInspectionRun[],
+  completedAt?: string,
+  completedBy?: string
+): InspectionResults {
+  const nowIso = new Date().toISOString()
+  const completionTimestamp = (() => {
+    const stepTimestamps = runs
+      .map((run) => run.steps.final_review?.completedAt)
+      .filter((value): value is string => Boolean(value))
+    if (completedAt) return completedAt
+    if (stepTimestamps.length === 0) return nowIso
+    return stepTimestamps.sort().slice(-1)[0]
+  })()
+
+  const primaryInspector = (() => {
+    if (completedBy) return completedBy
+    const inspector = runs
+      .map((run) => run.steps.inspection_info?.inspector)
+      .find((value): value is string => Boolean(value))
+    return inspector || 'worker'
+  })()
+
+  const checklistPairs: Array<[string, boolean]> = [
+    ['scan_qr', runs.every((run) => Boolean(run.steps.scan_qr?.qrValidated))],
+    ['inspection_info', runs.every((run) => Boolean(run.steps.inspection_info))],
+    [
+      'verify_packing_label',
+      runs.every((run) => run.steps.verify_packing_label?.gate1Outcome !== 'FAIL'),
+    ],
+    [
+      'verify_product_label',
+      runs.every((run) => run.steps.verify_product_label?.gate2Outcome !== 'FAIL'),
+    ],
+    [
+      'lot_number',
+      runs.every((run) => (run.steps.lot_number?.lots?.length || 0) > 0),
+    ],
+    [
+      'final_review',
+      runs.every((run) => {
+        const approvals = run.steps.final_review?.approvals
+        return Boolean(approvals?.packingLabel && approvals?.productLabel && approvals?.lotNumbers)
+      }),
+    ],
+  ]
+
+  const checklist = checklistPairs.reduce<Record<string, 'pass' | 'fail'>>((acc, [key, isPass]) => {
+    acc[key] = isPass ? 'pass' : 'fail'
+    return acc
+  }, {})
+
+  const notes = runs
+    .map((run) => run.steps.final_review?.finalNotes?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join('\n')
+
+  const photos = runs
+    .flatMap((run) => [
+      ...(run.steps.verify_packing_label?.photos ?? []),
+      ...(run.steps.verify_product_label?.photos ?? []),
+    ])
+    .filter((photo): photo is InspectionPhoto => Boolean(photo))
+    .map((photo) => ({
+      url: photo.url ?? '',
+      name: photo.name ?? 'Inspection Photo',
+      timestamp: photo.uploadedAt ?? completionTimestamp,
+    }))
+
+  return {
+    checklist,
+    notes,
+    completedAt: completionTimestamp,
+    completedBy: primaryInspector,
+    photos: photos.length ? photos : undefined,
+  }
 }
 
 // Step form components - These are adapted from inspection-runs-panel.tsx
@@ -105,104 +181,9 @@ interface StepFormProps<StepId extends CruzStepId = CruzStepId> {
   isPending: boolean
   orderId: string
   orderNumber?: string
-  bindRun?: (runId: string, payload: BindRunToQrParams) => void
   shipTo?: ShipmentAddress
   shipFrom?: ShipmentAddress
   customerEmail?: string
-}
-
-function ScanQrStepForm({ run, payload, onSubmit, isPending, orderId: _orderId, bindRun }: StepFormProps<'scan_qr'> & { bindRun: (runId: string, payload: BindRunToQrParams) => void }) {
-  const [qrValue, setQrValue] = useState(payload?.qrValue ?? run.qrValue ?? '')
-  const [shortCode, setShortCode] = useState(payload?.shortCode ?? run.shortCode ?? '')
-  const [showScanner, setShowScanner] = useState(false)
-  const hasValidated = Boolean(payload?.qrValidated || run.steps?.scan_qr?.qrValidated)
-
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!qrValue.trim()) {
-      return
-    }
-
-    const now = new Date().toISOString()
-    onSubmit(
-      {
-        qrValue: qrValue.trim(),
-        qrValidated: true,
-        validatedAt: now,
-        shortCode: shortCode.trim() || undefined,
-      },
-      'PASS'
-    )
-
-    if (bindRun) {
-      bindRun(run.id, {
-        qrCodeId: qrValue.trim(),
-        qrValue: qrValue.trim(),
-        shortCode: shortCode.trim() || undefined,
-      })
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-slate-600">
-        {hasValidated
-          ? 'QR code already validated for this run. Rescan if you need to rebind or confirm.'
-          : 'Scan and validate the QR code associated with this run.'}
-      </p>
-
-      <div>
-        <label className="mb-2 block text-sm font-medium text-slate-700">QR Value</label>
-        <Input value={qrValue} onChange={(event) => setQrValue(event.target.value)} required placeholder="Scan or paste QR value" />
-      </div>
-
-      <div>
-        <label className="mb-2 block text-sm font-medium text-slate-700">Short Code (optional)</label>
-        <Input value={shortCode} onChange={(event) => setShortCode(event.target.value)} placeholder="Short code" />
-      </div>
-
-      <div className="flex gap-2">
-        <Button type="submit" disabled={isPending || !qrValue.trim()}>
-          {hasValidated ? 'Re-validate QR' : 'Mark QR as validated'}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => setShowScanner(true)}>
-          Open scanner
-        </Button>
-      </div>
-
-      {showScanner && (
-        <ValidatedQRScanner
-          onClose={() => setShowScanner(false)}
-          onScan={(raw) => setQrValue(raw)}
-          onValidatedScan={(data) => {
-            const resolvedValue = data.shortCode || data.id || data.workspace?.orderNumber || ''
-            setQrValue(resolvedValue)
-            setShortCode(data.shortCode || '')
-            if (bindRun) {
-              bindRun(run.id, {
-                qrCodeId: data.id,
-                qrValue: resolvedValue,
-                shortCode: data.shortCode || undefined,
-              })
-            }
-            onSubmit(
-              {
-                qrValue: resolvedValue,
-                qrValidated: true,
-                validatedAt: new Date().toISOString(),
-                shortCode: data.shortCode || undefined,
-              },
-              'PASS'
-            )
-            setShowScanner(false)
-          }}
-          allowManualEntry
-          supervisorMode
-          title="Scan container QR"
-        />
-      )}
-    </form>
-  )
 }
 
 function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, shipTo, shipFrom, customerEmail }: StepFormProps<'inspection_info'>) {
@@ -434,8 +415,10 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
     setChecks((prev) => ({ ...prev, [key]: value }))
   }
 
-  // Get first order item for display
-  const primaryItem = orderItems?.[0]
+  const items = Array.isArray(orderItems) ? orderItems : []
+  const metadataIndex = typeof run.metadata?.orderItemIndex === 'number' ? run.metadata.orderItemIndex : -1
+  const primaryItem = metadataIndex >= 0 && metadataIndex < items.length ? items[metadataIndex] : items[0]
+  const highlightedIndex = primaryItem ? items.indexOf(primaryItem) : -1
   const fallbackCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE
   const productImage = primaryItem?.imageUrl
     ? primaryItem.imageUrl
@@ -454,16 +437,40 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
               alt={primaryItem?.name || 'Product'}
               className="h-40 w-40 rounded-lg object-cover border-2 border-blue-200"
               title={primaryItem?.name || 'Product'}
-              subtitle={`SKU: ${primaryItem?.sku || 'N/A'} • ${primaryItem?.quantity || 1} ${primaryItem?.unitOfMeasure || 'units'}`}
+              subtitle={items.length > 1
+                ? `SKU: ${primaryItem?.sku || 'N/A'} • ${primaryItem?.quantity || 1} ${primaryItem?.unitOfMeasure || 'units'} (+${items.length - 1} more item${items.length - 1 === 1 ? '' : 's'})`
+                : `SKU: ${primaryItem?.sku || 'N/A'} • ${primaryItem?.quantity || 1} ${primaryItem?.unitOfMeasure || 'units'}`}
             />
           )}
           <div className="flex-1">
             <h3 className="text-lg font-bold text-blue-900">Order #{orderNumber || orderId}</h3>
             <p className="text-blue-800 font-medium">{customerName || 'Customer'}</p>
-            {primaryItem && (
-              <p className="text-sm text-blue-700 mt-1">
-                {primaryItem.name} - {primaryItem.quantity} {primaryItem.unitOfMeasure || 'units'}
-              </p>
+            {items.length > 0 && (
+              <div className="mt-3 rounded-lg border border-blue-100 bg-white/60 p-3 text-sm text-blue-800">
+                <p className="font-semibold text-blue-900">Order Items</p>
+                <ul className="mt-2 space-y-1">
+                  {items.map((item, index) => {
+                    const isCurrent = index === highlightedIndex
+                    return (
+                      <li
+                        key={`${item?.sku || item?.name || index}-${index}`}
+                        className={`flex justify-between gap-3 ${isCurrent ? 'font-semibold text-blue-900' : ''}`}
+                      >
+                        <span>{item?.name || `Item ${index + 1}`}</span>
+                        <span>
+                          {item?.quantity ?? 1}
+                          {item?.unitOfMeasure ? ` ${item.unitOfMeasure}` : ''}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+                {highlightedIndex >= 0 && (
+                  <p className="mt-3 text-xs text-blue-700">
+                    You are documenting <span className="font-semibold">{items[highlightedIndex]?.name || 'this item'}</span> for this run.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -568,7 +575,7 @@ function VerifyPackingLabelStepForm({ run, payload, onSubmit, isPending, orderId
   )
 }
 
-function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderNumber, orderItems }: StepFormProps<'verify_product_label'> & { orderItems?: any[] }) {
+function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId, orderItems }: StepFormProps<'verify_product_label'> & { orderItems?: any[] }) {
   const { toast } = useToast()
   const [checks, setChecks] = useState({
     gradeOk: payload?.gradeOk ?? false,
@@ -669,7 +676,9 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
   }
 
   // Get product info for display
-  const primaryItem = orderItems?.[0]
+  const items = Array.isArray(orderItems) ? orderItems : []
+  const metadataIndex = typeof run.metadata?.orderItemIndex === 'number' ? run.metadata.orderItemIndex : -1
+  const primaryItem = metadataIndex >= 0 && metadataIndex < items.length ? items[metadataIndex] : items[0]
   const fallbackCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE
   const productImage = primaryItem?.imageUrl
     ? primaryItem.imageUrl
@@ -702,6 +711,22 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
               <div className="font-mono">{primaryItem?.sku || 'Product SKU'}</div>
               <div className="mt-1">{primaryItem?.quantity || 1} {primaryItem?.unitOfMeasure || 'units'}</div>
             </div>
+            {items.length > 1 && (
+              <div className="mt-3 rounded-lg border border-purple-200 bg-purple-100/60 p-3 text-xs text-purple-800">
+                <p className="font-semibold">Order Items</p>
+                <ul className="mt-1 space-y-1">
+                  {items.map((item, index) => {
+                    const isCurrent = metadataIndex === index
+                    return (
+                      <li key={`${item?.sku || item?.name || index}-${index}`} className={isCurrent ? 'font-semibold text-purple-900' : ''}>
+                        {item?.name || `Item ${index + 1}`} — {item?.quantity ?? 1}{item?.unitOfMeasure ? ` ${item.unitOfMeasure}` : ''}
+                        {isCurrent ? ' (currently inspecting)' : ''}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -756,12 +781,12 @@ function VerifyProductLabelStepForm({ run, payload, onSubmit, isPending, orderId
             onChange={(event) => updateCheck('ghsOk', event.target.checked)}
             className="w-5 h-5"
           />
-          GHS hazard labels visible and intact
+          GHS hazard labels (if Hazmat) visible and intact
         </label>
       </div>
 
       <div className="space-y-2">
-        <label className="mb-2 block text-base font-medium text-slate-700">Photo evidence of labels (required) 📷</label>
+        <label className="mb-2 block text-base font-medium text-slate-700">Photos needed of containers / labels / lids (required)</label>
         <div className="flex flex-wrap gap-2">
           {photos.map((photo) => (
             <span key={photo.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
@@ -838,25 +863,45 @@ function LotNumberStepForm({ run: _run, payload, onSubmit, isPending, orderId }:
       setIsExtracting(true)
       const dataUrl = await readFileAsDataUrl(file)
 
-      const response = await fetch('/api/ai/extract-lot-numbers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          image: dataUrl,
-          orderId
-        })
-      })
+      const attemptExtraction = async (attempt = 0): Promise<string[]> => {
+        try {
+          const response = await fetch('/api/ai/extract-lot-numbers', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              image: dataUrl,
+              orderId
+            })
+          })
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null)
-        const errorMessage = errorData?.error || `Extraction service error (${response.status})`
-        throw new Error(errorMessage)
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null)
+            const errorMessage = errorData?.error || `Extraction service error (${response.status})`
+            throw new Error(errorMessage)
+          }
+
+          const result = await response.json()
+          return Array.isArray(result?.lotNumbers) ? result.lotNumbers : []
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          const retryable = /timeout|network|503|temporarily unavailable|fetch failed/i.test(message)
+
+          if (retryable && attempt < 1) {
+            toast({
+              title: 'Retrying extraction…',
+              description: 'The AI service was slow to respond. Trying one more time.',
+            })
+            await new Promise((resolve) => setTimeout(resolve, 700))
+            return attemptExtraction(attempt + 1)
+          }
+
+          throw new Error(message)
+        }
       }
 
-      const result = await response.json()
-      const extracted: string[] = Array.isArray(result?.lotNumbers) ? result.lotNumbers : []
+      const extracted = await attemptExtraction()
 
       if (!extracted.length) {
         toast({
@@ -959,6 +1004,7 @@ function LotNumberStepForm({ run: _run, payload, onSubmit, isPending, orderId }:
         <p className="text-sm font-medium text-slate-700">Use AI to extract lot numbers</p>
         <p className="mt-1 text-xs text-slate-600">
           Upload a clear photo of the product or packing label. We will fill in the lot fields for you.
+          If the AI misses it, you can retry (we will try once automatically) or type the lot manually—your entries stay saved.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
@@ -1011,11 +1057,32 @@ function LotNumberStepForm({ run: _run, payload, onSubmit, isPending, orderId }:
   )
 }
 
-function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orderId }: StepFormProps<'final_review'>) {
+function FinalReviewStepForm({
+  run,
+  payload,
+  onSubmit,
+  isPending,
+  orderId: _orderId,
+  finalMeasurements,
+}: StepFormProps<'final_review'> & { finalMeasurements?: WorkspaceData['finalMeasurements'] }) {
   const inspectionInfo = run.steps.inspection_info
   const packing = run.steps.verify_packing_label
   const product = run.steps.verify_product_label
   const lotData = run.steps.lot_number
+  const measurementSummary = (() => {
+    if (!finalMeasurements) return null
+    const dims = finalMeasurements.dimensions
+    const weight = finalMeasurements.weight
+    if (!dims && !weight) return null
+    return {
+      dimensions: dims
+        ? `${dims.length ?? '—'} × ${dims.width ?? '—'} × ${dims.height ?? '—'} ${dims.units ?? 'in'}`
+        : null,
+      weight: weight ? `${weight.value ?? '—'} ${weight.units ?? 'lbs'}` : null,
+      recordedBy: finalMeasurements.measuredBy,
+      recordedAt: finalMeasurements.measuredAt ? new Date(finalMeasurements.measuredAt).toLocaleString() : null,
+    }
+  })()
 
   const [approvals, setApprovals] = useState(() => ({
     packingLabel: payload?.approvals?.packingLabel ?? false,
@@ -1140,6 +1207,23 @@ function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orde
             <p className="mt-2 text-xs text-slate-500">Same lot applies to all containers.</p>
           )}
         </div>
+        <div className="md:col-span-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm font-semibold text-slate-800">Final Measurements</p>
+          {measurementSummary ? (
+            <div className="mt-2 space-y-1 text-sm text-slate-700">
+              {measurementSummary.dimensions && <p>Dimensions: {measurementSummary.dimensions}</p>}
+              {measurementSummary.weight && <p>Weight: {measurementSummary.weight}</p>}
+              {(measurementSummary.recordedBy || measurementSummary.recordedAt) && (
+                <p className="text-xs text-slate-500">
+                  Recorded by {measurementSummary.recordedBy || 'Unknown'}
+                  {measurementSummary.recordedAt ? ` on ${measurementSummary.recordedAt}` : ''}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-slate-600">Dimensions and weight have not been recorded yet.</p>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -1184,6 +1268,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     customerName,
     orderItems,
     workspace,
+    onComplete,
     onSwitchToSupervisor
   } = props
 
@@ -1214,13 +1299,47 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   )
 
   const {
+    state,
     runs,
     submitStep,
-    bindRun,
     isPending,
     error,
     createRuns,
   } = useCruzInspection(orderId, normalizedInitial)
+
+  const completionSignaledRef = useRef(false)
+
+  const completionResult = useMemo(() => {
+    // Check if all runs are closed (completed or cancelled)
+    const allRunsClosed = runs.length > 0 && runs.every((run) => {
+      if (run.status === 'completed') return true
+      if (run.status === 'canceled') {
+        return Boolean(run.metadata?.cancelReason)
+      }
+      return false
+    })
+
+    if (!allRunsClosed) {
+      return null
+    }
+
+    // If all runs are closed, derive the inspection results
+    return deriveInspectionResults(runs, state.completedAt, state.completedBy)
+  }, [runs, state.completedAt, state.completedBy])
+
+  useEffect(() => {
+    if (!completionResult) {
+      completionSignaledRef.current = false
+      return
+    }
+
+    if (completionSignaledRef.current) {
+      return
+    }
+
+    onComplete(completionResult)
+    completionSignaledRef.current = true
+  }, [completionResult, onComplete])
 
   // Auto-create inspection run if none exist
   const [hasAutoCreated, setHasAutoCreated] = useState(false)
@@ -1233,21 +1352,26 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
       // Create real inspection runs for all items in the order
       const runsToCreate = orderItems && orderItems.length > 0
-        ? orderItems.map(item => ({
-            itemName: item.name || 'Product',
-            itemSku: item.sku || '',
-            quantity: item.quantity || 1,
-            unitOfMeasure: item.unitOfMeasure || 'EA',
+        ? orderItems.map((item, index) => ({
             containerType: 'drum' as const,
-            containerCount: item.quantity || 1,
+            containerCount: item?.quantity ? Number(item.quantity) : 1,
+            sku: item?.sku || (item as Record<string, any>)?.SKU || '',
+            materialName: item?.name || (item as Record<string, any>)?.description || `Item ${index + 1}`,
+            metadata: {
+              unitOfMeasure: item?.unitOfMeasure || (item as Record<string, any>)?.uom || (item as Record<string, any>)?.UOM || 'EA',
+              orderItemIndex: index,
+              quantity: item?.quantity ?? 1,
+            },
           }))
         : [{
-            itemName: 'Product',
-            itemSku: '',
-            quantity: 1,
-            unitOfMeasure: 'EA',
             containerType: 'drum' as const,
             containerCount: 1,
+            materialName: 'Product',
+            metadata: {
+              unitOfMeasure: 'EA',
+              orderItemIndex: 0,
+              quantity: 1,
+            },
           }]
 
       createRuns(runsToCreate)
@@ -1264,12 +1388,38 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     const active = runs.find(run => run.status === 'active')
     if (active) return active
 
-    // Third priority: first run if any exist
-    return runs[0] || null
+    // Third priority: first non-completed run if any exist
+    const firstNonCompleted = runs.find(run => run.status !== 'completed' && run.status !== 'canceled')
+    if (firstNonCompleted) return firstNonCompleted
+
+    return null
   }, [runs])
+
+  useEffect(() => {
+    if (activeRun) {
+      setHasAutoSkippedQr(false)
+    }
+  }, [activeRun?.id])
 
   // State for manual step navigation
   const [selectedStepId, setSelectedStepId] = useState<CruzStepId | null>(null)
+  const previousRunIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!activeRun) {
+      setSelectedStepId(null)
+      previousRunIdRef.current = null
+      return
+    }
+
+    if (previousRunIdRef.current === activeRun.id) {
+      return
+    }
+
+    previousRunIdRef.current = activeRun.id
+    const normalizedStep = activeRun.currentStepId === 'scan_qr' ? CRUZ_NAVIGABLE_STEPS[0] : activeRun.currentStepId
+    setSelectedStepId(normalizedStep as CruzStepId)
+  }, [activeRun?.id, activeRun?.currentStepId])
 
   // Auto-skip QR scan step since we already scanned to enter the inspection
   useEffect(() => {
@@ -1316,7 +1466,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     if (expectedStep && expectedStep !== stepId) {
       toast({
         title: 'Finish earlier step',
-        description: `Complete “${STEP_LABELS[expectedStep]}” before “${STEP_LABELS[stepId]}”.`,
+        description: `Complete "${STEP_LABELS[expectedStep]}" before "${STEP_LABELS[stepId]}".`,
         variant: 'destructive',
       })
       setSelectedStepId(expectedStep)
@@ -1340,6 +1490,21 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     : referenceItem?.sku && fallbackCdnBase
       ? `${fallbackCdnBase.replace(/\/$/, '')}/${referenceItem.sku.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`
       : null
+
+  const handleBack = useCallback(() => {
+    if (!activeRun) {
+      return
+    }
+
+    const rawStep = selectedStepId || activeRun.currentStepId
+    const effectiveStep = rawStep === 'scan_qr' ? CRUZ_NAVIGABLE_STEPS[0] : rawStep
+    const currentIdx = CRUZ_NAVIGABLE_STEPS.indexOf(effectiveStep as (typeof CRUZ_NAVIGABLE_STEPS)[number])
+
+    if (currentIdx > 0) {
+      const previousStep = CRUZ_NAVIGABLE_STEPS[currentIdx - 1]
+      setSelectedStepId(previousStep)
+    }
+  }, [selectedStepId, activeRun, setSelectedStepId])
 
   if (!activeRun) {
     return (
@@ -1366,17 +1531,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   // Allow manual navigation override
   const displayStep = selectedStepId || activeRun.currentStepId
   const stepPayload = activeRun.steps[displayStep as keyof typeof activeRun.steps]
-
-  const handleBack = useCallback(() => {
-    const rawStep = selectedStepId || activeRun.currentStepId
-    const effectiveStep = rawStep === 'scan_qr' ? CRUZ_NAVIGABLE_STEPS[0] : rawStep
-    const currentIdx = CRUZ_NAVIGABLE_STEPS.indexOf(effectiveStep as (typeof CRUZ_NAVIGABLE_STEPS)[number])
-
-    if (currentIdx > 0) {
-      const previousStep = CRUZ_NAVIGABLE_STEPS[currentIdx - 1]
-      setSelectedStepId(previousStep)
-    }
-  }, [selectedStepId, activeRun.currentStepId, setSelectedStepId])
 
   return (
     <div className="min-h-screen bg-white">
@@ -1467,12 +1621,21 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           <div className="text-center py-8">
             <div className="text-green-600 text-lg font-semibold">✓ QR Scan Already Completed</div>
             <p className="text-gray-600 mt-2">You scanned the QR code to enter this inspection.</p>
+            <p className="text-sm text-gray-500 mt-1">The system automatically recorded your QR scan.</p>
             <Button
               className="mt-4"
               onClick={() => setSelectedStepId('inspection_info')}
             >
-              Continue to Next Step
+              Continue to Inspection Info
             </Button>
+            {error && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-700">
+                  If you're experiencing issues, please continue with the inspection.
+                  The QR code was already validated when you entered this workspace.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -1624,6 +1787,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
               run={activeRun}
               payload={stepPayload as CruzStepPayloadMap['final_review']}
               orderId={orderId}
+              finalMeasurements={workspace?.finalMeasurements}
               onSubmit={(payload) => handleSubmit('final_review', payload, 'PASS')}
               isPending={isPending}
             />

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { WorkspaceData, ViewMode, InspectionResults } from '@/lib/types/agent-view';
 import EntryScreen from '@/components/workspace/agent-view/EntryScreen';
 import ResilientInspectionScreen from '@/components/workspace/agent-view/ResilientInspectionScreen';
@@ -49,16 +50,44 @@ const resolveWorkerInspectionPhase = (
 );
 
 export default function WorkspaceContent({ workspace, orderId, onModuleStateChange }: WorkspaceContentProps) {
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('worker');
   const [workerStep, setWorkerStep] = useState<WorkerStep>('entry');
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   const handleWorkerInspectionComplete = async (results: InspectionResults) => {
     const workflowModule = resolveWorkerInspectionPhase(workspace.workflowPhase);
     await onModuleStateChange(workflowModule, results as unknown as Record<string, any>);
     setWorkerStep('complete');
+    setRedirectCountdown(3);
   };
+
+  useEffect(() => {
+    if (workerStep !== 'complete') {
+      if (redirectCountdown !== null) {
+        setRedirectCountdown(null);
+      }
+      return;
+    }
+
+    if (redirectCountdown === null) {
+      return;
+    }
+
+    if (redirectCountdown <= 0) {
+      setRedirectCountdown(null);
+      router.push('/');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setRedirectCountdown((current) => (current !== null ? Math.max(0, current - 1) : current));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [workerStep, redirectCountdown, router]);
 
   const workerInspectionPhase = resolveWorkerInspectionPhase(workspace.workflowPhase);
   const canShowWorkerView = WORKER_VIEW_PHASES.has(workspace.workflowPhase);
@@ -90,7 +119,7 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
               orderId={orderId}
               orderNumber={workspace.orderNumber}
               customerName={workspace.shipstationData?.shipTo?.name}
-              orderItems={selectedItem ? [selectedItem] : (workspace.shipstationData?.items || [])}
+              orderItems={workspace.shipstationData?.items || []}
               workflowPhase={workerInspectionPhase}
               workflowType={workspace.workflowType}
               items={buildInspectionItems(workerWorkspace as any, selectedItem)}
@@ -114,15 +143,18 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
                 </div>
               </div>
               <h1 className="text-4xl font-bold text-slate-900 mb-4">Inspection Complete!</h1>
-              <p className="text-xl text-slate-600 mb-8">Order #{workspace.orderNumber} has been processed</p>
+              <p className="text-xl text-slate-600 mb-4">Order #{workspace.orderNumber} has been processed</p>
+              <p className="text-sm text-slate-500 mb-8">
+                Returning to the order queue{redirectCountdown !== null ? ` in ${redirectCountdown} ${redirectCountdown === 1 ? 'second' : 'seconds'}` : ' shortly'}.
+              </p>
               <button
                 onClick={() => {
-                  setWorkerStep('entry');
-                  setSelectedItem(null);
+                  setRedirectCountdown(null);
+                  router.push('/');
                 }}
                 className="px-8 py-4 bg-green-600 text-white text-xl font-bold rounded-lg hover:bg-green-700"
               >
-                START NEW INSPECTION
+                RETURN TO ORDER QUEUE
               </button>
             </div>
           </div>

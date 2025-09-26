@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { getOptimizedDb } from '@/lib/db/neon'
 import { workspaces, documents } from '@/lib/db/schema/qr-workspace'
 import { eq, desc } from 'drizzle-orm'
+import { normalizeFinalMeasurementsPayload } from '@/lib/measurements/normalize'
 
 const workspaceService = new WorkspaceService()
 
@@ -110,22 +111,23 @@ export async function shipWorkspace(orderId: string) {
 
 export async function updateMeasurements(
   orderId: string,
-  measurements: {
-    weight?: number
-    length?: number
-    width?: number
-    height?: number
-    notes?: string
-  }
+  measurements: unknown
 ) {
   try {
     const db = getOptimizedDb()
-    
+    const normalized = normalizeFinalMeasurementsPayload(measurements, {
+      userId:
+        typeof (measurements as { measuredBy?: string } | undefined)?.measuredBy === 'string'
+          ? ((measurements as { measuredBy: string }).measuredBy?.trim() || 'worker')
+          : 'worker',
+      timestamp: (measurements as { measuredAt?: string } | undefined)?.measuredAt,
+    })
+
     // Update workspace with measurements
     await db
       .update(workspaces)
       .set({
-        finalMeasurements: measurements,
+        finalMeasurements: normalized,
         updatedAt: new Date()
       })
       .where(eq(workspaces.orderId, BigInt(orderId)))
@@ -135,7 +137,7 @@ export async function updateMeasurements(
 
     return {
       success: true,
-      measurements
+      measurements: normalized
     }
   } catch (error) {
     console.error('Error updating measurements:', error)
@@ -556,6 +558,76 @@ export async function notifyWorkspace(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to send notification'
+    }
+  }
+}
+
+export async function updateWorkspaceModuleState(
+  orderId: string,
+  module: string,
+  state: Record<string, any>
+) {
+  try {
+    const db = getOptimizedDb()
+
+    // Get current workspace
+    const workspace = await db.query.workspaces.findFirst({
+      where: eq(workspaces.orderId, BigInt(orderId))
+    })
+
+    if (!workspace) {
+      return {
+        success: false,
+        error: 'Workspace not found'
+      }
+    }
+
+    // Update module states
+    const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {}
+
+    // Handle module aliases (pre_mix vs preMix, etc)
+    const MODULE_STATE_ALIASES: Record<string, string[]> = {
+      pre_mix: ['pre_mix', 'preMix'],
+      pre_ship: ['pre_ship', 'preShip'],
+      inspection: ['inspection', 'inspection_runs']
+    }
+
+    const aliases = MODULE_STATE_ALIASES[module]
+    const canonicalKey = aliases ? aliases[0] : module
+
+    // Update the canonical key
+    currentModuleStates[canonicalKey] = state
+
+    // Remove any duplicate aliases
+    if (aliases) {
+      for (const alias of aliases) {
+        if (alias !== canonicalKey && alias in currentModuleStates) {
+          delete currentModuleStates[alias]
+        }
+      }
+    }
+
+    // Save to database
+    await db
+      .update(workspaces)
+      .set({
+        moduleStates: currentModuleStates,
+        updatedAt: new Date()
+      })
+      .where(eq(workspaces.orderId, BigInt(orderId)))
+
+    // Revalidate workspace page
+    revalidatePath(`/workspace/${orderId}`)
+
+    return {
+      success: true,
+      message: 'Module state updated'
+    }
+  } catch (error) {
+    console.error('Error updating module state:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update module state'
     }
   }
 }

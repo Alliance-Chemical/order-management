@@ -40,8 +40,8 @@ export default function PrintPreparationModalSimplified({
   } = usePrintPreparation({ order, onPrintComplete });
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-warehouse-xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-warehouse-xl">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 md:p-8 z-50">
+      <div className="bg-white rounded-warehouse-xl max-w-5xl w-full h-[85vh] max-h-[85vh] flex flex-col shadow-warehouse-xl">
         {/* Header */}
         <div className="bg-warehouse-info text-white p-6 flex items-center justify-between">
           <div>
@@ -57,7 +57,7 @@ export default function PrintPreparationModalSimplified({
         </div>
         
         {/* Content */}
-        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)' }}>
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {loading ? (
             <div className="py-12">
               <ProgressBar
@@ -90,14 +90,16 @@ export default function PrintPreparationModalSimplified({
         </div>
         
         {/* Footer Actions */}
-        <PrintModalActions
-          onClose={onClose}
-          onPrint={handlePrint}
-          printing={printing}
-          loading={loading}
-          mode={mode}
-          onModeChange={setMode}
-        />
+        <div className="shrink-0">
+          <PrintModalActions
+            onClose={onClose}
+            onPrint={handlePrint}
+            printing={printing}
+            loading={loading}
+            mode={mode}
+            onModeChange={setMode}
+          />
+        </div>
       </div>
     </div>
   );
