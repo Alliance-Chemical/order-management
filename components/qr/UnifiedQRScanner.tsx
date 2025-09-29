@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useQRScanner, type ValidatedQRData } from '@/hooks/useQRScanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +54,24 @@ export function UnifiedQRScanner({
     validateQR,
     allowManualEntry,
   });
+
+  const friendlyError = useMemo(() => {
+    const rawMessage = validationError || error;
+    if (!rawMessage) {
+      return '';
+    }
+
+    const lower = rawMessage.toLowerCase();
+    if (lower.includes('not found')) {
+      return 'QR code not found in the system. Double-check the label or use manual entry below to continue.';
+    }
+
+    if (lower.includes('failed to start camera')) {
+      return `${rawMessage}. Try allowing camera access or use manual entry.`;
+    }
+
+    return rawMessage;
+  }, [error, validationError]);
 
   useEffect(() => {
     startScanner();
@@ -125,11 +143,11 @@ export function UnifiedQRScanner({
       )}
 
       {/* Error Display */}
-      {(error || validationError) && (
+      {friendlyError && (
         <div className="absolute bottom-32 left-4 right-4">
           <div className="bg-red-500 text-white rounded-lg p-3">
             <p className="font-bold">Error</p>
-            <p className="text-sm">{error || validationError}</p>
+            <p className="text-sm">{friendlyError}</p>
             {allowManualEntry && (
               <Button
                 onClick={() => setShowManualEntry(true)}

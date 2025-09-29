@@ -124,6 +124,9 @@ export async function GET(_request: NextRequest) {
             unitPrice: item.unitPrice,
             customAttributes: item.options || [],
           })) || [],
+          workflowPhase: existingWorkspace.workflowPhase,
+          status: existingWorkspace.status,
+          finalMeasurements: existingWorkspace.finalMeasurements,
         });
         continue;
       }
@@ -152,6 +155,9 @@ export async function GET(_request: NextRequest) {
             unitPrice: item.unitPrice,
             customAttributes: item.options || [],
           })) || [],
+          workflowPhase: workspace.workflowPhase,
+          status: workspace.status,
+          finalMeasurements: workspace.finalMeasurements,
         });
       } catch (error) {
         // Handle duplicate key error - workspace may have been created by another process
@@ -184,6 +190,9 @@ export async function GET(_request: NextRequest) {
                     unitPrice: item.unitPrice,
                     customAttributes: item.options || [],
                   })) || [],
+              workflowPhase: existingWorkspace.workflowPhase,
+              status: existingWorkspace.status,
+              finalMeasurements: existingWorkspace.finalMeasurements,
             });
           }
         } else {

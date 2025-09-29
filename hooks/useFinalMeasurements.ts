@@ -1,61 +1,353 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import type { Pallet } from '@/hooks/usePalletBuilder';
 
-interface Measurements {
+const AUTOSAVE_DELAY_MS = 1200;
+const DEFAULT_WEIGHT_UNIT = 'lbs';
+const DEFAULT_DIMENSION_UNIT = 'in';
+
+export interface MeasurementEntry {
+  id: string;
   weight: string;
   weightUnit: string;
   length: string;
   width: string;
   height: string;
   dimensionUnit: string;
+  containerCode?: string | null;
+  measuredAt?: string;
 }
 
+export type SaveState = 'idle' | 'saving' | 'error';
+
+export interface FinalMeasurementsData {
+  mode?: 'single' | 'pallets';
+  measuredBy?: string;
+  measuredAt?: string;
+  weight?: { value: number; units: string } | null;
+  dimensions?: { length: number; width: number; height: number; units: string } | null;
+  scannedContainer?: string | null;
+  entryCount?: number;
+  totalWeight?: number;
+  palletCount?: number;
+  entries?: Array<{
+    id?: string;
+    weight?: string | number;
+    weightUnit?: string;
+    length?: string | number;
+    width?: string | number;
+    height?: string | number;
+    dimensionUnit?: string;
+    containerCode?: string | null;
+    scannedContainer?: string | null;
+    measuredAt?: string;
+  }>;
+  pallets?: Pallet[];
+}
+
+export type FinalMeasurementsSavePayload =
+  | {
+      mode: 'single';
+      entries: Array<{
+        id: string;
+        weight: string;
+        weightUnit: string;
+        length: string;
+        width: string;
+        height: string;
+        dimensionUnit: string;
+        containerCode: string | null;
+        measuredAt: string;
+      }>;
+      entryCount: number;
+      measuredBy: string;
+      measuredAt: string;
+      weight: { value: number; units: string } | null;
+      dimensions: { length: number; width: number; height: number; units: string } | null;
+      scannedContainer: string | null;
+    }
+  | {
+      mode: 'pallets';
+      pallets: Pallet[];
+      palletCount: number;
+      totalWeight: number;
+      measuredBy: string;
+      measuredAt: string;
+    };
+
 interface UseFinalMeasurementsProps {
-  initialData?: any;
-  onSave: (measurements: any) => void;
+  initialData?: FinalMeasurementsData;
+  onSave: (measurements: FinalMeasurementsSavePayload) => Promise<void> | void;
+}
+
+function createEntry(partial?: Partial<MeasurementEntry>): MeasurementEntry {
+  return {
+    id: partial?.id ?? `measurement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    weight: partial?.weight ?? '',
+    weightUnit: partial?.weightUnit ?? DEFAULT_WEIGHT_UNIT,
+    length: partial?.length ?? '',
+    width: partial?.width ?? '',
+    height: partial?.height ?? '',
+    dimensionUnit: partial?.dimensionUnit ?? DEFAULT_DIMENSION_UNIT,
+    containerCode: partial?.containerCode ?? null,
+    measuredAt: partial?.measuredAt ?? undefined,
+  };
+}
+
+function isEntryComplete(entry: MeasurementEntry) {
+  return Boolean(
+    entry.weight &&
+    entry.length &&
+    entry.width &&
+    entry.height &&
+    !Number.isNaN(parseFloat(entry.weight)) &&
+    !Number.isNaN(parseFloat(entry.length)) &&
+    !Number.isNaN(parseFloat(entry.width)) &&
+    !Number.isNaN(parseFloat(entry.height))
+  );
 }
 
 export function useFinalMeasurements({ initialData, onSave }: UseFinalMeasurementsProps) {
+  const initialEntries = useMemo<MeasurementEntry[]>(() => {
+    if (Array.isArray(initialData?.entries) && initialData.entries.length > 0) {
+      return initialData.entries.map((entry) =>
+        createEntry({
+          id: entry?.id,
+          weight:
+            entry?.weight !== undefined
+              ? String(entry.weight)
+              : entry?.weightValue !== undefined
+              ? String(entry.weightValue)
+              : entry?.weight?.value !== undefined
+              ? String(entry.weight.value)
+              : '',
+          weightUnit: entry?.weightUnit ?? entry?.weight?.units ?? DEFAULT_WEIGHT_UNIT,
+          length:
+            entry?.length !== undefined
+              ? String(entry.length)
+              : entry?.dimensions?.length !== undefined
+              ? String(entry.dimensions.length)
+              : '',
+          width:
+            entry?.width !== undefined
+              ? String(entry.width)
+              : entry?.dimensions?.width !== undefined
+              ? String(entry.dimensions.width)
+              : '',
+          height:
+            entry?.height !== undefined
+              ? String(entry.height)
+              : entry?.dimensions?.height !== undefined
+              ? String(entry.dimensions.height)
+              : '',
+          dimensionUnit: entry?.dimensionUnit ?? entry?.dimensions?.units ?? DEFAULT_DIMENSION_UNIT,
+          containerCode: entry?.containerCode ?? entry?.scannedContainer ?? null,
+          measuredAt: entry?.measuredAt,
+        })
+      );
+    }
+
+    if (initialData?.weight?.value && initialData?.dimensions) {
+      return [
+        createEntry({
+          weight: `${initialData.weight.value}`,
+          weightUnit: initialData.weight.units ?? DEFAULT_WEIGHT_UNIT,
+          length: `${initialData.dimensions.length ?? ''}`,
+          width: `${initialData.dimensions.width ?? ''}`,
+          height: `${initialData.dimensions.height ?? ''}`,
+          dimensionUnit: initialData.dimensions.units ?? DEFAULT_DIMENSION_UNIT,
+          containerCode: initialData.scannedContainer ?? null,
+          measuredAt: initialData.measuredAt,
+        })
+      ];
+    }
+
+    return [createEntry()];
+  }, [initialData]);
+
+  const [entries, setEntries] = useState<MeasurementEntry[]>(initialEntries);
+  const [mode, setMode] = useState<'single' | 'pallets'>(initialData?.mode ?? 'single');
+  const [palletData, setPalletData] = useState<Pallet[]>(Array.isArray(initialData?.pallets) ? initialData.pallets : []);
   const [showScanner, setShowScanner] = useState(false);
-  const [scannedContainer, setScannedContainer] = useState<string | null>(null);
-  const [measurements, setMeasurements] = useState<Measurements>({
-    weight: initialData?.weight?.value || '',
-    weightUnit: initialData?.weight?.units || 'lbs',
-    length: initialData?.dimensions?.length || '',
-    width: initialData?.dimensions?.width || '',
-    height: initialData?.dimensions?.height || '',
-    dimensionUnit: initialData?.dimensions?.units || 'in',
-  });
-  const [saving, setSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [mode, setMode] = useState<'single' | 'pallets'>('single');
-  const [palletData, setPalletData] = useState<any[]>(initialData?.pallets || []);
+  const scannerTargetRef = useRef<string | null>(null);
+  const [autoSaveState, setAutoSaveState] = useState<SaveState>('idle');
+  const [saveError, setSaveError] = useState<string>('');
+  const [lastSaved, setLastSaved] = useState<Date | null>(initialData?.measuredAt ? new Date(initialData.measuredAt) : null);
   const [validationError, setValidationError] = useState<string>('');
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialRenderRef = useRef(true);
+
+  const measuredBy = initialData?.measuredBy || 'Current User';
+
+  const serializeForSave = useCallback((): FinalMeasurementsSavePayload => {
+    if (mode === 'single') {
+      const serializedEntries = entries.map((entry) => ({
+        id: entry.id,
+        weight: entry.weight,
+        weightUnit: entry.weightUnit,
+        length: entry.length,
+        width: entry.width,
+        height: entry.height,
+        dimensionUnit: entry.dimensionUnit,
+        containerCode: entry.containerCode ?? null,
+        measuredAt: entry.measuredAt ?? new Date().toISOString(),
+      }));
+
+      const firstComplete = entries.find(isEntryComplete);
+
+      if (firstComplete) {
+        return {
+          mode: 'single',
+          entries: serializedEntries,
+          entryCount: serializedEntries.length,
+          measuredBy,
+          measuredAt: firstComplete.measuredAt ?? new Date().toISOString(),
+          weight: {
+            value: parseFloat(firstComplete.weight),
+            units: firstComplete.weightUnit,
+          },
+          dimensions: {
+            length: parseFloat(firstComplete.length),
+            width: parseFloat(firstComplete.width),
+            height: parseFloat(firstComplete.height),
+            units: firstComplete.dimensionUnit,
+          },
+          scannedContainer: firstComplete.containerCode ?? null,
+        };
+      }
+
+      return {
+        mode: 'single',
+        entries: serializedEntries,
+        entryCount: serializedEntries.length,
+        measuredBy,
+        measuredAt: new Date().toISOString(),
+        weight: null,
+        dimensions: null,
+        scannedContainer: null,
+      };
+    }
+
+    const pallets = Array.isArray(palletData) ? palletData : [];
+    const totalWeight = pallets.reduce((sum, pallet) => sum + pallet.weight.value, 0);
+
+    if (pallets.length === 0) {
+      setValidationError('Please add at least one pallet');
+    } else {
+      setValidationError('');
+    }
+
+    return {
+      mode: 'pallets',
+      pallets,
+      palletCount: pallets.length,
+      totalWeight,
+      measuredBy,
+      measuredAt: new Date().toISOString(),
+    };
+  }, [entries, measuredBy, mode, palletData]);
+
+  const executeSave = useCallback(async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    const payload = serializeForSave();
+
+    try {
+      await onSave(payload);
+      setAutoSaveState('idle');
+      const now = new Date();
+      setLastSaved(now);
+      setTimeout(() => {
+        setLastSaved((current) => (current && current.getTime() === now.getTime() ? null : current));
+      }, 4000);
+    } catch (error) {
+      console.error('Error saving measurements:', error);
+      setAutoSaveState('error');
+      setSaveError('Failed to auto-save measurements');
+    }
+  }, [onSave, serializeForSave]);
+
+  const scheduleAutoSave = useCallback(() => {
+    if (isInitialRenderRef.current) {
+      return;
+    }
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    setAutoSaveState('saving');
+    setSaveError('');
+    saveTimerRef.current = setTimeout(() => {
+      executeSave();
+    }, AUTOSAVE_DELAY_MS);
+  }, [executeSave]);
+
+  useEffect(() => {
+    if (isInitialRenderRef.current) {
+      isInitialRenderRef.current = false;
+      return;
+    }
+
+    scheduleAutoSave();
+  }, [entries, mode, palletData, scheduleAutoSave]);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+  }, []);
 
   const handleQRScan = useCallback((data: string) => {
+    const targetId = scannerTargetRef.current;
+    if (!targetId) {
+      return false;
+    }
+
     try {
-      // Parse QR data (could be URL or JSON)
-      let qrData;
+      let qrData: { shortCode?: string } | Record<string, unknown>;
       if (data.startsWith('http')) {
-        // Extract shortCode from URL
-        const urlParts = data.split('/');
-        const shortCode = urlParts[urlParts.length - 1].replace('%0A', '').trim();
-        qrData = { shortCode, type: 'url' };
+        const parts = data.split('/');
+        const shortCode = parts[parts.length - 1].replace('%0A', '').trim();
+        qrData = { shortCode };
       } else {
-        // Try to parse as JSON
-        qrData = JSON.parse(data);
+        qrData = JSON.parse(data) as Record<string, unknown>;
       }
-      
-      setScannedContainer(qrData.shortCode || 'Unknown');
+
+      const extractedCode = (() => {
+        if (typeof qrData === 'object' && qrData !== null) {
+          const maybeShort = (qrData as { shortCode?: unknown }).shortCode;
+          if (typeof maybeShort === 'string' && maybeShort.trim()) {
+            return maybeShort.trim();
+          }
+          const maybeCode = (qrData as { code?: unknown }).code;
+          if (typeof maybeCode === 'string' && maybeCode.trim()) {
+            return maybeCode.trim();
+          }
+        }
+        return 'Unknown';
+      })();
+
+      setEntries((prev) =>
+        prev.map((entry) =>
+          entry.id === targetId
+            ? { ...entry, containerCode: extractedCode }
+            : entry
+        )
+      );
+
       setShowScanner(false);
-      
-      // Auto-focus on weight input after scanning
+      scannerTargetRef.current = null;
+
       setTimeout(() => {
-        const weightInput = document.getElementById('weight-input');
+        const weightInput = document.getElementById(`weight-input-${targetId}`);
         if (weightInput) {
           weightInput.focus();
         }
       }, 100);
-      
+
       return true;
     } catch (error) {
       console.error('Error parsing QR data:', error);
@@ -64,132 +356,75 @@ export function useFinalMeasurements({ initialData, onSave }: UseFinalMeasuremen
     }
   }, []);
 
-  const validateMeasurements = useCallback(() => {
-    if (mode === 'single') {
-      if (!measurements.weight || !measurements.length || !measurements.width || !measurements.height) {
-        setValidationError('Please enter all measurements');
-        return false;
-      }
-      
-      // Validate positive numbers
-      const values = [
-        parseFloat(measurements.weight),
-        parseFloat(measurements.length),
-        parseFloat(measurements.width),
-        parseFloat(measurements.height)
-      ];
-      
-      if (values.some(v => isNaN(v) || v <= 0)) {
-        setValidationError('All measurements must be positive numbers');
-        return false;
-      }
-    } else if (mode === 'pallets') {
-      if (!palletData || palletData.length === 0) {
-        setValidationError('Please add at least one pallet');
-        return false;
-      }
-    }
-    
+  const updateMeasurement = useCallback((entryId: string, field: keyof MeasurementEntry, value: string) => {
+    setEntries((prev) =>
+      prev.map((entry) =>
+        entry.id === entryId
+          ? { ...entry, [field]: value }
+          : entry
+      )
+    );
     setValidationError('');
-    return true;
-  }, [mode, measurements, palletData]);
+  }, []);
 
-  const handleSave = useCallback(async () => {
-    if (!validateMeasurements()) {
-      return;
-    }
+  const resetMeasurement = useCallback((entryId: string) => {
+    setEntries((prev) =>
+      prev.map((entry) =>
+        entry.id === entryId
+          ? createEntry({ id: entryId })
+          : entry
+      )
+    );
+  }, []);
 
-    setSaving(true);
-    try {
-      let measurementData;
-      
-      if (mode === 'single') {
-        measurementData = {
-          weight: {
-            value: parseFloat(measurements.weight),
-            units: measurements.weightUnit
-          },
-          dimensions: {
-            length: parseFloat(measurements.length),
-            width: parseFloat(measurements.width),
-            height: parseFloat(measurements.height),
-            units: measurements.dimensionUnit
-          },
-          scannedContainer,
-          measuredBy: 'Current User', // In production, get from auth context
-          measuredAt: new Date().toISOString(),
-          mode: 'single'
-        };
-      } else {
-        measurementData = {
-          pallets: palletData,
-          totalWeight: palletData.reduce((sum: number, p: any) => sum + (p.weight || 0), 0),
-          palletCount: palletData.length,
-          measuredBy: 'Current User',
-          measuredAt: new Date().toISOString(),
-          mode: 'pallets'
-        };
+  const addMeasurementEntry = useCallback(() => {
+    setEntries((prev) => [...prev, createEntry()]);
+  }, []);
+
+  const removeMeasurementEntry = useCallback((entryId: string) => {
+    setEntries((prev) => {
+      if (prev.length === 1) {
+        return [createEntry({ id: prev[0].id })];
       }
-
-      await onSave(measurementData);
-      setLastSaved(new Date());
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setLastSaved(null);
-      }, 3000);
-    } catch (error) {
-      console.error('Error saving measurements:', error);
-      setValidationError('Failed to save measurements');
-    } finally {
-      setSaving(false);
-    }
-  }, [mode, measurements, scannedContainer, palletData, validateMeasurements, onSave]);
-
-  const updateMeasurement = useCallback((field: keyof Measurements, value: string) => {
-    setMeasurements(prev => ({
-      ...prev,
-      [field]: value
-    }));
-    setValidationError(''); // Clear error when user types
-  }, []);
-
-  const handlePalletUpdate = useCallback((pallets: any[]) => {
-    setPalletData(pallets);
-    setValidationError(''); // Clear error when pallets change
-  }, []);
-
-  const resetMeasurements = useCallback(() => {
-    setMeasurements({
-      weight: '',
-      weightUnit: 'lbs',
-      length: '',
-      width: '',
-      height: '',
-      dimensionUnit: 'in',
+      return prev.filter((entry) => entry.id !== entryId);
     });
-    setScannedContainer(null);
+  }, []);
+
+  const handlePalletUpdate = useCallback((pallets: Pallet[]) => {
+    setPalletData(pallets);
     setValidationError('');
+  }, []);
+
+  const triggerManualSave = useCallback(() => {
+    executeSave();
+  }, [executeSave]);
+
+  const openScannerForEntry = useCallback((entryId: string) => {
+    scannerTargetRef.current = entryId;
+    setShowScanner(true);
   }, []);
 
   return {
     // State
     showScanner,
-    scannedContainer,
-    measurements,
-    saving,
-    lastSaved,
+    entries,
     mode,
     palletData,
+    autoSaveState,
+    lastSaved,
     validationError,
-    
+    saveError,
+
     // Actions
     setShowScanner,
     setMode,
-    handleQRScan,
-    handleSave,
+    addMeasurementEntry,
+    removeMeasurementEntry,
+    resetMeasurement,
     updateMeasurement,
     handlePalletUpdate,
-    resetMeasurements,
+    handleQRScan,
+    openScannerForEntry,
+    triggerManualSave,
   };
 }

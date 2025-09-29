@@ -1,47 +1,49 @@
 'use client';
 
 import React from 'react';
-import { useFinalMeasurements } from '@/hooks/useFinalMeasurements';
+import { useFinalMeasurements, type FinalMeasurementsData, type FinalMeasurementsSavePayload } from '@/hooks/useFinalMeasurements';
 import { MeasurementForm } from '@/components/measurements/MeasurementForm';
 import { MeasurementActions } from '@/components/measurements/MeasurementActions';
 import { MeasurementModeTabs } from '@/components/measurements/MeasurementModeTabs';
 import { QRScanner } from '@/components/qr/QRScannerAdapter';
 import PalletArrangementBuilder from './PalletArrangementBuilder';
+import { Button } from '@/components/ui/button';
+import { PlusIcon } from '@heroicons/react/24/outline';
 
 interface FinalMeasurementsProps {
-  orderId: string;
   orderItems?: Array<{
     sku: string;
     name: string;
     quantity: number;
     weight?: { value: number; units: string };
   }>;
-  initialData?: any;
-  onSave: (measurements: any) => void;
+  initialData?: FinalMeasurementsData;
+  onSave: (measurements: FinalMeasurementsSavePayload) => void;
 }
 
-export default function FinalMeasurements({ 
-  orderId, 
-  orderItems = [], 
-  initialData, 
-  onSave 
+export default function FinalMeasurements({
+  orderItems = [],
+  initialData,
+  onSave,
 }: FinalMeasurementsProps) {
   const {
     showScanner,
-    scannedContainer,
-    measurements,
-    saving,
+    entries,
     lastSaved,
     mode,
     palletData,
     validationError,
+    saveError,
+    autoSaveState,
     setShowScanner,
     setMode,
     handleQRScan,
-    handleSave,
     updateMeasurement,
     handlePalletUpdate,
-    resetMeasurements,
+    addMeasurementEntry,
+    removeMeasurementEntry,
+    resetMeasurement,
+    openScannerForEntry,
   } = useFinalMeasurements({ initialData, onSave });
 
   return (
@@ -51,7 +53,28 @@ export default function FinalMeasurements({
           <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
             Final Measurements
           </h3>
-          
+          {initialData && (
+            <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-semibold text-slate-800">Recorded Measurements</p>
+              <div className="mt-2 space-y-1">
+                {initialData.dimensions && (
+                  <p>
+                    Dimensions: {initialData.dimensions.length ?? '—'} × {initialData.dimensions.width ?? '—'} × {initialData.dimensions.height ?? '—'} {initialData.dimensions.units ?? 'in'}
+                  </p>
+                )}
+                {initialData.weight && (
+                  <p>Weight: {initialData.weight.value ?? '—'} {initialData.weight.units ?? 'lbs'}</p>
+                )}
+                {(initialData.measuredBy || initialData.measuredAt) && (
+                  <p className="text-xs text-slate-500">
+                    Recorded by {initialData.measuredBy || 'Unknown'}
+                    {initialData.measuredAt ? ` on ${new Date(initialData.measuredAt).toLocaleString()}` : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           <MeasurementModeTabs
             mode={mode}
             onChange={setMode}
@@ -59,38 +82,63 @@ export default function FinalMeasurements({
             {{
               single: (
                 <div className="space-y-6">
-                  <MeasurementForm
-                    measurements={measurements}
-                    onUpdate={updateMeasurement}
-                  />
-                  
-                  <MeasurementActions
-                    scannedContainer={scannedContainer}
-                    saving={saving}
-                    lastSaved={lastSaved}
-                    validationError={validationError}
-                    onOpenScanner={() => setShowScanner(true)}
-                    onSave={handleSave}
-                    onReset={resetMeasurements}
-                  />
+                  {entries.map((entry, index) => {
+                    const canRemove = entries.length > 1;
+                    return (
+                      <div key={entry.id} className="space-y-4 rounded-lg border border-slate-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-base font-semibold text-slate-800">
+                            Pallet {index + 1}
+                          </h4>
+                        </div>
+                        <MeasurementForm
+                          entry={entry}
+                          title={`Pallet ${index + 1}`}
+                          onUpdate={(field, value) => updateMeasurement(entry.id, field, value)}
+                        />
+
+                        <MeasurementActions
+                          containerCode={entry.containerCode}
+                          autoSaveState={autoSaveState}
+                          lastSaved={lastSaved}
+                          validationError={validationError}
+                          saveError={saveError}
+                          onOpenScanner={() => openScannerForEntry(entry.id)}
+                          onReset={() => resetMeasurement(entry.id)}
+                          onRemove={canRemove ? () => removeMeasurementEntry(entry.id) : undefined}
+                          disableRemove={!canRemove}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addMeasurementEntry}
+                      className="flex items-center gap-2"
+                    >
+                      <PlusIcon className="h-4 w-4" />
+                      Add Another Pallet
+                    </Button>
+                  </div>
                 </div>
               ),
               pallets: (
                 <div className="space-y-6">
                   <PalletArrangementBuilder
-                    orderId={orderId}
                     orderItems={orderItems}
-                    initialPallets={palletData}
+                    existingPallets={palletData}
                     onUpdate={handlePalletUpdate}
                   />
-                  
                   <MeasurementActions
-                    scannedContainer={null}
-                    saving={saving}
+                    containerCode={null}
+                    autoSaveState={autoSaveState}
                     lastSaved={lastSaved}
                     validationError={validationError}
+                    saveError={saveError}
                     onOpenScanner={() => {}}
-                    onSave={handleSave}
                     onReset={() => handlePalletUpdate([])}
                   />
                 </div>

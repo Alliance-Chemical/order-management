@@ -53,6 +53,15 @@ const navigationItems: NavigationItem[] = [
     section: 'primary'
   },
   {
+    name: 'Archive',
+    href: '/archive',
+    icon: ArchiveBoxIcon,
+    color: 'text-slate-600 hover:text-slate-900',
+    bgColor: 'hover:bg-slate-100',
+    description: 'Search past workspaces and orders',
+    section: 'primary'
+  },
+  {
     name: 'Book Freight',
     href: '/freight-booking',
     icon: TruckIcon,

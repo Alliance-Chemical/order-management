@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CheckCircleIcon, TruckIcon } from '@heroicons/react/24/outline';
 import FinalMeasurements from '@/components/workspace/FinalMeasurements';
+import type { FinalMeasurementsData, FinalMeasurementsSavePayload } from '@/hooks/useFinalMeasurements';
 import PhotoGallery from '@/components/workspace/PhotoGallery';
 import { useToast } from '@/hooks/use-toast';
 import { updateMeasurements, shipWorkspace } from '@/app/actions/workspace';
@@ -21,7 +22,7 @@ interface InspectionPhoto {
   timestamp: string;
 }
 
-type FinalMeasurementsData = Record<string, unknown> | null;
+type FinalMeasurementsState = FinalMeasurementsData | null;
 
 interface PreShipInspectionState {
   checklist: ShippingChecklist;
@@ -34,7 +35,7 @@ interface PreShipInspectionState {
   readyToShip: boolean;
   shippedAt: string | null;
   shippedBy: string | null;
-  finalMeasurements: FinalMeasurementsData;
+  finalMeasurements: FinalMeasurementsState;
 }
 
 const shippingChecklist = [
@@ -96,7 +97,7 @@ export default function PreShipInspection({ orderId, initialState, onStateChange
     onStateChange(newState);
   };
 
-  const handleMeasurementsSave = async (measurements: Record<string, unknown>) => {
+  const handleMeasurementsSave = async (measurements: FinalMeasurementsSavePayload) => {
     // Save measurements to workspace via server action
     try {
       const result = await updateMeasurements(orderId, measurements);
@@ -309,7 +310,6 @@ export default function PreShipInspection({ orderId, initialState, onStateChange
 
       {/* Final Measurements Section */}
       <FinalMeasurements
-        orderId={orderId}
         initialData={state.finalMeasurements}
         onSave={handleMeasurementsSave}
       />

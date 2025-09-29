@@ -7,18 +7,16 @@ import { PalletItemSelector } from '@/components/pallet/PalletItemSelector'
 import { PalletSummary } from '@/components/pallet/PalletSummary'
 
 interface PalletArrangementBuilderProps {
-  orderId: string
   orderItems: OrderItem[]
   existingPallets?: Pallet[]
-  onSave: (pallets: Pallet[]) => Promise<void>
+  onUpdate: (pallets: Pallet[]) => void
   readOnly?: boolean
 }
 
 export default function PalletArrangementBuilder({
-  orderId,
   orderItems,
   existingPallets = [],
-  onSave,
+  onUpdate,
   readOnly = false
 }: PalletArrangementBuilderProps) {
   const {
@@ -26,7 +24,6 @@ export default function PalletArrangementBuilder({
     unassignedItems,
     selectedPallet,
     draggedItem,
-    saving,
     showDimensionInput,
     setSelectedPallet,
     setDraggedItem,
@@ -36,13 +33,12 @@ export default function PalletArrangementBuilder({
     handleItemDrop,
     removeItemFromPallet,
     updatePalletDimensions,
-    handleSave,
     getTotalWeight,
     getWeightWarning
   } = usePalletBuilder({
     orderItems,
     existingPallets,
-    onSave
+    onChange: onUpdate
   })
 
   const unassignedItemCount = unassignedItems.reduce((sum, i) => sum + i.quantity, 0)
@@ -97,8 +93,6 @@ export default function PalletArrangementBuilder({
         totalWeight={getTotalWeight()}
         unassignedItemCount={unassignedItemCount}
         readOnly={readOnly}
-        saving={saving}
-        onSave={handleSave}
       />
     </div>
   )

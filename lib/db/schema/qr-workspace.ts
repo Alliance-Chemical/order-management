@@ -51,6 +51,17 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
   finalMeasurements: jsonb('final_measurements').$type<{
     weight?: { value: number; units: string; };
     dimensions?: { length: number; width: number; height: number; units: string; };
+    entries?: Array<{
+      id: string;
+      weight: string;
+      weightUnit: string;
+      length: string;
+      width: string;
+      height: string;
+      dimensionUnit: string;
+      containerCode?: string | null;
+      measuredAt?: string;
+    }>;
     pallets?: Array<{
       id: string;
       type: '48x48' | '48x40' | 'custom';
@@ -68,8 +79,10 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
     mode?: 'single' | 'pallets';
     palletCount?: number;
     totalWeight?: number;
+    entryCount?: number;
     measuredBy?: string;
     measuredAt?: string;
+    scannedContainer?: string | null;
   }>(),
   
   // Archive Management

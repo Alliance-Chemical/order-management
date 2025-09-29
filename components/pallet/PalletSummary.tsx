@@ -1,15 +1,12 @@
 'use client'
 
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid'
-import { Button } from '@/components/ui/button'
 
 interface PalletSummaryProps {
   palletCount: number
   totalWeight: number
   unassignedItemCount: number
   readOnly: boolean
-  saving: boolean
-  onSave: () => void
 }
 
 export function PalletSummary({
@@ -17,8 +14,7 @@ export function PalletSummary({
   totalWeight,
   unassignedItemCount,
   readOnly,
-  saving,
-  onSave
+  
 }: PalletSummaryProps) {
   return (
     <div className="mt-8 p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
@@ -35,17 +31,10 @@ export function PalletSummary({
             </div>
           )}
         </div>
-        
         {!readOnly && (
-          <Button
-            variant={unassignedItemCount === 0 ? "go" : "caution"}
-            size="large"
-            onClick={onSave}
-            disabled={saving || palletCount === 0}
-            loading={saving}
-          >
-            {saving ? 'SAVING...' : 'SAVE ARRANGEMENT'}
-          </Button>
+          <div className="text-sm text-blue-900 font-medium">
+            Changes auto-save once pallets are updated
+          </div>
         )}
       </div>
     </div>

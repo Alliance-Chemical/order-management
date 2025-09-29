@@ -147,9 +147,9 @@ export async function POST(
 
     // Update workspace with pre-ship inspection data
     const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {};
-    const updatedModuleStates = {
+    const updatedModuleStates: Record<string, unknown> = {
       ...currentModuleStates,
-      preShip: {
+      pre_ship: {
         completed: true,
         checkedItems,
         photos: uploadedPhotos,
@@ -159,6 +159,9 @@ export async function POST(
         failureNotes: failureNotes || null
       }
     };
+
+    // Clean up legacy camelCase key so supervisor view picks up latest data
+    delete updatedModuleStates.preShip;
 
     // Update phase completed timestamp
     const currentPhaseCompleted = (workspace.phaseCompletedAt as Record<string, string> | undefined) || {};

@@ -3,35 +3,52 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { QrCodeIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { QrCodeIcon, CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import type { SaveState } from '@/hooks/useFinalMeasurements';
 
 interface MeasurementActionsProps {
-  scannedContainer: string | null;
-  saving: boolean;
+  containerCode?: string | null;
+  autoSaveState: SaveState;
   lastSaved: Date | null;
-  validationError: string;
+  validationError?: string;
+  saveError?: string;
   onOpenScanner: () => void;
-  onSave: () => void;
   onReset: () => void;
+  onRemove?: () => void;
+  disableRemove?: boolean;
 }
 
 export function MeasurementActions({
-  scannedContainer,
-  saving,
+  containerCode,
+  autoSaveState,
   lastSaved,
   validationError,
+  saveError,
   onOpenScanner,
-  onSave,
   onReset,
+  onRemove,
+  disableRemove,
 }: MeasurementActionsProps) {
+  const statusMessage = (() => {
+    if (autoSaveState === 'saving') {
+      return 'Auto-saving…';
+    }
+    if (autoSaveState === 'error') {
+      return saveError || 'Unable to save changes';
+    }
+    if (lastSaved) {
+      return `Saved ${lastSaved.toLocaleTimeString()}`;
+    }
+    return 'Waiting for updates';
+  })();
+
   return (
     <div className="space-y-4">
-      {/* Scanner Status */}
       <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
         <div className="flex items-center">
           <QrCodeIcon className="h-5 w-5 text-gray-500 mr-2" />
           <span className="text-sm text-gray-600">
-            Container: {scannedContainer || 'Not scanned'}
+            Container: {containerCode || 'Not scanned'}
           </span>
         </div>
         <Button
@@ -39,19 +56,17 @@ export function MeasurementActions({
           variant="outline"
           size="sm"
         >
-          {scannedContainer ? 'Re-scan' : 'Scan QR'}
+          {containerCode ? 'Re-scan' : 'Scan QR'}
         </Button>
       </div>
 
-      {/* Error Alert */}
       {validationError && (
         <Alert variant="destructive">
           <AlertDescription>{validationError}</AlertDescription>
         </Alert>
       )}
 
-      {/* Success Message */}
-      {lastSaved && (
+      {autoSaveState !== 'error' && lastSaved && !validationError && (
         <Alert className="border-green-200 bg-green-50">
           <CheckCircleIcon className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-800">
@@ -60,22 +75,36 @@ export function MeasurementActions({
         </Alert>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex gap-4">
-        <Button
-          onClick={onReset}
-          variant="outline"
-          disabled={saving}
-        >
-          Reset
-        </Button>
-        <Button
-          onClick={onSave}
-          disabled={saving}
-          className="flex-1"
-        >
-          {saving ? 'Saving...' : 'Save Measurements'}
-        </Button>
+      {autoSaveState === 'error' && saveError && (
+        <Alert variant="destructive">
+          <AlertDescription>{saveError}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-gray-500">
+          {statusMessage}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={onReset}
+            variant="outline"
+            size="sm"
+          >
+            Reset
+          </Button>
+          {onRemove && (
+            <Button
+              onClick={onRemove}
+              variant="ghost"
+              size="sm"
+              disabled={disableRemove}
+            >
+              <XMarkIcon className="h-4 w-4 mr-1" />
+              Remove
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

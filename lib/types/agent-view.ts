@@ -100,6 +100,47 @@ export interface WorkspaceData {
     internalNotes?: string;
   };
   moduleStates: Record<string, unknown>;
+  qrCode?: {
+    id?: string;
+    shortCode?: string;
+    qrCode?: string;
+  };
+  finalMeasurements?: {
+    weight?: { value: number; units: string };
+    dimensions?: { length: number; width: number; height: number; units: string };
+    entries?: Array<{
+      id: string;
+      weight: string;
+      weightUnit: string;
+      length: string;
+      width: string;
+      height: string;
+      dimensionUnit: string;
+      containerCode?: string | null;
+      measuredAt?: string;
+    }>;
+    measuredBy?: string;
+    measuredAt?: string;
+    pallets?: Array<{
+      id: string;
+      type: '48x48' | '48x40' | 'custom';
+      dimensions: { length: number; width: number; height: number; units: string };
+      weight: { value: number; units: string };
+      items: Array<{
+        sku: string;
+        name: string;
+        quantity: number;
+        position?: { x: number; y: number; z: number };
+      }>;
+      stackable: boolean;
+      notes?: string;
+    }>;
+    mode?: 'single' | 'pallets';
+    palletCount?: number;
+    totalWeight?: number;
+    scannedContainer?: string | null;
+    entryCount?: number;
+  };
   documents: Array<{
     id: string;
     fileName: string;

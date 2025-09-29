@@ -3,11 +3,95 @@ import { createHash } from 'crypto';
 
 const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds (increased from 1 hour)
+
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 10; // Max 10 requests per minute
+const requestTimestamps: number[] = [];
+
+// Exponential backoff configuration
+const INITIAL_RETRY_DELAY = 1000; // 1 second
+const MAX_RETRY_DELAY = 32000; // 32 seconds
+const MAX_RETRIES = 5;
 
 // Simple in-memory cache for development
 // In production, use Redis or similar
 const extractionCache = new Map<string, { result: any; timestamp: number }>();
+
+// Rate limiter function
+function checkRateLimit(): { allowed: boolean; waitTime?: number } {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW;
+
+  // Remove old timestamps outside the window
+  while (requestTimestamps.length > 0 && requestTimestamps[0] < windowStart) {
+    requestTimestamps.shift();
+  }
+
+  if (requestTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+    // Calculate wait time until the oldest request expires
+    const waitTime = requestTimestamps[0] + RATE_LIMIT_WINDOW - now;
+    return { allowed: false, waitTime };
+  }
+
+  requestTimestamps.push(now);
+  return { allowed: true };
+}
+
+// Exponential backoff retry function
+async function callOpenAIWithRetry(
+  body: any,
+  apiKey: string,
+  retryCount = 0
+): Promise<Response> {
+  try {
+    const response = await fetch(OPENAI_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    // If successful or client error (4xx except 429), return response
+    if (response.ok || (response.status >= 400 && response.status < 500 && response.status !== 429)) {
+      return response;
+    }
+
+    // Handle rate limiting (429) or server errors (5xx)
+    if ((response.status === 429 || response.status >= 500) && retryCount < MAX_RETRIES) {
+      const errorText = await response.text().catch(() => '');
+      const isSlowDown = errorText.includes('slow_down') || errorText.includes('rate');
+
+      // Calculate delay with exponential backoff
+      let delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCount), MAX_RETRY_DELAY);
+
+      // If it's a "slow_down" error, wait longer (15 seconds minimum)
+      if (isSlowDown) {
+        delay = Math.max(delay, 15000);
+      }
+
+      console.log(`OpenAI API error (${response.status}), retrying in ${delay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callOpenAIWithRetry(body, apiKey, retryCount + 1);
+    }
+
+    return response;
+  } catch (error) {
+    // Network error or timeout
+    if (retryCount < MAX_RETRIES) {
+      const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(2, retryCount), MAX_RETRY_DELAY);
+      console.log(`Network error calling OpenAI, retrying in ${delay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callOpenAIWithRetry(body, apiKey, retryCount + 1);
+    }
+    throw error;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,6 +137,26 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Check rate limit before making API call
+    const rateLimitCheck = checkRateLimit();
+    if (!rateLimitCheck.allowed) {
+      const waitSeconds = Math.ceil((rateLimitCheck.waitTime || 0) / 1000);
+      console.log(`Rate limit exceeded. Need to wait ${waitSeconds} seconds`);
+      return NextResponse.json(
+        {
+          error: 'Too many requests',
+          details: `Please wait ${waitSeconds} seconds before trying again`,
+          retryAfter: waitSeconds
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': waitSeconds.toString()
+          }
+        }
+      );
+    }
+
     // Keep the base64 image with data URL prefix for OpenAI
     const prompt = `
       Analyze this image of a chemical container label and extract ALL lot numbers, batch numbers, or similar identifiers.
@@ -83,13 +187,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(OPENAI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+    // Use the retry function with exponential backoff
+    const response = await callOpenAIWithRetry(
+      {
         model: 'gpt-5-nano-2025-08-07',
         messages: [
           {
@@ -101,11 +201,27 @@ export async function POST(request: NextRequest) {
           }
         ],
         max_completion_tokens: 500
-      })
-    });
+      },
+      apiKey
+    );
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => response.statusText);
+
+      // Handle specific error cases
+      if (response.status === 429) {
+        console.error('OpenAI rate limit hit despite retries');
+        return NextResponse.json(
+          {
+            error: 'AI service temporarily unavailable',
+            details: 'The service is experiencing high demand. Please try again later.',
+            orderId,
+            lotNumbers: [] // Return empty array as fallback
+          },
+          { status: 503 }
+        );
+      }
+
       throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 

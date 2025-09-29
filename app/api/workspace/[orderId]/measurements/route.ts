@@ -66,21 +66,31 @@ export async function POST(
       })
       .where(eq(workspaces.orderId, orderId));
 
-    // Create activity log entry
+    // Create activity log entry with explicit field mapping to avoid compilation issues
     const { dimensionsSummary, weightSummary } = buildMeasurementSummary(normalizedMeasurements);
-    await db.insert(activityLog).values({
+    const logEntry = {
       workspaceId: workspace.id,
-      activityType: 'measurements_recorded',
+      activityType: 'measurements_recorded' as const,
       activityDescription: `Recorded measurements: ${weightSummary}, ${dimensionsSummary}`,
+      performedBy: normalizedMeasurements.measuredBy || 'System',
+      performedAt: new Date(),
+      module: 'warehouse' as const,
       metadata: {
         weight: weightSummary,
         dimensions: dimensionsSummary,
         scannedContainer:
           normalizedMeasurements.scannedContainer ?? 'Not scanned',
       },
-      performedBy: normalizedMeasurements.measuredBy || 'System',
-      performedAt: new Date(),
-    });
+      changes: {},
+    };
+
+    // Validate required fields before insert
+    if (!logEntry.activityType || !logEntry.workspaceId || !logEntry.performedBy) {
+      console.error('Missing required fields for activity log:', logEntry);
+      // Continue without logging to avoid blocking the measurement save
+    } else {
+      await db.insert(activityLog).values(logEntry);
+    }
 
     const shouldNotify = !(
       previousMeasurements?.weight?.value &&

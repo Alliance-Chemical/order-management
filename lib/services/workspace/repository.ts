@@ -154,4 +154,61 @@ export class WorkspaceRepository {
       limit,
     });
   }
+
+  async searchWorkspaces(params: {
+    query?: string;
+    status?: 'active' | 'shipped' | 'archived' | 'all';
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }) {
+    const {
+      query,
+      status = 'all',
+      startDate,
+      endDate,
+      limit = 50,
+      offset = 0,
+    } = params;
+
+    const conditions = [];
+
+    // Filter by status
+    if (status !== 'all') {
+      conditions.push(eq(workspaces.status, status));
+    }
+
+    // Filter by date range on createdAt
+    if (startDate) {
+      conditions.push(sql`${workspaces.createdAt} >= ${startDate}`);
+    }
+    if (endDate) {
+      conditions.push(sql`${workspaces.createdAt} <= ${endDate}`);
+    }
+
+    // Search query (order number, order ID, or customer data in shipstationData)
+    if (query && query.trim()) {
+      const searchTerm = query.trim();
+      conditions.push(
+        sql`(
+          ${workspaces.orderNumber} ILIKE ${`%${searchTerm}%`}
+          OR CAST(${workspaces.orderId} AS TEXT) ILIKE ${`%${searchTerm}%`}
+          OR ${workspaces.shipstationData}::text ILIKE ${`%${searchTerm}%`}
+        )`
+      );
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const results = await db
+      .select()
+      .from(workspaces)
+      .where(where)
+      .orderBy(desc(workspaces.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return results;
+  }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils'
 import { useToast } from '@/hooks/use-toast'
 
@@ -46,21 +46,28 @@ export const MAX_PALLET_WEIGHT_LBS = 4000
 interface UsePalletBuilderProps {
   orderItems: OrderItem[]
   existingPallets?: Pallet[]
-  onSave: (pallets: Pallet[]) => Promise<void>
+  onChange?: (pallets: Pallet[]) => void
 }
 
 export function usePalletBuilder({
   orderItems,
   existingPallets = [],
-  onSave
+  onChange
 }: UsePalletBuilderProps) {
   const { toast } = useToast()
   const [pallets, setPallets] = useState<Pallet[]>(existingPallets.length > 0 ? existingPallets : [])
   const [unassignedItems, setUnassignedItems] = useState<OrderItem[]>([])
   const [selectedPallet, setSelectedPallet] = useState<string | null>(null)
   const [draggedItem, setDraggedItem] = useState<OrderItem | null>(null)
-  const [saving, setSaving] = useState(false)
   const [showDimensionInput, setShowDimensionInput] = useState<string | null>(null)
+
+  const updatePalletState = useCallback((updater: (current: Pallet[]) => Pallet[]) => {
+    setPallets(prev => {
+      const next = updater(prev)
+      onChange?.(next)
+      return next
+    })
+  }, [onChange])
 
   // Initialize unassigned items
   useEffect(() => {
@@ -105,7 +112,7 @@ export function usePalletBuilder({
       items: [],
       stackable: true
     }
-    setPallets([...pallets, newPallet])
+    updatePalletState(prev => [...prev, newPallet])
     setSelectedPallet(newPallet.id)
   }
 
@@ -121,9 +128,9 @@ export function usePalletBuilder({
         weight: orderItems.find(oi => oi.sku === item.sku)?.weight,
         dimensions: orderItems.find(oi => oi.sku === item.sku)?.dimensions
       }))
-      setUnassignedItems([...unassignedItems, ...itemsToReturn])
+      setUnassignedItems(prev => [...prev, ...itemsToReturn])
     }
-    setPallets(pallets.filter(p => p.id !== palletId))
+    updatePalletState(prev => prev.filter(p => p.id !== palletId))
     if (selectedPallet === palletId) {
       setSelectedPallet(null)
     }
@@ -131,58 +138,59 @@ export function usePalletBuilder({
 
   const handleItemDrop = (palletId: string, item: OrderItem, quantity?: number) => {
     warehouseFeedback.success()
-    const pallet = pallets.find(p => p.id === palletId)
-    if (!pallet) return
+    updatePalletState(prev => {
+      const pallet = prev.find(p => p.id === palletId)
+      if (!pallet) return prev
 
-    const qtyToAdd = quantity || item.quantity
-    
-    // Check weight limit
-    const itemWeight = (item.weight?.value || 0) * qtyToAdd
-    const newTotalWeight = pallet.weight.value + itemWeight
-    
-    if (newTotalWeight > MAX_PALLET_WEIGHT_LBS) {
-      warehouseFeedback.error()
-      toast({
-        title: "Error",
-        description: `Adding this item would exceed the ${MAX_PALLET_WEIGHT_LBS} lbs pallet weight limit`,
-        variant: "destructive"
-      })
-      return
-    }
+      const next = prev.map(p => ({ ...p, items: [...p.items], weight: { ...p.weight }, dimensions: { ...p.dimensions } }))
+      const target = next.find(p => p.id === palletId)
+      if (!target) return prev
 
-    // Add item to pallet
-    const existingItem = pallet.items.find(i => i.sku === item.sku)
-    if (existingItem) {
-      existingItem.quantity += qtyToAdd
-    } else {
-      pallet.items.push({
-        sku: item.sku,
-        name: item.name,
-        quantity: qtyToAdd
-      })
-    }
+      const qtyToAdd = quantity || item.quantity
 
-    // Update pallet weight and dimensions
-    pallet.weight.value = newTotalWeight
-    
-    // Estimate height based on items (simplified calculation)
-    const estimatedHeight = Math.min(
-      pallet.items.length * 12, // Rough estimate: 12 inches per layer
-      STANDARD_PALLETS[pallet.type].maxHeight
-    )
-    pallet.dimensions.height = estimatedHeight
+      const itemWeight = (item.weight?.value || 0) * qtyToAdd
+      const newTotalWeight = target.weight.value + itemWeight
 
-    // Remove from unassigned
-    const remainingQty = item.quantity - qtyToAdd
+      if (newTotalWeight > MAX_PALLET_WEIGHT_LBS) {
+        warehouseFeedback.error()
+        toast({
+          title: "Error",
+          description: `Adding this item would exceed the ${MAX_PALLET_WEIGHT_LBS} lbs pallet weight limit`,
+          variant: "destructive"
+        })
+        return prev
+      }
+
+      const existingItem = target.items.find(i => i.sku === item.sku)
+      if (existingItem) {
+        existingItem.quantity += qtyToAdd
+      } else {
+        target.items.push({
+          sku: item.sku,
+          name: item.name,
+          quantity: qtyToAdd
+        })
+      }
+
+      target.weight.value = newTotalWeight
+
+      const estimatedHeight = Math.min(
+        target.items.length * 12,
+        STANDARD_PALLETS[target.type].maxHeight
+      )
+      target.dimensions.height = estimatedHeight
+
+      return next
+    })
+
+    const remainingQty = item.quantity - (quantity || item.quantity)
     if (remainingQty > 0) {
-      setUnassignedItems(unassignedItems.map(ui => 
+      setUnassignedItems(prev => prev.map(ui =>
         ui.sku === item.sku ? { ...ui, quantity: remainingQty } : ui
       ))
     } else {
-      setUnassignedItems(unassignedItems.filter(ui => ui.sku !== item.sku))
+      setUnassignedItems(prev => prev.filter(ui => ui.sku !== item.sku))
     }
-
-    setPallets([...pallets])
   }
 
   const removeItemFromPallet = (palletId: string, itemSku: string) => {
@@ -193,51 +201,41 @@ export function usePalletBuilder({
     const item = pallet.items.find(i => i.sku === itemSku)
     if (!item) return
 
-    // Return to unassigned
     const orderItem = orderItems.find(oi => oi.sku === itemSku)
     if (orderItem) {
-      const existing = unassignedItems.find(ui => ui.sku === itemSku)
-      if (existing) {
-        existing.quantity += item.quantity
-        setUnassignedItems([...unassignedItems])
-      } else {
-        setUnassignedItems([...unassignedItems, { ...orderItem, quantity: item.quantity }])
-      }
+      setUnassignedItems(prev => {
+        const existing = prev.find(ui => ui.sku === itemSku)
+        if (existing) {
+          return prev.map(ui =>
+            ui.sku === itemSku ? { ...ui, quantity: ui.quantity + item.quantity } : ui
+          )
+        }
+        return [...prev, { ...orderItem, quantity: item.quantity }]
+      })
     }
 
-    // Remove from pallet
-    pallet.items = pallet.items.filter(i => i.sku !== itemSku)
-    
-    // Recalculate weight
-    pallet.weight.value = pallet.items.reduce((sum, i) => {
-      const oi = orderItems.find(o => o.sku === i.sku)
-      return sum + ((oi?.weight?.value || 0) * i.quantity)
-    }, 0)
-
-    setPallets([...pallets])
+    updatePalletState(prev => prev.map(p => {
+      if (p.id !== palletId) return p
+      const remainingItems = p.items.filter(i => i.sku !== itemSku)
+      const recalculatedWeight = remainingItems.reduce((sum, i) => {
+        const oi = orderItems.find(o => o.sku === i.sku)
+        return sum + ((oi?.weight?.value || 0) * i.quantity)
+      }, 0)
+      return {
+        ...p,
+        items: remainingItems,
+        weight: { ...p.weight, value: recalculatedWeight }
+      }
+    }))
   }
 
   const updatePalletDimensions = (palletId: string, dims: Partial<Pallet['dimensions']>) => {
-    setPallets(pallets.map(p => 
-      p.id === palletId 
+    updatePalletState(prev => prev.map(p =>
+      p.id === palletId
         ? { ...p, dimensions: { ...p.dimensions, ...dims } }
         : p
     ))
     setShowDimensionInput(null)
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    warehouseFeedback.success()
-    
-    try {
-      await onSave(pallets)
-    } catch (error) {
-      console.error('Error saving pallet arrangement:', error)
-      warehouseFeedback.error()
-    } finally {
-      setSaving(false)
-    }
   }
 
   const getTotalWeight = () => {
@@ -256,7 +254,6 @@ export function usePalletBuilder({
     unassignedItems,
     selectedPallet,
     draggedItem,
-    saving,
     showDimensionInput,
     
     // Setters
@@ -270,8 +267,7 @@ export function usePalletBuilder({
     handleItemDrop,
     removeItemFromPallet,
     updatePalletDimensions,
-    handleSave,
-    
+
     // Helpers
     getTotalWeight,
     getWeightWarning
