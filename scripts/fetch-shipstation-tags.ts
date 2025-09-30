@@ -56,7 +56,7 @@ async function fetchShipStationTags() {
     
     const freightTags = tags.filter((tag: any) => 
       tag.name.toLowerCase().includes('freight') ||
-      tag.name.toLowerCase().includes('staged') ||
+      tag.name.toLowerCase().includes('booked') ||
       tag.name.toLowerCase().includes('ready')
     );
     
@@ -68,9 +68,9 @@ async function fetchShipStationTags() {
       
       console.log('\n📝 Suggested environment variables:');
       
-      const stagedTag = tags.find((t: any) => 
-        t.name.toLowerCase().includes('staged') || 
-        t.name.toLowerCase() === 'freightstaged'
+      const bookedTag = tags.find((t: any) => 
+        t.name.toLowerCase().includes('booked') || 
+        t.name.toLowerCase() === 'freightbooked'
       );
       
       const readyTag = tags.find((t: any) => 
@@ -79,10 +79,10 @@ async function fetchShipStationTags() {
         t.name.toLowerCase() === 'freight order ready'
       );
       
-      if (stagedTag) {
-        console.log(`  FREIGHT_STAGED_TAG_ID=${stagedTag.tagId}`);
+      if (bookedTag) {
+        console.log(`  FREIGHT_BOOKED_TAG_ID=${bookedTag.tagId}`);
       } else {
-        console.log('  FREIGHT_STAGED_TAG_ID=<not found - may need to create "FreightStaged" tag>');
+        console.log('  FREIGHT_BOOKED_TAG_ID=<not found - confirm the "Freight Booked" tag exists>');
       }
       
       if (readyTag) {
@@ -93,7 +93,7 @@ async function fetchShipStationTags() {
     } else {
       console.log('No freight-related tags found. You may need to create them in ShipStation.');
       console.log('\nSuggested tags to create:');
-      console.log('  - "FreightStaged" - for orders with locked planning');
+      console.log('  - "Freight Booked" - for orders with locked planning');
       console.log('  - "FreightOrderReady" - for orders that passed pre-ship inspection');
     }
     

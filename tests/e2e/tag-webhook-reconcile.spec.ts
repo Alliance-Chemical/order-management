@@ -15,7 +15,7 @@ test.describe('Tag webhook reconciliation', () => {
       resource_type: 'ORDER_NOTIFY',
       order_id: 555005,
       order_number: 'F-555005',
-      tag_ids: [19844, 44777] // Freight Orders + Need Labels (staged)
+      tag_ids: [19844, 60447] // Freight Orders + Freight Booked
     }
     
     await page.request.post('/api/shipstation/webhook', {
@@ -33,7 +33,7 @@ test.describe('Tag webhook reconciliation', () => {
     await page.request.post('/api/shipstation/webhook', {
       data: {
         ...webhookPayload,
-        tag_ids: [19844, 44777, 44123] // + Freight Order Ready
+        tag_ids: [19844, 60447, 44123] // + Freight Order Ready
       },
       headers: {
         'X-SS-Webhook-Secret': process.env.SHIPSTATION_WEBHOOK_SECRET || 'test-secret'

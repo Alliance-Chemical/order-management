@@ -50,7 +50,7 @@ async function checkShipStationTag(tagName: string) {
     console.log(`   2. Go to Settings > Store Setup > Order Tags`);
     console.log(`   3. Click "Add Tag"`);
     console.log(`   4. Enter tag name: "${tagName}"`);
-    console.log(`   5. Choose a color (suggested: Orange #FFA500 for "staged")`);
+    console.log(`   5. Choose a color (suggested: Yellow #FFFF00 for "booked")`);
     console.log(`   6. Click "Save"`);
     console.log(`\nThen run 'npx tsx scripts/fetch-shipstation-tags.ts' to get the new tag ID.`);
     return null;
@@ -64,19 +64,19 @@ async function checkShipStationTag(tagName: string) {
 async function main() {
   console.log('Checking for required workflow tags...\n');
   
-  // Check for FreightStaged tag
-  const stagedId = await checkShipStationTag('FreightStaged');
+  // Check for FreightBooked tag
+  const bookedId = await checkShipStationTag('Freight Booked');
   
   console.log('\n═══════════════════════════════════════\n');
   
-  if (stagedId) {
+  if (bookedId) {
     console.log('📝 Add these to your .env.local:');
-    console.log(`FREIGHT_STAGED_TAG_ID=${stagedId}`);
+    console.log(`FREIGHT_BOOKED_TAG_ID=${bookedId}`);
     console.log(`FREIGHT_READY_TAG_ID=44123  # Existing "Freight Order Ready" tag`);
     console.log(`READY_TO_SHIP_TAG=19845     # Default ready to ship tag`);
   } else {
-    console.log('After creating the "FreightStaged" tag, add these to your .env.local:');
-    console.log(`FREIGHT_STAGED_TAG_ID=<tag_id_from_shipstation>`);
+    console.log('After creating the "Freight Booked" tag, add these to your .env.local:');
+    console.log(`FREIGHT_BOOKED_TAG_ID=<tag_id_from_shipstation>`);
     console.log(`FREIGHT_READY_TAG_ID=44123  # Existing "Freight Order Ready" tag`);
     console.log(`READY_TO_SHIP_TAG=19845     # Default ready to ship tag`);
   }

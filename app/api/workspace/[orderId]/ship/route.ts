@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 import { ShipStationClient } from '@/lib/services/shipstation/client';
 // AWS SNS removed - log notifications instead
-import { clearFreightStaged } from '@/lib/services/shipstation/tags';
+import { clearFreightBooked } from '@/lib/services/shipstation/tags';
 
 const repository = new WorkspaceRepository();
 const shipstationClient = new ShipStationClient();
@@ -39,8 +39,8 @@ export async function POST(
     try {
       await shipstationClient.addOrderTag(workspace.shipstationOrderId!, readyToShipTagId);
       
-      // Clear FreightStaged tag when shipped
-      await clearFreightStaged(workspace.orderId);
+      // Clear Freight Booked tag when shipped
+      await clearFreightBooked(workspace.orderId);
       
       // Log tag removal
       await repository.logActivity({
@@ -48,7 +48,7 @@ export async function POST(
         activityType: 'shipstation_tag_removed',
         performedBy: 'system',
         metadata: {
-          tag: 'FreightStaged',
+          tag: 'FreightBooked',
           orderId: workspace.orderId,
           trigger: 'order_shipped'
         }

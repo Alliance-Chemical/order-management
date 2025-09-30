@@ -3,7 +3,7 @@ import { ShipStationClient, type ShipStationOrder } from '../shipstation/client'
 import { QRGenerator } from '../qr/generator';
 import { getS3BucketName, createOrderFolderPath } from '@/lib/aws/s3-client';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
-import { markFreightStaged, markFreightReady } from '../shipstation/tags';
+import { markFreightBooked, markFreightReady } from '../shipstation/tags';
 
 type ModuleState = Record<string, unknown>;
 type ActivityMetadata = Record<string, unknown>;
@@ -172,9 +172,9 @@ export class WorkspaceService {
 
     if (module === 'planning' && locked) {
       try {
-        await markFreightStaged(orderId);
+        await markFreightBooked(orderId);
         await this.logActivity(workspaceId, 'shipstation_tag_added', 'system', {
-          tag: 'FreightStaged',
+          tag: 'FreightBooked',
           orderId,
           trigger: 'planning_locked'
         });

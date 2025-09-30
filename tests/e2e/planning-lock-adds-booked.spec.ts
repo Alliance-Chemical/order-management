@@ -1,6 +1,6 @@
 import { test, expect, createTestWorkspace, waitForActivity } from './fixtures'
 
-test.describe('Planning lock adds FreightStaged', () => {
+test.describe('Planning lock adds FreightBooked', () => {
   test.use({ storageState: 'tests/e2e/.auth/supervisor.json' })
   
   test('supervisor locks planning -> tag added, phase advances', async ({ page, mockShipStation }) => {
@@ -24,7 +24,7 @@ test.describe('Planning lock adds FreightStaged', () => {
     
     // Verify activity log shows tag addition
     await waitForActivity(page, 'shipstation_tag_added')
-    await expect(page.getByTestId('activity-list')).toContainText(/FreightStaged|Need Labels/i)
+    await expect(page.getByTestId('activity-list')).toContainText(/FreightBooked/i)
   })
   
   test('planning lock is idempotent', async ({ page, mockShipStation }) => {

@@ -99,7 +99,7 @@ async function showTagMapping() {
   console.log('═══════════════════════════════════════');
   console.log('Tag ID | Tag Name                  | Workflow Effect');
   console.log('-------|---------------------------|------------------');
-  console.log('44777  | Need Labels (Staged)      | → pre_mix phase, planning.locked = true');
+  console.log('60447  | Freight Booked            | → pre_mix phase, planning.locked = true');
   console.log('44123  | Freight Order Ready       | → pre_ship phase, pre_ship.completed = true');
   console.log('48500  | HOT SHIPMENT              | → priority = high, shipping.expedited = true');
   console.log('46283  | Delay Shipment            | → onHold = true, shipping.hold = true');

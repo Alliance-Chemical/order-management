@@ -16,6 +16,7 @@
 | 47435 | International Orders | Brown | #993300 |
 | 44126 | Local Customer Order | Blue | #0000FF |
 | 44790 | Local Customer Ready | Yellow-Green | #99CC00 |
+| 60447 | **Freight Booked** | Yellow | #FFFF00 |
 | 44777 | Need Labels | Yellow | #FFFF00 |
 | 44744 | No Inventory | Black | #000000 |
 | 57205 | Pick & Pack Ship Today! | Cyan | #00CCFF |
@@ -27,9 +28,9 @@
 
 ### Tags We'll Use:
 
-1. **FreightStaged** (⚠️ NEEDS TO BE CREATED)
-   - Purpose: Marks orders when planning is locked
-   - Suggested color: Orange (#FFA500) or use "Need Labels" yellow (#FFFF00)
+1. **Freight Booked** (✅ EXISTS - ID: 60447)
+   - Purpose: Marks orders when freight is scheduled/confirmed
+   - Suggested color: Yellow (#FFFF00)
    - Trigger: When `planning.locked = true`
 
 2. **Freight Order Ready** (✅ EXISTS - ID: 44123)
@@ -39,21 +40,9 @@
 
 ## Setup Instructions
 
-### Option 1: Create New "FreightStaged" Tag
+### Confirm Tag IDs
 
-1. Log into ShipStation
-2. Go to Settings > Store Setup > Order Tags
-3. Click "Add Tag"
-4. Enter name: `FreightStaged`
-5. Choose color: Orange (#FFA500)
-6. Click "Save"
-7. Run `npx tsx scripts/fetch-shipstation-tags.ts` to get the new tag ID
-
-### Option 2: Repurpose Existing Tag
-
-You could repurpose the "Need Labels" tag (ID: 44777, Yellow) since it semantically fits the "staged" concept:
-- Orders with locked planning often need labels printed
-- Yellow color indicates "in progress/attention needed"
+Run `npx tsx scripts/fetch-shipstation-tags.ts` to verify the tag IDs in your account match the defaults listed above.
 
 ## Environment Variables
 
@@ -62,13 +51,9 @@ Add these to your `.env.local`:
 ```env
 # ShipStation Tag IDs for workflow automation
 
-# Option 1: After creating FreightStaged tag
-FREIGHT_STAGED_TAG_ID=<new_tag_id>  # Get after creating tag
-FREIGHT_READY_TAG_ID=44123          # "Freight Order Ready"
-
-# Option 2: Using existing "Need Labels" tag
-# FREIGHT_STAGED_TAG_ID=44777       # "Need Labels" (Yellow)
-# FREIGHT_READY_TAG_ID=44123        # "Freight Order Ready" (Green)
+# Set if your account uses non-default IDs
+FREIGHT_BOOKED_TAG_ID=60447         # "Freight Booked" (Yellow)
+FREIGHT_READY_TAG_ID=44123          # "Freight Order Ready" (Green)
 
 # Other tags
 FREIGHT_ORDERS_TAG_ID=19844         # "Freight Orders" (Red) - general freight tag
@@ -81,9 +66,9 @@ The system automatically manages these tags based on workflow state:
 
 | Workflow Event | Action | Tag | Tag ID | Trigger |
 |----------------|--------|-----|--------|---------|
-| Planning locked | Add | FreightStaged | TBD | `planning.locked = true` |
+| Planning locked | Add | Freight Booked | 60447 | `planning.locked = true` |
 | Pre-ship inspection passed | Add | Freight Order Ready | 44123 | `pre_ship.completed = true` |
-| Order shipped | Remove | FreightStaged | TBD | When marking as shipped |
+| Order shipped | Remove | Freight Booked | 60447 | When marking as shipped |
 
 ## Activity Log Events
 

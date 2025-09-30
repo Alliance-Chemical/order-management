@@ -8,7 +8,7 @@ describe('calculateTagDelta', () => {
       [
         TAGS.FREIGHT_ORDERS,
         TAGS.FREIGHT_READY,
-        TAGS.FREIGHT_STAGED,
+        TAGS.FREIGHT_BOOKED,
       ],
       'ready_to_ship'
     )
@@ -18,7 +18,7 @@ describe('calculateTagDelta', () => {
 
   it('skips removals when the Freight Orders tag is absent', () => {
     const delta = calculateTagDelta(
-      [TAGS.FREIGHT_READY, TAGS.FREIGHT_STAGED],
+      [TAGS.FREIGHT_READY, TAGS.FREIGHT_BOOKED],
       'ready_to_ship'
     )
 

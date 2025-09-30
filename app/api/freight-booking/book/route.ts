@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
     try {
       const tagSyncResult = await tagSyncService.ensurePhase(
         shipstationOrder.orderId,
-        'pre_mix', // This adds FREIGHT_STAGED tag (60447 - "Freight Staged")
+        'pre_mix', // Adds FREIGHT_BOOKED tag (60447 - "Freight Booked")
         'api/freight-booking/book'
       );
       

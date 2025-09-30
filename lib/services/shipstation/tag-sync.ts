@@ -6,9 +6,9 @@ import { eq } from 'drizzle-orm';
 
 // Tag IDs from environment
 const TAG_MAPPING = {
-  FREIGHT_STAGED: Number(process.env.FREIGHT_STAGED_TAG_ID || 44777), // Need Labels
+  FREIGHT_BOOKED: Number(process.env.FREIGHT_BOOKED_TAG_ID || 60447), // Freight Booked
   FREIGHT_READY: Number(process.env.FREIGHT_READY_TAG_ID || 44123),   // Freight Order Ready
-  FREIGHT_ORDERS: Number(process.env.FREIGHT_ORDERS_TAG_ID || 19844),  // Freight Orders
+  FREIGHT_ORDERS: Number(process.env.FREIGHT_ORDERS_TAG_ID || 19844), // Freight Orders
   HOT_SHIPMENT: 48500,                                                 // HOT SHIPMENT - SHIP TODAY
   DELAY_SHIPMENT: 46283,                                              // Delay Shipment/Don't Ship
   DOCUMENTS_REQUIRED: 51273,                                          // Documents / Certificates Required
@@ -23,7 +23,7 @@ interface TagWorkflowMapping {
 
 // Map tags to workflow phases and module states
 const TAG_TO_WORKFLOW_MAPPING: Record<number, TagWorkflowMapping> = {
-  [TAG_MAPPING.FREIGHT_STAGED]: {
+  [TAG_MAPPING.FREIGHT_BOOKED]: {
     workflowPhase: 'pre_mix',
     moduleState: { planning: { locked: true } }
   },
@@ -212,7 +212,7 @@ export class ShipStationTagSyncService {
     if (tagIds.includes(TAG_MAPPING.FREIGHT_READY)) {
       return 'ready_to_ship';
     }
-    if (tagIds.includes(TAG_MAPPING.FREIGHT_STAGED)) {
+    if (tagIds.includes(TAG_MAPPING.FREIGHT_BOOKED)) {
       return 'pre_ship';
     }
     if (tagIds.includes(TAG_MAPPING.FREIGHT_ORDERS)) {
@@ -240,9 +240,9 @@ export class ShipStationTagSyncService {
       }
 
       // Check for conflicting tags
-      if (tagIds.includes(TAG_MAPPING.FREIGHT_STAGED) && 
+      if (tagIds.includes(TAG_MAPPING.FREIGHT_BOOKED) &&
           tagIds.includes(TAG_MAPPING.FREIGHT_READY)) {
-        issues.push('Order has both STAGED and READY tags');
+        issues.push('Order has both BOOKED and READY tags');
       }
 
       // Check if tags match workflow phase

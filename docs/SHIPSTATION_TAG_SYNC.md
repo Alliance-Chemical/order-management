@@ -20,7 +20,7 @@ When tags are changed in ShipStation (either manually or via API), the system:
 
 | ShipStation Tag | Tag ID | Workflow Phase | Module State Changes |
 |-----------------|--------|----------------|---------------------|
-| Need Labels / FreightStaged | 44777 | pre_mix | `planning.locked = true` |
+| Freight Booked | 60447 | pre_mix | `planning.locked = true` |
 | Freight Order Ready | 44123 | pre_ship | `pre_ship.completed = true` |
 | HOT SHIPMENT | 48500 | (no phase change) | `priority = high`, `shipping.expedited = true` |
 | Delay Shipment | 46283 | (no phase change) | `onHold = true`, `shipping.hold = true` |
@@ -32,9 +32,9 @@ The system also automatically adds/removes tags based on workflow events:
 
 | Workflow Event | Tag Action | Tag |
 |----------------|------------|-----|
-| Planning locked | Add | FreightStaged/Need Labels |
+| Planning locked | Add | Freight Booked |
 | Pre-ship inspection passed | Add | Freight Order Ready |
-| Order shipped | Remove | FreightStaged |
+| Order shipped | Remove | Freight Booked |
 
 ## Manual Operations
 
@@ -88,7 +88,7 @@ SHIPSTATION_WEBHOOK_SECRET=your_webhook_secret
 
 1. **View order in ShipStation**
 2. **Apply appropriate tags:**
-   - "Need Labels" → Order is staged and ready for processing
+   - "Freight Booked" → Load is scheduled/confirmed
    - "Freight Order Ready" → Pre-ship inspection passed
    - "HOT SHIPMENT" → Expedite this order
    - "Delay Shipment" → Hold this order
@@ -139,7 +139,7 @@ npx tsx scripts/sync-shipstation-tags.ts
 ```
 
 This will report any inconsistencies like:
-- Order has both STAGED and READY tags
+- Order has both BOOKED and READY tags
 - Phase doesn't match expected tags
 - Missing required tags for phase
 
