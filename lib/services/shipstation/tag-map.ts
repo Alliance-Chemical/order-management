@@ -58,10 +58,16 @@ export function calculateTagDelta(
 ): { add: number[], remove: number[] } {
   const required = getRequiredTags(targetPhase);
   const add = required.filter(id => !currentTagIds.includes(id));
-  
-  // We generally don't remove tags (additive model)
-  // But if needed, logic goes here
   const remove: number[] = [];
+
+  // Once an order is ready to ship, drop the general Freight Orders tag so it
+  // no longer appears in the freight staging queue.
+  if (
+    targetPhase === 'ready_to_ship' &&
+    currentTagIds.includes(TAGS.FREIGHT_ORDERS)
+  ) {
+    remove.push(TAGS.FREIGHT_ORDERS);
+  }
   
   return { add, remove };
 }

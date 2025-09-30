@@ -42,18 +42,21 @@ export class TagSyncService {
       // Extract current tag IDs
       const currentTagIds = (order.tagIds || []) as number[];
       const currentPhase = derivePhase(currentTagIds, order.orderStatus);
+      const { add, remove } = calculateTagDelta(currentTagIds, targetPhase);
 
-      // Check if already at or past target phase
-      if (this.isPhaseAchieved(currentPhase, targetPhase)) {
+      // If we're already in the desired phase and no tag changes are needed,
+      // skip extra API calls.
+      if (
+        this.isPhaseAchieved(currentPhase, targetPhase) &&
+        add.length === 0 &&
+        remove.length === 0
+      ) {
         return {
           success: true,
           finalTags: currentTagIds,
           finalPhase: currentPhase
         };
       }
-
-      // Calculate what tags to add/remove
-      const { add, remove } = calculateTagDelta(currentTagIds, targetPhase);
 
       // Apply tag changes to ShipStation
       if (add.length > 0) {
