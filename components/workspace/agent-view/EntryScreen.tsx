@@ -26,6 +26,16 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
   const [showFloatingButton, setShowFloatingButton] = useState(true);
   const shopifyCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE;
 
+  // Get filtered items (exclude discounts) - defined first for use by other functions
+  const getFilteredItems = (): OrderItem[] => {
+    if (!workspace.shipstationData?.items) return [];
+    return workspace.shipstationData.items.filter((item: OrderItem) =>
+      !item.name?.toLowerCase().includes('discount') &&
+      (!item.unitPrice || item.unitPrice >= 0) &&
+      !item.lineItemKey?.includes('discount')
+    );
+  };
+
   // Estimated time based on workflow
   const getEstimatedTime = () => {
     const itemCount = getFilteredItems().length;
@@ -118,16 +128,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
     setShowFloatingButton(false); // Hide floating button when starting
   };
 
-  // Get filtered items (exclude discounts)
-  const getFilteredItems = (): OrderItem[] => {
-    if (!workspace.shipstationData?.items) return [];
-    return workspace.shipstationData.items.filter((item: OrderItem) => 
-      !item.name?.toLowerCase().includes('discount') && 
-      (!item.unitPrice || item.unitPrice >= 0) && 
-      !item.lineItemKey?.includes('discount')
-    );
-  };
-  
+  // Memoize filtered items to avoid recalculating
   const filteredItems = getFilteredItems();
   const hasMultipleItems = filteredItems.length > 1;
 
@@ -167,26 +168,32 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
               <div className="lg:col-span-2">
                 {filteredItems[0] && (
                   <div className="flex justify-center lg:justify-start">
-                    <div className="relative">
+                    <div className="relative group">
                       <img
                         src={filteredItems[0].imageUrl ||
                              (shopifyCdnBase && filteredItems[0].sku
                                ? `${shopifyCdnBase.replace(/\/$/, '')}/${filteredItems[0].sku.replace(/[^A-Za-z0-9_-]/g, '_')}.jpg`
-                               : '/placeholder-chemical.png')}
+                               : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"%3E%3Crect fill="%23f3f4f6" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%236b7280" font-size="16" font-family="sans-serif"%3ENo Image%3C/text%3E%3C/svg%3E')}
                         alt={filteredItems[0].name || 'Product'}
                         className="w-64 h-64 lg:w-80 lg:h-80 object-cover rounded-2xl shadow-warehouse-lg border-4 border-gray-200 hover:scale-105 transition-transform cursor-pointer"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          target.src = '/placeholder-chemical.png';
+                          // Inline SVG fallback for missing images
+                          target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"%3E%3Crect fill="%23f3f4f6" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%236b7280" font-size="16" font-family="sans-serif"%3ENo Image%3C/text%3E%3C/svg%3E';
                         }}
-                        onClick={() => {
-                          // Future: Open fullscreen image viewer
-                          const target = event?.target as HTMLImageElement;
+                        onClick={(e) => {
+                          // Open fullscreen image viewer
+                          const target = e.target as HTMLImageElement;
                           if (target?.requestFullscreen) {
                             target.requestFullscreen();
                           }
                         }}
                       />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-2xl pointer-events-none flex items-center justify-center">
+                        <svg className="w-12 h-12 text-white opacity-0 group-hover:opacity-80 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                        </svg>
+                      </div>
                       {filteredItems[0].sku && (
                         <div className="absolute bottom-2 left-2 right-2 bg-black/75 text-white px-3 py-2 rounded-lg text-center">
                           <span className="text-sm font-bold">SKU: {filteredItems[0].sku}</span>
@@ -200,32 +207,32 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
               {/* Right Column: Order Info + Actions (60%) */}
               <div className="lg:col-span-3">
                 <div className="space-y-6 mb-12">
-              <div className="text-center">
-                <div className="worker-label text-gray-600 mb-2">Order #:</div>
-                <div className="worker-title text-worker-gray">{workspace.orderNumber || workspace.orderId}</div>
-              </div>
-              
-              {workspace.shipstationData?.shipTo?.name && (
-                <div className="text-center">
-                  <div className="worker-label text-gray-600 mb-2">Customer:</div>
-                  <div className="worker-subtitle">{workspace.shipstationData.shipTo.name}</div>
-                </div>
-              )}
-              
-              <div className="text-center">
-                <div className="worker-label text-gray-600 mb-2">Item:</div>
-                <div className="worker-text">
-                  {filteredItems[0].quantity}x {filteredItems[0].name}
-                </div>
-              </div>
+                  <div className="text-center lg:text-left">
+                    <div className="worker-label text-gray-600 mb-2">Order #:</div>
+                    <div className="worker-title text-worker-gray">{workspace.orderNumber || workspace.orderId}</div>
+                  </div>
 
-              <div className="text-center lg:text-left">
-                <div className="worker-label text-gray-600 mb-2">Fulfillment Method:</div>
-                <div className="worker-text">
-                  {getItemWorkflowType() === 'direct_resell' ? 'Ready to Ship' : 'Pump & Fill'}
+                  {workspace.shipstationData?.shipTo?.name && (
+                    <div className="text-center lg:text-left">
+                      <div className="worker-label text-gray-600 mb-2">Customer:</div>
+                      <div className="worker-subtitle">{workspace.shipstationData.shipTo.name}</div>
+                    </div>
+                  )}
+
+                  <div className="text-center lg:text-left">
+                    <div className="worker-label text-gray-600 mb-2">Item:</div>
+                    <div className="worker-text">
+                      {filteredItems[0].quantity}x {filteredItems[0].name}
+                    </div>
+                  </div>
+
+                  <div className="text-center lg:text-left">
+                    <div className="worker-label text-gray-600 mb-2">Fulfillment Method:</div>
+                    <div className="worker-text">
+                      {getItemWorkflowType() === 'direct_resell' ? 'Ready to Ship' : 'Pump & Fill'}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
             <div className="flex justify-center lg:justify-start">
               <Button
