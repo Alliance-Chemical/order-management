@@ -22,6 +22,7 @@ import {
 import type { RecordStepParams } from '@/app/actions/cruz-inspection'
 import { Loader2 } from 'lucide-react'
 import MultiContainerInspection from './MultiContainerInspection'
+import ErrorBoundary from '@/components/error-boundary'
 
 interface ResilientInspectionScreenProps {
   orderId: string
@@ -32,6 +33,7 @@ interface ResilientInspectionScreenProps {
   workflowType: string
   items: InspectionItem[]
   workspace?: WorkspaceData
+  qrScanned?: boolean
   onComplete: (results: InspectionResults) => void
   onSwitchToSupervisor: () => void
 }
@@ -1269,6 +1271,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     customerName,
     orderItems,
     workspace,
+    qrScanned = false,
     onComplete,
     onSwitchToSupervisor
   } = props
@@ -1354,6 +1357,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const [hasAutoCreated, setHasAutoCreated] = useState(false)
   const [hasAutoSkippedQr, setHasAutoSkippedQr] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+  const [creationError, setCreationError] = useState<string | null>(null)
 
   useEffect(() => {
     // Skip auto-creation if we're using multi-container inspection
@@ -1364,6 +1368,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     // If no runs exist and we haven't already tried to create one, do it now
     if (runs.length === 0 && !hasAutoCreated && !isPending) {
       setHasAutoCreated(true)
+      setCreationError(null)
 
       // Create real inspection runs only for items that don't need multi-container inspection
       const runsToCreate = orderItems && orderItems.length > 0
@@ -1392,10 +1397,22 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           }]
 
       if (runsToCreate.length > 0) {
-        createRuns(runsToCreate)
+        try {
+          createRuns(runsToCreate)
+
+          // Wait a moment then check if runs were actually created
+          setTimeout(() => {
+            if (runs.length === 0 && error) {
+              setCreationError(error)
+            }
+          }, 2000)
+        } catch (err) {
+          console.error('Failed to create inspection runs:', err)
+          setCreationError(err instanceof Error ? err.message : 'Failed to create inspection runs')
+        }
       }
     }
-  }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems, needsMultiContainerInspection])
+  }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems, needsMultiContainerInspection, error])
 
   // Reset hasAutoCreated when retrying
   useEffect(() => {
@@ -1447,17 +1464,18 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     setSelectedStepId(normalizedStep as CruzStepId)
   }, [activeRun?.id, activeRun?.currentStepId])
 
-  // Auto-skip QR scan step since we already scanned to enter the inspection
+  // Auto-skip QR scan step ONLY if QR was already scanned in entry screen
   useEffect(() => {
-    if (activeRun && activeRun.currentStepId === 'scan_qr' && !hasAutoSkippedQr && !isPending) {
+    // Only auto-skip if qrScanned is true (meaning they scanned in EntryScreen)
+    if (activeRun && activeRun.currentStepId === 'scan_qr' && !hasAutoSkippedQr && !isPending && qrScanned) {
       setHasAutoSkippedQr(true)
-      // Auto-complete the QR scan step since we already scanned to get here
+      // Auto-complete the QR scan step since we already scanned in the entry screen
       submitStep({
         orderId,
         runId: activeRun.id,
         stepId: 'scan_qr',
         payload: {
-          qrValue: orderId || 'auto-skipped',
+          qrValue: orderId || 'scanned-at-entry',
           qrValidated: true,
           validatedAt: new Date().toISOString(),
           shortCode: workspace?.qrCode?.shortCode,
@@ -1465,7 +1483,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         outcome: 'PASS',
       })
     }
-  }, [activeRun, hasAutoSkippedQr, isPending, submitStep, orderId, workspace])
+  }, [activeRun, hasAutoSkippedQr, isPending, submitStep, orderId, workspace, qrScanned])
 
   // Use selected step if set, otherwise use the current step from the run
   const currentStep = selectedStepId || activeRun?.currentStepId || 'inspection_info'
@@ -1576,16 +1594,23 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   // If current item needs multi-container inspection, show that flow
   if (needsMultiContainerInspection && !inspectedItems.has(currentItemIndex)) {
     return (
-      <MultiContainerInspection
-        orderId={orderId}
-        orderNumber={orderNumber}
-        customerName={customerName}
-        item={currentItem}
-        workflowType={workspace?.workflowType || 'pump_and_fill'}
-        containerType={getContainerType(currentItem)}
-        onComplete={handleMultiContainerComplete}
-        onSwitchToSupervisor={onSwitchToSupervisor}
-      />
+      <ErrorBoundary>
+        <MultiContainerInspection
+          orderId={orderId}
+          orderNumber={orderNumber}
+          customerName={customerName}
+          item={currentItem}
+          workflowType={workspace?.workflowType || 'pump_and_fill'}
+          containerType={getContainerType(currentItem)}
+          qrScanned={qrScanned}
+          onComplete={handleMultiContainerComplete}
+          onSwitchToSupervisor={onSwitchToSupervisor}
+          onBackToEntry={() => {
+            // Reset to entry screen so user can scan QR
+            window.history.back();
+          }}
+        />
+      </ErrorBoundary>
     )
   }
 
@@ -1595,38 +1620,72 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         <div className="text-center max-w-md mx-auto px-4">
           {isPending || (runs.length === 0 && !hasAutoCreated) ? (
             <>
+              <div className="mb-6">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto"></div>
+              </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-4">Setting up inspection...</h2>
               <p className="text-gray-600 mb-6">Creating inspection run for this order.</p>
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              {retryCount > 0 && (
+                <p className="text-sm text-blue-600">Retry attempt {retryCount}</p>
+              )}
             </>
           ) : (
             <>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">No Active Inspection Run</h2>
-              <p className="text-gray-600 mb-6">
-                {error ? (
-                  <>Error: {error}</>
-                ) : (
-                  <>Inspection run creation failed. You can retry or switch to supervisor view.</>
-                )}
-              </p>
+              <div className="mb-6">
+                <div className="mx-auto w-20 h-20 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">Inspection Setup Failed</h2>
+
+              {/* Show specific error messages */}
+              {creationError || error ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-left">
+                  <p className="font-semibold text-red-900 mb-2">Error Details:</p>
+                  <p className="text-sm text-red-700">{creationError || error}</p>
+
+                  {(creationError || error)?.includes('Workspace not found') && (
+                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <p className="text-sm text-yellow-900">
+                        <strong>Possible Solution:</strong> The workspace for this order may not exist yet.
+                        Try switching to Supervisor View to create it first.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-600 mb-6">
+                  Unable to create inspection runs. This could be a temporary issue.
+                </p>
+              )}
+
               <div className="space-y-3">
                 <Button
                   onClick={() => {
                     setRetryCount(prev => prev + 1)
                     setHasAutoCreated(false)
+                    setCreationError(null)
                   }}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg py-6"
                   disabled={isPending}
                 >
-                  {isPending ? 'Creating...' : retryCount > 0 ? `Retry Again (${retryCount + 1})` : 'Retry Create Inspection'}
+                  {isPending ? 'Creating...' : retryCount > 0 ? `Retry Again (Attempt ${retryCount + 1})` : 'Retry Create Inspection'}
                 </Button>
                 <Button
                   onClick={onSwitchToSupervisor}
-                  variant="outline"
+                  variant="neutral"
+                  size="large"
                   className="w-full"
                 >
                   Switch to Supervisor View
                 </Button>
+                {retryCount >= 2 && (
+                  <p className="text-sm text-gray-500 mt-4">
+                    Still having issues? Please contact support or use Supervisor View to manually create the inspection.
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -1726,20 +1785,38 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         {/* Dynamic form rendering based on current step */}
         {displayStep === 'scan_qr' && (
           <div className="text-center py-8">
-            <div className="text-green-600 text-lg font-semibold">✓ QR Scan Already Completed</div>
-            <p className="text-gray-600 mt-2">You scanned the QR code to enter this inspection.</p>
-            <p className="text-sm text-gray-500 mt-1">The system automatically recorded your QR scan.</p>
-            <Button
-              className="mt-4"
-              onClick={() => setSelectedStepId('inspection_info')}
-            >
-              Continue to Inspection Info
-            </Button>
+            {qrScanned ? (
+              <>
+                <div className="text-green-600 text-lg font-semibold">✓ QR Scan Already Completed</div>
+                <p className="text-gray-600 mt-2">You scanned the QR code to enter this inspection.</p>
+                <p className="text-sm text-gray-500 mt-1">The system automatically recorded your QR scan.</p>
+                <Button
+                  className="mt-4"
+                  onClick={() => setSelectedStepId('inspection_info')}
+                >
+                  Continue to Inspection Info
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="text-amber-600 text-lg font-semibold">⚠ QR Scan Required</div>
+                <p className="text-gray-600 mt-2">You need to scan a QR code before starting this inspection.</p>
+                <p className="text-sm text-gray-500 mt-1">Please return to the entry screen and scan the QR code.</p>
+                <Button
+                  className="mt-4"
+                  variant="outline"
+                  onClick={onSwitchToSupervisor}
+                >
+                  Switch to Supervisor View
+                </Button>
+              </>
+            )}
             {error && (
               <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-sm text-amber-700">
-                  If you're experiencing issues, please continue with the inspection.
-                  The QR code was already validated when you entered this workspace.
+                  {qrScanned
+                    ? "If you're experiencing issues, please continue with the inspection. The QR code was already validated when you entered this workspace."
+                    : "Please scan the QR code before proceeding with the inspection."}
                 </p>
               </div>
             )}

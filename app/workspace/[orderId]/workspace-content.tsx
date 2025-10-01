@@ -56,6 +56,7 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+  const [qrScanned, setQrScanned] = useState<boolean>(false);
 
   const handleWorkerInspectionComplete = async (results: InspectionResults) => {
     const workflowModule = resolveWorkerInspectionPhase(workspace.workflowPhase);
@@ -104,9 +105,13 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
           <>
             <EntryScreen
               workspace={workerWorkspace}
-              onStart={() => setWorkerStep('inspection')}
+              onStart={() => {
+                setQrScanned(true);
+                setWorkerStep('inspection');
+              }}
               onSwitchToSupervisor={() => setViewMode('supervisor')}
               onSelectItem={(item) => {
+                setQrScanned(true);
                 setSelectedItem(item);
                 setWorkerStep('inspection');
               }}
@@ -123,9 +128,11 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
               workflowPhase={workerInspectionPhase}
               workflowType={workspace.workflowType}
               items={buildInspectionItems(workerWorkspace as any, selectedItem)}
+              qrScanned={qrScanned}
               onComplete={(results) => {
                 handleWorkerInspectionComplete(results);
                 setSelectedItem(null);
+                setQrScanned(false);
               }}
               onSwitchToSupervisor={() => setViewMode('supervisor')}
               workspace={workerWorkspace}

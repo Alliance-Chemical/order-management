@@ -107,9 +107,14 @@ export function useMultiContainerInspection({
     setShowScanner(false);
     setCurrentQuestion(0);
 
-    // Haptic feedback
-    if (navigator.vibrate) {
-      navigator.vibrate([100, 50, 100]); // Double vibration for success
+    // Haptic feedback (with browser compatibility check)
+    if (typeof window !== 'undefined' && navigator && typeof navigator.vibrate === 'function') {
+      try {
+        navigator.vibrate([100, 50, 100]); // Double vibration for success
+      } catch (err) {
+        // Silently fail if vibration is not supported
+        console.debug('Vibration not supported:', err);
+      }
     }
   }, [currentContainer, lastScanTime]);
 

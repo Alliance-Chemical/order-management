@@ -20,8 +20,10 @@ interface MultiContainerInspectionProps {
   };
   workflowType: 'direct_resell' | 'pump_and_fill';
   containerType: 'tote' | 'drum' | 'pail' | 'bottle';
+  qrScanned?: boolean;
   onComplete: (results: any) => void;
   onSwitchToSupervisor: () => void;
+  onBackToEntry?: () => void;
 }
 
 export default function MultiContainerInspection({
@@ -31,8 +33,10 @@ export default function MultiContainerInspection({
   item,
   workflowType: _workflowType,
   containerType,
+  qrScanned = false,
   onComplete,
   onSwitchToSupervisor,
+  onBackToEntry,
 }: MultiContainerInspectionProps) {
   const {
     containers,
@@ -60,6 +64,51 @@ export default function MultiContainerInspection({
 
   if (containers.length === 0) {
     return <div>Loading...</div>;
+  }
+
+  // Check if QR was scanned before allowing inspection
+  if (!qrScanned) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="max-w-md text-center px-6">
+          <div className="mb-6">
+            <div className="mx-auto w-24 h-24 bg-amber-100 rounded-full flex items-center justify-center">
+              <svg className="w-16 h-16 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">QR Scan Required</h1>
+          <p className="text-lg text-gray-600 mb-8">
+            You must scan the workspace QR code before starting container inspection.
+          </p>
+          <div className="space-y-3">
+            {onBackToEntry ? (
+              <Button
+                onClick={onBackToEntry}
+                variant="go"
+                size="xlarge"
+                fullWidth
+              >
+                Go Back and Scan QR
+              </Button>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Please return to the entry screen to scan the QR code.
+              </p>
+            )}
+            <Button
+              onClick={onSwitchToSupervisor}
+              variant="neutral"
+              size="large"
+              fullWidth
+            >
+              Switch to Supervisor View
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
