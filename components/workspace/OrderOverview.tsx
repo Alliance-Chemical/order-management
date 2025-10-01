@@ -65,6 +65,8 @@ interface OrderOverviewProps {
 
 export default function OrderOverview({ orderId, workspace }: OrderOverviewProps) {
   const [isGeneratingQR, setIsGeneratingQR] = useState(false);
+  const [isPrintingPackingSlip, setIsPrintingPackingSlip] = useState(false);
+  const [showPackingSlipMenu, setShowPackingSlipMenu] = useState(false);
   const order = workspace.shipstationData as any || {};
   const shipTo = order.shipTo || {};
   const items = order.items || [];
@@ -90,7 +92,7 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
         orderNumber: workspace.orderNumber,
         type: 'master'
       });
-      
+
       if (result.success) {
         // toast.success('QR codes generated successfully');
         console.log('QR codes generated successfully');
@@ -108,6 +110,36 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
     }
   };
 
+  const handlePrintPackingSlip = async (size: '4x6' | 'letter') => {
+    setIsPrintingPackingSlip(true);
+    setShowPackingSlipMenu(false);
+    try {
+      const response = await fetch(`/api/workspace/${orderId}/packing-slip?size=${size}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to generate packing slip');
+      }
+
+      // Download the PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `packing-slip-${workspace.orderNumber}-${size}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      console.log(`Packing slip generated successfully (${size})`);
+    } catch (error) {
+      console.error('Error generating packing slip:', error);
+      alert('Failed to generate packing slip. Please try again.');
+    } finally {
+      setIsPrintingPackingSlip(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Action Bar */}
@@ -122,6 +154,37 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
             </span>
           </div>
           <div className="flex gap-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowPackingSlipMenu(!showPackingSlipMenu)}
+                disabled={isPrintingPackingSlip}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                title="Print packing slip for this order"
+              >
+                {isPrintingPackingSlip ? 'Generating...' : '📄 Print Packing Slip'}
+                {!isPrintingPackingSlip && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                )}
+              </button>
+              {showPackingSlipMenu && !isPrintingPackingSlip && (
+                <div className="absolute top-full mt-1 left-0 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-10 min-w-[200px]">
+                  <button
+                    onClick={() => handlePrintPackingSlip('4x6')}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700 text-sm"
+                  >
+                    4" x 6" Label Size
+                  </button>
+                  <button
+                    onClick={() => handlePrintPackingSlip('letter')}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100 text-gray-700 text-sm"
+                  >
+                    8.5" x 11" Paper Size
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={handleGenerateQR}
               disabled={isGeneratingQR}

@@ -1,10 +1,11 @@
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
+import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import * as qrSchema from './schema/qr-workspace';
 
 // Lazy initialization to avoid errors during build
 let sql: ReturnType<typeof neon> | null = null;
-let neonDb: ReturnType<typeof drizzle> | null = null;
+let neonDb: NeonHttpDatabase<typeof qrSchema> | null = null;
 
 // Get connection string dynamically to support runtime env loading
 function getConnectionString() {
@@ -16,11 +17,11 @@ function initializeNeonDb() {
   
   if (!sql && connectionString) {
     // Use Neon's serverless driver which handles connection pooling automatically
-    sql = neon(connectionString);
+    sql = neon<false, false>(connectionString);
     
     // Create drizzle instance with the Neon driver
-    const schema = { ...qrSchema };
-    neonDb = drizzle(sql, { schema });
+    const schema: typeof qrSchema = { ...qrSchema };
+    neonDb = drizzle<typeof qrSchema>(sql, { schema });
   }
   
   if (!neonDb) {

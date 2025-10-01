@@ -4,8 +4,6 @@ import React, { useState } from 'react'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from './dialog'
 import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import { Button } from './button'

@@ -108,7 +108,7 @@ export default function LOTManagementPage() {
         });
         await fetchLOTData();
       }
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Error',
         description: 'Failed to generate LOT number',

@@ -17,7 +17,23 @@ import PreMixInspection from '@/components/workspace/supervisor-view/PreMixInspe
 import PreShipInspection from '@/components/workspace/supervisor-view/PreShipInspection';
 import DocumentsHub from '@/components/workspace/DocumentsHub';
 import ActivityTimeline from '@/components/workspace/ActivityTimeline';
-import PrintPreparationModalSimplified from '@/components/desktop/PrintPreparationModalSimplified';
+import dynamic from 'next/dynamic';
+
+// Code-split the print modal for better performance
+const PrintPreparationModalSimplified = dynamic(
+  () => import('@/components/desktop/PrintPreparationModalSimplified'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-center text-gray-600">Loading print preview...</p>
+        </div>
+      </div>
+    ),
+  }
+);
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(' ');
@@ -55,6 +71,7 @@ export default function WorkspacePage() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
   const viewQuery = searchParams?.get('view');
+  const isReviewMode = searchParams?.get('mode') === 'inspection-review';
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     viewQuery === 'supervisor' ? 'supervisor' : 'worker'
   );
@@ -68,6 +85,8 @@ export default function WorkspacePage() {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const autoStartRef = useRef(false);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+  const [autoCompleteEnabled, setAutoCompleteEnabled] = useState(() => !isReviewMode);
+  const hasAppliedReviewModeRef = useRef(false);
 
   useEffect(() => {
     const queryMode: ViewMode = viewQuery === 'supervisor' ? 'supervisor' : 'worker';
@@ -92,8 +111,10 @@ export default function WorkspacePage() {
 
       if (mode === 'worker') {
         params.delete('view');
+        params.delete('mode');
       } else {
         params.set('view', mode);
+        params.delete('mode');
       }
 
       const queryString = params.toString();
@@ -109,6 +130,7 @@ export default function WorkspacePage() {
   const switchToWorker = useCallback(() => {
     setWorkerStep('entry');
     setRedirectCountdown(null);
+    setAutoCompleteEnabled(true);
     updateViewMode('worker');
   }, [updateViewMode]);
 
@@ -121,86 +143,33 @@ export default function WorkspacePage() {
   const fetchWorkspace = async () => {
     try {
       const result = await getWorkspace(orderId);
-      
+
       if (result.success && result.workspace) {
         setWorkspace(result.workspace);
-      } else {
-        // If no data, set a test workspace for demo
-        setWorkspace({
-          id: orderId,
-          orderId: parseInt(orderId),
-          orderNumber: orderId,
-          status: 'active',
-          workflowPhase: orderId === '12345' ? 'pre_mix' : 'pending', // Demo mode for order 12345
-          shipstationData: orderId === '12345' ? {
-            shipTo: {
-              name: 'Test Customer Inc.',
-              company: 'Alliance Chemical Test',
-              street1: '123 Test Street',
-              city: 'Test City',
-              state: 'TX',
-              postalCode: '12345',
-              country: 'US',
-              phone: '555-0123'
-            },
-            items: [
-              {
-                name: 'D-Limonene 99%',
-                quantity: 5,
-                sku: 'DL-99-5GAL'
-              },
-              {
-                name: 'Isopropyl Alcohol 70%',
-                quantity: 10,
-                sku: 'IPA-70-1GAL'
-              }
-            ]
-          } : {},
-          moduleStates: {},
-          documents: [],
-          activities: [],
-          totalDocumentSize: 0
-        });
+        setLoading(false);
+        return;
       }
+
+      // Workspace not found - try to create it
+      console.log(`[WorkspacePage] Workspace ${orderId} not found, attempting auto-creation`);
+
+      const { ensureWorkspaceExists } = await import('@/app/actions/workspace');
+      const ensureResult = await ensureWorkspaceExists(orderId);
+
+      if (ensureResult.success && ensureResult.workspace) {
+        console.log(`[WorkspacePage] Workspace ${orderId} created successfully`);
+        setWorkspace(ensureResult.workspace);
+        setLoading(false);
+        return;
+      }
+
+      // Auto-creation failed - show error
+      console.error(`[WorkspacePage] Failed to create workspace ${orderId}:`, ensureResult.error);
+      setWorkspace(null);
+      setLoading(false);
     } catch (error) {
-      console.error('Failed to fetch workspace:', error);
-      // Set test workspace on error for demo
-      setWorkspace({
-        id: orderId,
-        orderId: parseInt(orderId),
-        orderNumber: orderId,
-        status: 'active',
-        workflowPhase: orderId === '12345' ? 'pre_mix' : 'pending', // Demo mode for order 12345
-        shipstationData: orderId === '12345' ? {
-          shipTo: {
-            name: 'Test Customer Inc.',
-            company: 'Alliance Chemical Test',
-            street1: '123 Test Street',
-            city: 'Test City',
-            state: 'TX',
-            postalCode: '12345',
-            country: 'US',
-            phone: '555-0123'
-          },
-          items: [
-            {
-              name: 'D-Limonene 99%',
-              quantity: 5,
-              sku: 'DL-99-5GAL'
-            },
-            {
-              name: 'Isopropyl Alcohol 70%',
-              quantity: 10,
-              sku: 'IPA-70-1GAL'
-            }
-          ]
-        } : {},
-        moduleStates: {},
-        documents: [],
-        activities: [],
-        totalDocumentSize: 0
-      });
-    } finally {
+      console.error('[WorkspacePage] Failed to fetch/create workspace:', error);
+      setWorkspace(null);
       setLoading(false);
     }
   };
@@ -251,12 +220,63 @@ export default function WorkspacePage() {
 
     // Save inspection results
     const workflowModule = resolveWorkerInspectionPhase(workspace.workflowPhase);
-    await handleModuleStateChange(workflowModule, results as unknown as Record<string, any>);
+    const statePayload: Record<string, any> = { ...results };
+
+    if (workflowModule === 'pre_ship') {
+      statePayload.completed = true;
+      statePayload.completedAt = statePayload.completedAt || new Date().toISOString();
+      statePayload.completedBy = statePayload.completedBy || 'worker';
+    }
+
+    await handleModuleStateChange(workflowModule, statePayload);
+
+    if (!autoCompleteEnabled) {
+      return;
+    }
 
     // Move to complete state
     setWorkerStep('complete');
     setRedirectCountdown(3);
   };
+
+  const applyReviewMode = useCallback(() => {
+    setSelectedItem(null);
+    setRedirectCountdown(null);
+    setAutoCompleteEnabled(false);
+    setWorkerStep('inspection');
+  }, []);
+
+  const startInspection = useCallback((item?: any) => {
+    setSelectedItem(item ?? null);
+    setRedirectCountdown(null);
+    setAutoCompleteEnabled(true);
+    setWorkerStep('inspection');
+
+    const params = new URLSearchParams(searchParams ? searchParams.toString() : '');
+    params.delete('mode');
+    const queryString = params.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const reviewInspection = useCallback(() => {
+    applyReviewMode();
+    const params = new URLSearchParams(searchParams ? searchParams.toString() : '');
+    params.delete('view');
+    params.set('mode', 'inspection-review');
+    const queryString = params.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+  }, [applyReviewMode, pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (isReviewMode && viewMode === 'worker') {
+      if (!hasAppliedReviewModeRef.current) {
+        applyReviewMode();
+        hasAppliedReviewModeRef.current = true;
+      }
+    } else {
+      hasAppliedReviewModeRef.current = false;
+    }
+  }, [applyReviewMode, isReviewMode, viewMode]);
 
   useEffect(() => {
     if (workerStep !== 'complete') {
@@ -294,9 +314,26 @@ export default function WorkspacePage() {
   if (!workspace) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-slate-900">Workspace Not Found</h1>
-          <p className="mt-2 text-xl text-slate-600">Order ID: {orderId}</p>
+        <div className="text-center max-w-md mx-auto px-4">
+          <h1 className="text-3xl font-bold text-slate-900 mb-4">Workspace Not Found</h1>
+          <p className="text-lg text-slate-600 mb-2">Order ID: {orderId}</p>
+          <p className="text-sm text-slate-500 mb-6">
+            Unable to load or create workspace. This may be due to:
+          </p>
+          <ul className="text-sm text-slate-500 text-left mb-6 space-y-2">
+            <li>• Invalid order ID format</li>
+            <li>• Database connection issue</li>
+            <li>• ShipStation sync timeout (will retry)</li>
+          </ul>
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchWorkspace();
+            }}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+          >
+            Retry Loading Workspace
+          </button>
         </div>
       </div>
     );
@@ -316,11 +353,10 @@ export default function WorkspacePage() {
           <>
           <EntryScreen 
             workspace={workerWorkspace}
-            onStart={() => setWorkerStep('inspection')}
+            onStart={() => startInspection()}
             onSwitchToSupervisor={switchToSupervisor}
             onSelectItem={(item) => {
-              setSelectedItem(item);
-              setWorkerStep('inspection');
+              startInspection(item);
             }}
           />
           <ConnectionStatus />
@@ -371,15 +407,28 @@ export default function WorkspacePage() {
               <p className="text-sm text-slate-500 mb-8">
                 Returning to the order queue{redirectCountdown !== null ? ` in ${redirectCountdown} ${redirectCountdown === 1 ? 'second' : 'seconds'}` : ' shortly'}.
               </p>
-              <button
-                onClick={() => {
-                  setRedirectCountdown(null);
-                  router.push('/');
-                }}
-                className="px-8 py-4 bg-green-600 text-white text-xl font-bold rounded-lg hover:bg-green-700"
-              >
-                RETURN TO ORDER QUEUE
-              </button>
+              <div className="flex flex-col gap-3 items-center">
+                <button
+                  onClick={() => {
+                    setRedirectCountdown(null);
+                    router.push('/');
+                  }}
+                  className="w-full max-w-xs px-8 py-4 bg-green-600 text-white text-xl font-bold rounded-lg hover:bg-green-700"
+                >
+                  RETURN TO ORDER QUEUE
+                </button>
+                <button
+                  onClick={() => {
+                    reviewInspection();
+                  }}
+                  className="w-full max-w-xs px-8 py-3 bg-slate-100 text-slate-700 text-base font-semibold rounded-lg hover:bg-slate-200"
+                >
+                  REVIEW INSPECTION DETAILS
+                </button>
+                <p className="text-xs text-slate-500">
+                  Need to make changes? Reopen the inspection to review or update your answers.
+                </p>
+              </div>
             </div>
           </div>
         );

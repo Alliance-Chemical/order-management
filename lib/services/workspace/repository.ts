@@ -16,6 +16,22 @@ export class WorkspaceRepository {
     });
   }
 
+  /**
+   * Find workspace by order ID with row-level lock (FOR UPDATE).
+   * Use this for operations that will modify the workspace to prevent race conditions.
+   * Must be called within a transaction.
+   */
+  async findByOrderIdForUpdate(orderId: number) {
+    const [workspace] = await db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.orderId, orderId))
+      .for('update')
+      .limit(1);
+
+    return workspace;
+  }
+
   async createOrGet(data: typeof workspaces.$inferInsert) {
     const inserted = await db
       .insert(workspaces)

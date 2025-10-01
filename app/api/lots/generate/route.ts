@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { legacyDb } from '@/lib/db/legacy-connection';
-import { legacyLotNumbers, legacyProducts } from '@/lib/db/schema/legacy-schema';
+import { db } from '@/lib/db';
+import { lotNumbers } from '@/lib/db/schema/qr-workspace';
 import { eq, and, desc } from 'drizzle-orm';
 
 // Generate LOT number format: YYYYMM-XXXX where XXXX is a sequential number
@@ -40,14 +40,14 @@ export async function POST(request: Request) {
     const targetYear = year || currentYear;
 
     // Check if LOT already exists for this product/month/year
-    const existingLot = await legacyDb
+    const existingLot = await db
       .select()
-      .from(legacyLotNumbers)
+      .from(lotNumbers)
       .where(
         and(
-          eq(legacyLotNumbers.productId, productId),
-          eq(legacyLotNumbers.month, targetMonth),
-          eq(legacyLotNumbers.year, targetYear)
+          eq(lotNumbers.productId, productId),
+          eq(lotNumbers.month, targetMonth),
+          eq(lotNumbers.year, targetYear)
         )
       )
       .limit(1);
@@ -66,16 +66,16 @@ export async function POST(request: Request) {
 
     if (!lotNumber) {
       // Find the latest sequence number for this month/year
-      const latestLots = await legacyDb
+      const latestLots = await db
         .select()
-        .from(legacyLotNumbers)
+        .from(lotNumbers)
         .where(
           and(
-            eq(legacyLotNumbers.month, targetMonth),
-            eq(legacyLotNumbers.year, targetYear)
+            eq(lotNumbers.month, targetMonth),
+            eq(lotNumbers.year, targetYear)
           )
         )
-        .orderBy(desc(legacyLotNumbers.id));
+        .orderBy(desc(lotNumbers.createdAt));
 
       // Extract sequence numbers and find the highest
       let maxSequence = 0;
@@ -94,38 +94,23 @@ export async function POST(request: Request) {
       lotNumber = generateLotNumber(targetYear, targetMonth, maxSequence + 1);
     }
 
-    // Get product details
-    let productTitle = 'Unknown Product';
-    let sku = null;
-
-    try {
-      const product = await legacyDb
-        .select()
-        .from(legacyProducts)
-        .where(eq(legacyProducts.id, productId))
-        .limit(1);
-
-      if (product.length > 0) {
-        productTitle = product[0].title;
-      }
-    } catch (error) {
-      console.log('Could not fetch product details:', error);
-    }
+    // Get product details - productTitle can be passed in or default to 'Unknown Product'
+    const productTitle = 'Unknown Product'; // TODO: Integrate with Shopify products table
+    const sku = null;
 
     // Update or insert the LOT number
     if (existingLot.length > 0) {
       // Update existing record
-      await legacyDb
-        .update(legacyLotNumbers)
+      await db
+        .update(lotNumbers)
         .set({
           lotNumber,
-          updatedAt: new Date()
         })
-        .where(eq(legacyLotNumbers.id, existingLot[0].id));
+        .where(eq(lotNumbers.id, existingLot[0].id));
     } else {
       // Insert new record
-      await legacyDb
-        .insert(legacyLotNumbers)
+      await db
+        .insert(lotNumbers)
         .values({
           productId,
           productTitle,
@@ -133,7 +118,8 @@ export async function POST(request: Request) {
           month: targetMonth,
           year: targetYear,
           lotNumber,
-          createdAt: new Date()
+          createdBy: 'api',
+          createdAt: new Date(),
         });
     }
 
@@ -174,20 +160,20 @@ export async function GET(request: Request) {
       );
     }
 
-    const conditions = [eq(legacyLotNumbers.productId, productId)];
+    const conditions = [eq(lotNumbers.productId, productId)];
 
     if (month) {
-      conditions.push(eq(legacyLotNumbers.month, month));
+      conditions.push(eq(lotNumbers.month, month));
     }
     if (year) {
-      conditions.push(eq(legacyLotNumbers.year, parseInt(year)));
+      conditions.push(eq(lotNumbers.year, parseInt(year)));
     }
 
-    const lots = await legacyDb
+    const lots = await db
       .select()
-      .from(legacyLotNumbers)
+      .from(lotNumbers)
       .where(and(...conditions))
-      .orderBy(desc(legacyLotNumbers.createdAt));
+      .orderBy(desc(lotNumbers.createdAt));
 
     return NextResponse.json({
       success: true,

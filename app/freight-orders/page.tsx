@@ -7,6 +7,7 @@ import { warehouseFeedback, formatWarehouseText } from '@/lib/warehouse-ui-utils
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import ProgressBar from '@/components/ui/ProgressBar';
 import { useToast } from '@/hooks/use-toast';
+import FreightHUD from '@/components/workspace/supervisor-view/FreightHUD';
 
 interface FreightOrder {
   orderId: number;
@@ -22,13 +23,13 @@ interface FreightOrder {
 function FreightOrdersContent() {
   const { toast } = useToast()
   const [orders, setOrders] = useState<FreightOrder[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
   const [stats, setStats] = useState<any>({});
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = (searchParams?.get('tab') === 'ready') ? 'ready' : 'orders';
-  const [activeTab, setActiveTab] = useState<'orders' | 'ready'>(initialTab as any);
+  const initialTab = (searchParams?.get('tab') === 'hud') ? 'hud' : (searchParams?.get('tab') === 'ready') ? 'ready' : 'orders';
+  const [activeTab, setActiveTab] = useState<'orders' | 'ready' | 'hud'>(initialTab as any);
   const [readyOrders, setReadyOrders] = useState<any[]>([]);
   const [readyLoading, setReadyLoading] = useState(false);
   const [readyError, setReadyError] = useState<string | null>(null);
@@ -81,7 +82,7 @@ function FreightOrdersContent() {
     }
   };
 
-  const searchFreightOrders = async () => {
+  const _searchFreightOrders = async () => {
     setLoading(true);
     try {
       const freightTagId = 19844; // Your freight tag ID
@@ -186,6 +187,12 @@ function FreightOrdersContent() {
           {/* Tabs */}
           <div className="px-6 pt-4 border-b border-gray-200 flex gap-2">
             <button
+              onClick={() => setActiveTab('hud')}
+              className={`px-3 py-2 text-sm rounded-md font-semibold ${activeTab === 'hud' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              🎛️ Supervisor HUD
+            </button>
+            <button
               onClick={() => setActiveTab('orders')}
               className={`px-3 py-2 text-sm rounded-md ${activeTab === 'orders' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-gray-600 hover:bg-gray-50'}`}
             >
@@ -203,6 +210,10 @@ function FreightOrdersContent() {
           </div>
 
           <div className="p-6">
+            {activeTab === 'hud' && (
+              <FreightHUD />
+            )}
+
             {activeTab === 'orders' && (
               polling ? (
                 <div className="py-8">

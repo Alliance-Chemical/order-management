@@ -5,7 +5,7 @@ import { getOptimizedDb } from '@/lib/db/neon'
 import { documents, workspaces } from '@/lib/db/schema/qr-workspace'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { DeleteObjectCommand } from '@aws-sdk/client-s3'
 import { resolveDocumentName } from '@/lib/utils/document-name'
@@ -41,6 +41,7 @@ const s3DocumentsBucket = sanitizeEnvValue(
 )
 
 type DocumentMetadata = Record<string, unknown>;
+type DocumentRecord = typeof documents.$inferSelect;
 
 export async function uploadDocument(data: {
   file: File
@@ -49,7 +50,7 @@ export async function uploadDocument(data: {
   metadata?: DocumentMetadata
 }) {
   try {
-    const { file, orderId, documentType, metadata } = data
+    const { file, orderId, documentType } = data
     
     // Find workspace
     const workspace = await workspaceService.repository.findByOrderId(Number(orderId))
@@ -274,13 +275,13 @@ export async function getWorkspaceDocuments(orderId: string) {
     }
 
     const db = getOptimizedDb()
-    const docs = await db.query.documents.findMany({
+    const docs: DocumentRecord[] = await db.query.documents.findMany({
       where: eq(documents.workspaceId, workspace.id)
     })
 
     // Refresh presigned URLs if using S3
     const documentsWithUrls = await Promise.all(
-      docs.map(async (doc) => {
+      docs.map(async (doc): Promise<DocumentRecord & { documentUrl?: string }> => {
         const bucketForDoc = doc.s3Bucket || s3DocumentsBucket
 
         if (doc.s3Key && s3Client && bucketForDoc) {
@@ -300,7 +301,7 @@ export async function getWorkspaceDocuments(orderId: string) {
       })
     )
 
-    const normalizedDocuments = documentsWithUrls.map((doc: any) => ({
+    const normalizedDocuments = documentsWithUrls.map((doc) => ({
       ...doc,
       fileName: doc.documentName ?? doc.fileName,
       documentUrl: doc.documentUrl ?? doc.s3Url

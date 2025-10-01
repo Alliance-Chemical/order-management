@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Package, QrCode, CheckCircle, AlertTriangle, Truck, ClipboardCheck } from 'lucide-react';
+import { Package, QrCode, AlertTriangle, Truck, ClipboardCheck } from 'lucide-react';
 
 export default function WarehouseGuide() {
   return (

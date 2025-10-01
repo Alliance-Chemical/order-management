@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import StatusLight from '../../ui/StatusLight';
 import { Button } from '../../ui/button';
 import { ImageViewer } from '../../ui/image-viewer';
@@ -21,7 +20,7 @@ interface TaskListItemProps {
   onStartInspection: () => void;
 }
 
-export default function TaskListItem({ 
+const TaskListItem = React.memo(function TaskListItem({ 
   item, 
   workflowType, 
   requiresDilution,
@@ -218,4 +217,6 @@ export default function TaskListItem({
       </div>
     </div>
   );
-}
+});
+
+export default TaskListItem;

@@ -6,6 +6,9 @@ import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 
+// Explicitly set runtime to nodejs for AWS SDK compatibility
+export const runtime = 'nodejs';
+
 const sanitizeEnvValue = (value?: string | null) =>
   value ? value.replace(/[\r\n]+/g, '').trim() : undefined;
 
@@ -43,17 +46,16 @@ type UploadedPhoto = {
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ orderId: string }> }
+  { params }: { params: { orderId: string } }
 ) {
   try {
-    const params = await context.params;
     const { checkedItems, photos, completedAt, failureNotes } = await request.json() as {
       checkedItems?: CheckedItem[];
       photos: PreShipPhotoInput[];
       completedAt?: string;
       failureNotes?: string;
     };
-    
+
     const orderId = params.orderId;
     
     // Get the current workspace
@@ -77,26 +79,37 @@ export async function POST(
       );
     }
 
-    // Extract lot numbers from all photos
-    const allLotNumbers = photos.reduce<string[]>((acc, photo) => {
-      return [...acc, ...(photo.lotNumbers || [])];
-    }, []);
+    // Extract lot numbers from all photos (de-duplicated)
+    const allLotNumbers = Array.from(new Set(
+      photos.flatMap(photo => photo.lotNumbers || [])
+        .map(lot => String(lot).trim())
+        .filter(Boolean)
+    ));
 
     // Upload photos to S3 and store in documents table
     const uploadedPhotos: UploadedPhoto[] = [];
     const failedUploads: Array<{ name?: string; reason: string }> = [];
+    const uploadedS3Keys: string[] = []; // Track for rollback on failure
+    const MAX_BYTES = 10 * 1024 * 1024; // 10MB max per photo
+
     for (const [index, photo] of photos.entries()) {
       if (photo.base64) {
         try {
           // Remove data URL prefix if present
           const base64Data = photo.base64.replace(/^data:image\/\w+;base64,/, '');
           const buffer = Buffer.from(base64Data, 'base64');
+
+          // Check file size limit to prevent DOS
+          if (buffer.length > MAX_BYTES) {
+            failedUploads.push({ name: `Photo ${index + 1}`, reason: 'File too large (max 10MB)' });
+            continue;
+          }
           
           // Generate unique filename
           const photoId = uuidv4();
           const key = `workspaces/${orderId}/pre-ship/${photoId}.jpg`;
           const bucketName = (process.env.S3_DOCUMENTS_BUCKET || 'alliance-chemical-documents').replace(/[\r\n]+/g, '').trim();
-          
+
           // Upload to S3
           await s3Client.send(new PutObjectCommand({
             Bucket: bucketName,
@@ -109,7 +122,10 @@ export async function POST(
               lotNumbers: JSON.stringify(photo.lotNumbers || [])
             }
           }));
-          
+
+          // Track uploaded S3 keys for potential rollback
+          uploadedS3Keys.push(key);
+
           // Store document record in database
           const documentRecord = await db.insert(documents).values({
             workspaceId: workspace.id,
@@ -139,9 +155,30 @@ export async function POST(
     }
 
     if (failedUploads.length > 0) {
+      // Rollback: delete any successfully uploaded S3 objects
+      if (uploadedS3Keys.length > 0 && s3Client) {
+        const bucketName = (process.env.S3_DOCUMENTS_BUCKET || 'alliance-chemical-documents').replace(/[\r\n]+/g, '').trim();
+        const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+
+        for (const key of uploadedS3Keys) {
+          try {
+            await s3Client.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
+          } catch (cleanupError) {
+            console.error(`Failed to cleanup S3 object ${key}:`, cleanupError);
+          }
+        }
+      }
+
+      // Return 207 Multi-Status for partial failures
+      const statusCode = uploadedPhotos.length > 0 ? 207 : 502;
       return NextResponse.json(
-        { code: 'UPLOAD_FAILED', message: 'One or more photos failed to upload', failed: failedUploads },
-        { status: 502 }
+        {
+          code: 'UPLOAD_FAILED',
+          message: 'One or more photos failed to upload',
+          failed: failedUploads,
+          succeeded: uploadedPhotos.length
+        },
+        { status: statusCode }
       );
     }
 

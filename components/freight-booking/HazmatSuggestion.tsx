@@ -1,22 +1,24 @@
 import React from 'react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { HiCheckCircle, HiExclamation, HiLightBulb, HiX } from 'react-icons/hi';
 
+interface HazmatSuggestionData {
+  un_number: string | null;
+  proper_shipping_name: string | null;
+  hazard_class: string | null;
+  packing_group: string | null;
+  confidence: number;
+  source: 'database' | 'rag' | 'rules';
+  exemption_reason?: string;
+}
+
 interface HazmatSuggestionProps {
   sku: string;
   productName: string;
-  suggestion: {
-    un_number: string | null;
-    proper_shipping_name: string | null;
-    hazard_class: string | null;
-    packing_group: string | null;
-    confidence: number;
-    source: 'database' | 'rag' | 'rules';
-    exemption_reason?: string;
-  };
-  onAccept: (sku: string, classification: any) => void;
+  suggestion: HazmatSuggestionData;
+  onAccept: (sku: string, classification: HazmatSuggestionData) => void;
   onReject: (sku: string) => void;
 }
 

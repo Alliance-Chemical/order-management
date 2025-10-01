@@ -3,14 +3,30 @@
 import PalletSummaryDisplay from '@/components/freight-booking/PalletSummaryDisplay';
 import type { FreightBookingData } from '@/types/freight-booking';
 
+interface WarehouseFeedback {
+  success: () => void;
+  warning: () => void;
+  error: () => void;
+  buttonPress: () => void;
+}
+
+interface Pallet {
+  id?: string;
+  length?: number;
+  width?: number;
+  height?: number;
+  weight?: number;
+  [key: string]: unknown;
+}
+
 interface ConfirmationStepProps {
   bookingData: FreightBookingData;
-  palletData: any[] | null;
+  palletData: Pallet[] | null;
   booking: boolean;
   setBookingData: (fn: (prev: FreightBookingData) => FreightBookingData) => void;
   onBack: () => void;
   onConfirm: () => void;
-  warehouseFeedback: any;
+  warehouseFeedback: WarehouseFeedback;
 }
 
 export default function ConfirmationStep({

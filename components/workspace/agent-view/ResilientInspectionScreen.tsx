@@ -21,6 +21,7 @@ import {
 } from '@/lib/inspection/cruz'
 import type { RecordStepParams } from '@/app/actions/cruz-inspection'
 import { Loader2 } from 'lucide-react'
+import MultiContainerInspection from './MultiContainerInspection'
 
 interface ResilientInspectionScreenProps {
   orderId: string
@@ -1274,8 +1275,16 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
   const { toast } = useToast()
 
+  // Track which items have been inspected via multi-container flow
+  const [inspectedItems, setInspectedItems] = useState<Set<number>>(new Set())
+  const [currentItemIndex, setCurrentItemIndex] = useState<number>(0)
+
   const shipstationData = workspace?.shipstationData as any
   const shipToAddress = shipstationData?.shipTo ?? shipstationData?.billTo
+
+  // Determine if current item needs multi-container inspection
+  const currentItem = orderItems?.[currentItemIndex]
+  const needsMultiContainerInspection = currentItem && Number(currentItem.quantity) > 1
 
   // Default warehouse address - Alliance Chemical always ships from the same location
   const defaultWarehouseAddress: ShipmentAddress = {
@@ -1292,7 +1301,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const shipFromAddress = shipstationData?.shipFrom ?? shipstationData?.warehouse ?? shipstationData?.originAddress ?? defaultWarehouseAddress
   const customerEmail = shipstationData?.customerEmail
 
-  // Initialize the Cruz inspection state
+  // Initialize the Cruz inspection state - MUST be before any conditional returns
   const normalizedInitial = useMemo(
     () => normalizeInspectionState(workspace?.moduleStates?.inspection),
     [workspace?.moduleStates?.inspection]
@@ -1344,25 +1353,33 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   // Auto-create inspection run if none exist
   const [hasAutoCreated, setHasAutoCreated] = useState(false)
   const [hasAutoSkippedQr, setHasAutoSkippedQr] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
+    // Skip auto-creation if we're using multi-container inspection
+    if (needsMultiContainerInspection) {
+      return
+    }
+
     // If no runs exist and we haven't already tried to create one, do it now
     if (runs.length === 0 && !hasAutoCreated && !isPending) {
       setHasAutoCreated(true)
 
-      // Create real inspection runs for all items in the order
+      // Create real inspection runs only for items that don't need multi-container inspection
       const runsToCreate = orderItems && orderItems.length > 0
-        ? orderItems.map((item, index) => ({
-            containerType: 'drum' as const,
-            containerCount: item?.quantity ? Number(item.quantity) : 1,
-            sku: item?.sku || (item as Record<string, any>)?.SKU || '',
-            materialName: item?.name || (item as Record<string, any>)?.description || `Item ${index + 1}`,
-            metadata: {
-              unitOfMeasure: item?.unitOfMeasure || (item as Record<string, any>)?.uom || (item as Record<string, any>)?.UOM || 'EA',
-              orderItemIndex: index,
-              quantity: item?.quantity ?? 1,
-            },
-          }))
+        ? orderItems
+            .filter((item) => Number(item?.quantity || 1) === 1) // Only single-quantity items
+            .map((item, index) => ({
+              containerType: 'drum' as const,
+              containerCount: 1,
+              sku: item?.sku || (item as Record<string, any>)?.SKU || '',
+              materialName: item?.name || (item as Record<string, any>)?.description || `Item ${index + 1}`,
+              metadata: {
+                unitOfMeasure: item?.unitOfMeasure || (item as Record<string, any>)?.uom || (item as Record<string, any>)?.UOM || 'EA',
+                orderItemIndex: index,
+                quantity: 1,
+              },
+            }))
         : [{
             containerType: 'drum' as const,
             containerCount: 1,
@@ -1374,9 +1391,18 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
             },
           }]
 
-      createRuns(runsToCreate)
+      if (runsToCreate.length > 0) {
+        createRuns(runsToCreate)
+      }
     }
-  }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems])
+  }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems, needsMultiContainerInspection])
+
+  // Reset hasAutoCreated when retrying
+  useEffect(() => {
+    if (retryCount > 0) {
+      setHasAutoCreated(false)
+    }
+  }, [retryCount])
 
   // Find the active run that the worker should work on
   const activeRun = useMemo(() => {
@@ -1506,10 +1532,67 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     }
   }, [selectedStepId, activeRun, setSelectedStepId])
 
+  // Determine container type from item name/sku
+  const getContainerType = (item: any): 'tote' | 'drum' | 'pail' | 'bottle' => {
+    const name = (item?.name || '').toLowerCase()
+    const sku = (item?.sku || '').toLowerCase()
+    const combined = `${name} ${sku}`
+
+    if (combined.includes('tote')) return 'tote'
+    if (combined.includes('drum')) return 'drum'
+    if (combined.includes('pail')) return 'pail'
+    if (combined.includes('bottle') || combined.includes('gallon') && !combined.includes('drum') && !combined.includes('pail')) return 'bottle'
+
+    // Default based on quantity
+    const qty = Number(item?.quantity || 1)
+    if (qty >= 5) return 'drum'
+    if (qty >= 2) return 'pail'
+    return 'bottle'
+  }
+
+  // Handle completion of multi-container inspection for one item
+  const handleMultiContainerComplete = useCallback((results: any) => {
+    // Mark this item as inspected
+    setInspectedItems(prev => new Set([...prev, currentItemIndex]))
+
+    // Move to next item
+    if (currentItemIndex < (orderItems?.length || 0) - 1) {
+      setCurrentItemIndex(currentItemIndex + 1)
+    } else {
+      // All items inspected - complete the entire inspection
+      onComplete({
+        checklist: {
+          containers_scanned: 'pass',
+          all_items_inspected: 'pass',
+        },
+        notes: `Multi-container inspection completed for ${orderItems?.length || 0} item(s)`,
+        completedAt: new Date().toISOString(),
+        completedBy: 'worker',
+        photos: results?.containers?.flatMap((c: any) => c.photos || []) || [],
+      })
+    }
+  }, [currentItemIndex, orderItems, onComplete])
+
+  // If current item needs multi-container inspection, show that flow
+  if (needsMultiContainerInspection && !inspectedItems.has(currentItemIndex)) {
+    return (
+      <MultiContainerInspection
+        orderId={orderId}
+        orderNumber={orderNumber}
+        customerName={customerName}
+        item={currentItem}
+        workflowType={workspace?.workflowType || 'pump_and_fill'}
+        containerType={getContainerType(currentItem)}
+        onComplete={handleMultiContainerComplete}
+        onSwitchToSupervisor={onSwitchToSupervisor}
+      />
+    )
+  }
+
   if (!activeRun) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md mx-auto px-4">
           {isPending || (runs.length === 0 && !hasAutoCreated) ? (
             <>
               <h2 className="text-2xl font-bold text-gray-900 mb-4">Setting up inspection...</h2>
@@ -1519,8 +1602,32 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
           ) : (
             <>
               <h2 className="text-2xl font-bold text-gray-900 mb-4">No Active Inspection Run</h2>
-              <p className="text-gray-600 mb-6">Unable to create inspection run. Please contact a supervisor.</p>
-              <Button onClick={onSwitchToSupervisor}>Switch to Supervisor View</Button>
+              <p className="text-gray-600 mb-6">
+                {error ? (
+                  <>Error: {error}</>
+                ) : (
+                  <>Inspection run creation failed. You can retry or switch to supervisor view.</>
+                )}
+              </p>
+              <div className="space-y-3">
+                <Button
+                  onClick={() => {
+                    setRetryCount(prev => prev + 1)
+                    setHasAutoCreated(false)
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg py-6"
+                  disabled={isPending}
+                >
+                  {isPending ? 'Creating...' : retryCount > 0 ? `Retry Again (${retryCount + 1})` : 'Retry Create Inspection'}
+                </Button>
+                <Button
+                  onClick={onSwitchToSupervisor}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Switch to Supervisor View
+                </Button>
+              </div>
             </>
           )}
         </div>

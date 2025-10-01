@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext } from 'react';
+import React, { createContext } from 'react';
 
 // Stub implementation for freight telemetry
 const FreightTelemetryContext = createContext({});
@@ -15,7 +15,7 @@ export function FreightTelemetryProvider({ children }: { children: React.ReactNo
 
 export function useFreightActionTracking() {
   return {
-    trackAction: (action: string, data?: any) => {
+    trackAction: (action: string, data?: Record<string, unknown>) => {
       console.log('Freight action tracked:', action, data);
     }
   };
@@ -23,7 +23,7 @@ export function useFreightActionTracking() {
 
 export function useFreightTelemetry() {
   return {
-    trackEvent: (event: string, data?: any) => {
+    trackEvent: (event: string, data?: Record<string, unknown>) => {
       console.log('Freight telemetry event:', event, data);
     }
   };

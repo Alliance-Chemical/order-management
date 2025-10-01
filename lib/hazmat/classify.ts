@@ -215,7 +215,6 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   let reranked = localRerank(productName, prelim).slice(0, 10);
 
   // Heuristic overrides for tricky families
-  const ql = productName.toLowerCase();
   // Prefer Ethyl acetate explicitly when present
   if (/(ethyl\s+acetate|ethyl\s+ethanoate|\betoac\b|acetic\s+acid\s+ethyl\s+ester)/i.test(productName)) {
     const ea = reranked.find(r => (r.doc.metadata?.base_name || '').toLowerCase() === 'ethyl acetate');
@@ -276,7 +275,6 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   const baseScore = reranked[0].score ?? 0.5;
   let confidence = Math.max(0.3, Math.min(0.99, 0.6 + (baseScore - 0.5) * 0.8 + (historyCount > 0 ? 0.1 : 0)));
   // Heuristic confidence floors for exact families
-  const qLower = productName.toLowerCase();
   if ((/ethyl\s+acetate|ethyl\s+ethanoate|\betoac\b|acetic\s+acid\s+ethyl\s+ester/i).test(productName) && metaBaseName.toLowerCase() === 'ethyl acetate') {
     confidence = Math.max(confidence, 0.8);
   }
@@ -334,11 +332,6 @@ function directMapToHMT(productName: string, rows: any[]): Classification | null
     const m = s.match(/(\d{1,3})(?:\.(\d+))?\s*%/);
     if (!m) return null; return parseFloat(m[0]);
   })();
-  const proof = ((): number | null => {
-    const m = s.match(/(\d{2,3})\s*proof/);
-    if (!m) return null; const v = parseInt(m[1], 10); return isNaN(v) ? null : v;
-  })();
-
   function pickByBaseName(regex: RegExp): any | null {
     const cands = rows.filter(r => regex.test((r.base_name || '').toLowerCase()));
     return cands[0] || null;

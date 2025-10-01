@@ -1,17 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import type { InspectionQuestion, CapturedPhoto } from '@/types/components';
 
-interface InspectionItem {
-  id: string;
-  label: string;
-  icon: string;
-}
-
-interface CapturedPhoto {
-  base64: string;
-  url: string;
-  lotNumbers: string[];
-  timestamp: string;
-}
+// Alias for backward compatibility
+type InspectionItem = InspectionQuestion;
 
 interface UsePreShipInspectionProps {
   orderId: string;
@@ -52,8 +43,9 @@ export function usePreShipInspection({ orderId, onComplete }: UsePreShipInspecti
     }
   }, [currentStep]);
 
+  // Stable callbacks that don't need dependencies
   const vibrate = useCallback(() => {
-    if ('vibration' in navigator) {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(50);
     }
   }, []);
@@ -75,13 +67,13 @@ export function usePreShipInspection({ orderId, onComplete }: UsePreShipInspecti
     setTimeout(() => {
       setCurrentStep(prev => prev + 1);
     }, 300);
-  }, [currentStep, vibrate, playSound]);
+  }, [currentStep]); // vibrate and playSound are stable
 
   const handleFail = useCallback((note: string) => {
     vibrate();
     playSound(false);
     const item = INSPECTION_ITEMS[currentStep];
-    
+
     if (note && note.trim()) {
       setCheckedItems(prev => ({ ...prev, [item.id]: 'failed' }));
       setFailureNotes(prev => ({ ...prev, [item.id]: note.trim() }));
@@ -92,7 +84,7 @@ export function usePreShipInspection({ orderId, onComplete }: UsePreShipInspecti
     } else {
       setNoteError('Note required for failures');
     }
-  }, [currentStep, vibrate, playSound]);
+  }, [currentStep]); // vibrate and playSound are stable
 
   const startCamera = useCallback(async () => {
     try {

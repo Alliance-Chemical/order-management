@@ -1,5 +1,5 @@
-import { pgSchema, pgTable, uuid, text, jsonb, timestamp, integer, index, varchar, vector, boolean } from 'drizzle-orm/pg-core';
-import { sql, cosineDistance } from 'drizzle-orm';
+import { pgSchema, uuid, text, jsonb, timestamp, integer, index, varchar, vector, boolean } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type { SQLWrapper } from 'drizzle-orm';
 
 type JsonObject = Record<string, unknown>;

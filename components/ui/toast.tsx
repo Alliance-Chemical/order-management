@@ -1,6 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react"
+import { CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const toastVariants = cva(

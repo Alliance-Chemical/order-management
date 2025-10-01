@@ -1,19 +1,46 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Loader2, AlertCircle, Check, Package } from 'lucide-react';
+import { MessageSquare, Send, X, Loader2, Check, Package } from 'lucide-react';
 import { ragChat } from '@/app/actions/ai';
+
+interface ClassificationData {
+  un_number?: string;
+  proper_shipping_name?: string;
+  hazard_class?: string;
+  packing_group?: string;
+  labels?: string;
+  erg_guide?: string;
+  confidence?: number;
+  exemption_reason?: string;
+}
+
+interface SearchResult {
+  text: string;
+  metadata?: {
+    unNumber?: string;
+    hazardClass?: string;
+  };
+}
+
+interface RAGResponse {
+  success: boolean;
+  error?: string;
+  classification?: ClassificationData;
+  results?: SearchResult[];
+  message?: string;
+}
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  data?: any;
+  data?: RAGResponse;
   timestamp: Date;
   loading?: boolean;
 }
 
-export default function RAGChatInterface() {
+const RAGChatInterface = React.memo(function RAGChatInterface() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -90,7 +117,7 @@ export default function RAGChatInterface() {
     }
   };
 
-  const formatResponse = (data: any) => {
+  const formatResponse = (data: RAGResponse): string => {
     if (!data.success) {
       return data.error || 'Unable to process your request.';
     }
@@ -126,7 +153,7 @@ export default function RAGChatInterface() {
 
     if (data.results && data.results.length > 0) {
       let response = `Found ${data.results.length} relevant result(s):\n\n`;
-      data.results.slice(0, 3).forEach((r: any, i: number) => {
+      data.results.slice(0, 3).forEach((r, i) => {
         response += `${i + 1}. **${r.text}**\n`;
         if (r.metadata?.unNumber) {
           response += `   UN: ${r.metadata.unNumber}, Class: ${r.metadata.hazardClass || 'N/A'}\n`;
@@ -160,25 +187,37 @@ export default function RAGChatInterface() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="fixed bottom-4 right-4 z-50 bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 transition-colors"
-        aria-label="Open RAG Chat"
+        aria-label={isOpen ? "Close hazmat classification assistant" : "Open hazmat classification assistant"}
+        aria-expanded={isOpen}
+        aria-controls="rag-chat-window"
       >
-        {isOpen ? <X size={24} /> : <MessageSquare size={24} />}
+        {isOpen ? <X size={24} aria-hidden="true" /> : <MessageSquare size={24} aria-hidden="true" />}
       </button>
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-20 right-4 z-50 w-96 h-[600px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col">
+        <div
+          id="rag-chat-window"
+          role="dialog"
+          aria-label="Hazmat Classification Chat Assistant"
+          className="fixed bottom-20 right-4 z-50 w-96 h-[600px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col"
+        >
           {/* Header */}
           <div className="bg-blue-600 text-white p-4 rounded-t-lg">
             <h3 className="font-bold text-lg flex items-center gap-2">
-              <Package size={20} />
+              <Package size={20} aria-hidden="true" />
               Hazmat Classification Assistant
             </h3>
             <p className="text-sm opacity-90">Powered by Database RAG</p>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div
+            className="flex-1 overflow-y-auto p-4 space-y-4"
+            role="log"
+            aria-label="Chat messages"
+            aria-live="polite"
+          >
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -243,7 +282,7 @@ export default function RAGChatInterface() {
 
           {/* Input */}
           <div className="border-t border-gray-200 p-4">
-            <div className="flex gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="flex gap-2">
               <input
                 type="text"
                 value={input}
@@ -252,18 +291,23 @@ export default function RAGChatInterface() {
                 placeholder="Ask about chemical classifications..."
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={loading}
+                aria-label="Chemical classification query"
               />
               <button
+                type="submit"
                 onClick={sendMessage}
                 disabled={loading || !input.trim()}
                 className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Send message"
               >
-                <Send size={20} />
+                <Send size={20} aria-hidden="true" />
               </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
     </>
   );
-}
+});
+
+export default RAGChatInterface;

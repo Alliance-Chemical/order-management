@@ -1,19 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Alert } from '@/components/ui/alert';
 import { 
   HiPaperAirplane, HiSparkles, HiBeaker, HiTruck, HiExclamation, 
-  HiInformationCircle, HiDownload, HiBookmark, HiMicrophone,
+  HiInformationCircle, HiDownload, HiBookmark,
   HiOutlineClipboardCopy, HiOutlineMoon, HiOutlineSun,
-  HiOutlineTrash, HiOutlineRefresh, HiChevronDown, HiChevronUp,
+  HiOutlineTrash, HiChevronDown, HiChevronUp,
   HiOutlineSearch, HiLightningBolt, HiOutlineBookOpen
 } from 'react-icons/hi';
 
@@ -84,9 +82,7 @@ export default function HazmatChatworldPage() {
   const [showSources, setShowSources] = useState<{ [key: string]: boolean }>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -190,12 +186,6 @@ export default function HazmatChatworldPage() {
   const toggleBookmark = (messageId: string) => {
     setMessages(prev => prev.map(m => 
       m.id === messageId ? { ...m, isBookmarked: !m.isBookmarked } : m
-    ));
-  };
-
-  const rateMessage = (messageId: string, rating: 'good' | 'bad') => {
-    setMessages(prev => prev.map(m => 
-      m.id === messageId ? { ...m, rating: m.rating === rating ? null : rating } : m
     ));
   };
 

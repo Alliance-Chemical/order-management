@@ -165,19 +165,16 @@ export function InspectionRunsPanel({ orderId, workspace, initialState }: Inspec
     [initialState, workspace.moduleStates]
   )
 
-  const shipstationData = workspace.shipstationData as any
-  const shipToAddress = shipstationData?.shipTo ?? shipstationData?.billTo
-  const shipFromAddress = shipstationData?.shipFrom ?? shipstationData?.warehouse ?? shipstationData?.originAddress
-  const customerEmail = shipstationData?.customerEmail
-
   const skuImageMap = useMemo(() => {
     const map = new Map<string, string>()
     const base = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE
     workspace.shipstationData?.items?.forEach((item) => {
-      const sku = item?.sku?.trim()
+      const record = item as Record<string, unknown>
+      const sku = typeof record?.sku === 'string' ? record.sku.trim() : ''
       if (!sku) return
-      if (item.imageUrl) {
-        map.set(sku.toUpperCase(), item.imageUrl)
+      const imageUrl = typeof record.imageUrl === 'string' ? record.imageUrl : undefined
+      if (imageUrl) {
+        map.set(sku.toUpperCase(), imageUrl)
         return
       }
       if (base) {
@@ -578,14 +575,16 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
   const [localError, setLocalError] = useState<string | null>(null)
   const [selectedStepId, setSelectedStepId] = useState<CruzStepId | null>(null)
 
+  const currentStepId = run?.currentStepId
+  useEffect(() => {
+    setSelectedStepId(null)
+  }, [currentStepId])
+
   if (!run) {
     return null
   }
 
   const currentStep = run.currentStepId
-  useEffect(() => {
-    setSelectedStepId(null)
-  }, [currentStep])
 
   const displayStep = selectedStepId || currentStep
 
@@ -729,9 +728,6 @@ function RunWizard({ run, orderId, onClose, submitStep, bindRun, isPending, getR
                 run={run}
                 payload={stepPayload as CruzStepPayloadMap['inspection_info']}
                 orderId={orderId}
-                shipTo={shipToAddress}
-                shipFrom={shipFromAddress}
-                customerEmail={customerEmail}
                 onSubmit={(payload) => handleSubmit('inspection_info', payload, 'PASS')}
                 isPending={isPending || isViewingPreviousStep}
               />
@@ -1481,7 +1477,7 @@ function FinalReviewStepForm({ run, payload, onSubmit, isPending, orderId: _orde
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Order Number</p>
-            <p>{inspectionInfo?.orderNumber || workspace.orderNumber || orderId}</p>
+            <p>{inspectionInfo?.orderNumber || _orderId}</p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Notes</p>

@@ -1,6 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { db } from '@/lib/db'
+import { workspaces } from '@/lib/db/schema/qr-workspace'
+import { eq } from 'drizzle-orm'
 
 import {
   CruzInspectionState,
@@ -39,7 +42,17 @@ async function withInspectionState<T>(
   opts?: { revalidate?: boolean }
 ): Promise<T> {
   const numericOrderId = Number(orderId)
-  const workspace = await workspaceService.repository.findByOrderId(numericOrderId)
+
+  // Note: neon-http driver doesn't support transactions
+  // We use read-modify-write pattern with workspace updates
+  // Race conditions are rare in inspection flows but possible
+
+  // Fetch workspace
+  const [workspace] = await db
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.orderId, numericOrderId))
+    .limit(1)
 
   if (!workspace) {
     throw new Error(`Workspace not found for order ${orderId}`)
@@ -51,7 +64,7 @@ async function withInspectionState<T>(
   const baseState = normalizeInspectionState(rawInspectionState)
   const state: Mutable<CruzInspectionState> = structuredClone(baseState)
 
-  const result = await mutator(state, {
+  const mutatorResult = await mutator(state, {
     userId,
     workspaceId: workspace.id,
     orderId: orderId,
@@ -64,16 +77,21 @@ async function withInspectionState<T>(
     inspection: state,
   }
 
-  await workspaceService.repository.update(workspace.id, {
-    moduleStates: updatedModuleStates,
-    updatedBy: userId,
-  })
+  // Update workspace with new state
+  await db
+    .update(workspaces)
+    .set({
+      moduleStates: updatedModuleStates,
+      updatedBy: userId,
+      updatedAt: new Date(),
+    })
+    .where(eq(workspaces.id, workspace.id))
 
   if (opts?.revalidate !== false) {
     revalidatePath(`/workspace/${orderId}`)
   }
 
-  return result
+  return mutatorResult
 }
 
 export async function getCruzInspectionState(orderId: string) {
@@ -217,35 +235,84 @@ export async function createInspectionRuns(orderId: string, runs: InspectionRunI
     return getCruzInspectionState(orderId)
   }
 
-  return withInspectionState(orderId, userId, async (state, ctx) => {
-    const createdRuns: CruzInspectionRun[] = []
-    for (const input of runs) {
-      const run = buildRunFromInput(input)
-      state.runsById[run.id] = run
-      state.runOrder.push(run.id)
-      state.totals = state.totals || {}
-      state.totals.runsCreated = (state.totals.runsCreated ?? 0) + 1
-      if (run.status === 'hold') {
-        state.totals.runsOnHold = (state.totals.runsOnHold ?? 0) + 1
+  try {
+    return await withInspectionState(orderId, userId, async (state, ctx) => {
+      const createdRuns: CruzInspectionRun[] = []
+      for (const input of runs) {
+        const run = buildRunFromInput(input)
+        state.runsById[run.id] = run
+        state.runOrder.push(run.id)
+        state.totals = state.totals || {}
+        state.totals.runsCreated = (state.totals.runsCreated ?? 0) + 1
+        if (run.status === 'hold') {
+          state.totals.runsOnHold = (state.totals.runsOnHold ?? 0) + 1
+        }
+        createdRuns.push(run)
       }
-      createdRuns.push(run)
+
+      await logActivity(ctx, 'inspection_runs_created', `Created ${createdRuns.length} inspection run(s)`, {
+        runIds: createdRuns.map((run) => run.id),
+        runs: createdRuns.map((run) => ({
+          id: run.id,
+          sku: run.sku,
+          containerCount: run.containerCount,
+          containerType: run.containerType,
+          qrCodeId: run.qrCodeId,
+        })),
+      })
+
+      refreshWorkspaceCompletion(state, ctx.userId)
+
+      return state
+    })
+  } catch (error) {
+    // If workspace doesn't exist, try to create it
+    if (error instanceof Error && error.message.includes('Workspace not found')) {
+      console.log(`[Cruz Inspection] Workspace not found for order ${orderId}, attempting to create...`)
+
+      try {
+        // Try to create the workspace
+        const numericOrderId = Number(orderId)
+        await workspaceService.createWorkspace(numericOrderId, orderId, userId, 'pump_and_fill')
+
+        // Retry the inspection run creation
+        return await withInspectionState(orderId, userId, async (state, ctx) => {
+          const createdRuns: CruzInspectionRun[] = []
+          for (const input of runs) {
+            const run = buildRunFromInput(input)
+            state.runsById[run.id] = run
+            state.runOrder.push(run.id)
+            state.totals = state.totals || {}
+            state.totals.runsCreated = (state.totals.runsCreated ?? 0) + 1
+            if (run.status === 'hold') {
+              state.totals.runsOnHold = (state.totals.runsOnHold ?? 0) + 1
+            }
+            createdRuns.push(run)
+          }
+
+          await logActivity(ctx, 'inspection_runs_created', `Created ${createdRuns.length} inspection run(s)`, {
+            runIds: createdRuns.map((run) => run.id),
+            runs: createdRuns.map((run) => ({
+              id: run.id,
+              sku: run.sku,
+              containerCount: run.containerCount,
+              containerType: run.containerType,
+              qrCodeId: run.qrCodeId,
+            })),
+          })
+
+          refreshWorkspaceCompletion(state, ctx.userId)
+
+          return state
+        })
+      } catch (createError) {
+        console.error('[Cruz Inspection] Failed to auto-create workspace:', createError)
+        throw new Error(`Workspace not found for order ${orderId} and auto-creation failed. Please create the workspace first via supervisor view.`)
+      }
     }
 
-    await logActivity(ctx, 'inspection_runs_created', `Created ${createdRuns.length} inspection run(s)`, {
-      runIds: createdRuns.map((run) => run.id),
-      runs: createdRuns.map((run) => ({
-        id: run.id,
-        sku: run.sku,
-        containerCount: run.containerCount,
-        containerType: run.containerType,
-        qrCodeId: run.qrCodeId,
-      })),
-    })
-
-    refreshWorkspaceCompletion(state, ctx.userId)
-
-    return state
-  })
+    throw error
+  }
 }
 
 export interface RecordStepParams<StepId extends CruzStepId = CruzStepId> {

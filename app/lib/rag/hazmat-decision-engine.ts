@@ -1,7 +1,7 @@
 // Stub implementation for hazmat decision engine
 
 export class HazmatFreightDecisionEngine {
-  async makeSuggestion(context: any) {
+  async makeSuggestion(context: Record<string, unknown>) {
     // Placeholder implementation
     console.log('HazmatFreightDecisionEngine.makeSuggestion called with:', context);
     

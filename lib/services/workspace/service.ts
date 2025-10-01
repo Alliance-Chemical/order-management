@@ -20,24 +20,29 @@ export class WorkspaceService {
   }
 
   async createWorkspace(orderId: number, orderNumber: string, userId: string, workflowType: 'pump_and_fill' | 'direct_resell' = 'pump_and_fill') {
-    // Fetch ShipStation data
+    // Try to fetch ShipStation data with timeout (non-blocking)
     const shipstationOrder = await this.fetchShipStationData(orderId, orderNumber);
-    
-    // Create workspace
+
+    if (!shipstationOrder) {
+      console.log(`[WorkspaceService] Creating workspace ${orderId} without ShipStation data (API unavailable or timeout)`);
+    }
+
+    // Create workspace with whatever data we have
     const workspaceUrl = `/workspace/${orderId}`;
     const s3BucketName = getS3BucketName();
     const s3FolderPath = createOrderFolderPath(orderNumber);
-    
+
     const creationResult = await this.repository.createOrGet({
       orderId,
       orderNumber,
       workspaceUrl,
       s3BucketName,
       s3FolderPath,
-      workflowType, // Add workflow type
+      workflowType,
       shipstationOrderId: shipstationOrder?.orderId,
-      shipstationData: shipstationOrder,
-      lastShipstationSync: new Date(),
+      shipstationData: shipstationOrder || undefined, // Convert null to undefined
+      lastShipstationSync: shipstationOrder ? new Date() : undefined, // Only set if we got data
+      syncStatus: shipstationOrder ? 'synced' : 'pending', // Mark as pending sync if no data
       createdBy: userId,
     });
 
@@ -51,17 +56,24 @@ export class WorkspaceService {
       await this.logActivity(workspace.id, 'workspace_created', userId, {
         orderId,
         orderNumber,
+        hasShipStationData: Boolean(shipstationOrder),
       });
+
+      // Queue background ShipStation sync if we don't have data yet
+      if (!shipstationOrder) {
+        await this.queueShipStationSync(workspace.id, orderId, orderNumber);
+      }
     } else {
       // Refresh key ShipStation fields so mirrored data stays current
       const updatePayload: Partial<typeof workspaces.$inferInsert> = {
-        lastShipstationSync: new Date(),
+        lastShipstationSync: shipstationOrder ? new Date() : workspace.lastShipstationSync,
         updatedBy: userId,
       };
 
       if (shipstationOrder) {
         updatePayload.shipstationData = shipstationOrder;
         updatePayload.shipstationOrderId = shipstationOrder.orderId;
+        updatePayload.syncStatus = 'synced';
       }
 
       workspace = await this.repository.update(workspace.id, updatePayload);
@@ -71,13 +83,52 @@ export class WorkspaceService {
     return workspace;
   }
 
+  /**
+   * Fetch ShipStation data with timeout
+   * Always returns null on any error to avoid blocking workspace creation
+   */
   private async fetchShipStationData(orderId: number, orderNumber: string): Promise<ShipStationOrder | null> {
     try {
-      const order = await this.shipstation.getOrder(orderId);
+      // Try by orderId first (3s timeout)
+      let order = await this.shipstation.getOrder(orderId, 3000);
+      if (order) {
+        return order;
+      }
+
+      // Fallback to order number search (3s timeout)
+      order = await this.shipstation.getOrderByNumber(orderNumber, 3000);
       return order;
-    } catch {
-      // Fallback to order number search
-      return await this.shipstation.getOrderByNumber(orderNumber);
+    } catch (error) {
+      // Log but don't throw - gracefully degrade
+      console.error(`[WorkspaceService] Failed to fetch ShipStation data for order ${orderId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Queue background sync for ShipStation data
+   */
+  private async queueShipStationSync(workspaceId: string, orderId: number, orderNumber: string) {
+    try {
+      const { kvQueue } = await import('@/lib/queue/kv-queue');
+      await kvQueue.enqueue(
+        'jobs',
+        'shipstation_sync',
+        {
+          action: 'sync_shipstation',
+          workspaceId,
+          orderId,
+          orderNumber,
+        },
+        {
+          fingerprint: `shipstation_sync_${orderId}`,
+          maxRetries: 5, // More retries for sync
+        }
+      );
+      console.log(`[WorkspaceService] Queued background ShipStation sync for order ${orderId}`);
+    } catch (error) {
+      console.error(`[WorkspaceService] Failed to queue ShipStation sync:`, error);
+      // Don't throw - this is a background job
     }
   }
 

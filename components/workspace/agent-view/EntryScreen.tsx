@@ -5,7 +5,17 @@ import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
 import { Button } from '../../ui/button';
 
-export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: any) => void }) {
+interface OrderItem {
+  lineItemKey?: string;
+  sku?: string;
+  name?: string;
+  quantity?: number;
+  unitPrice?: number;
+  imageUrl?: string;
+  orderItemId?: string;
+}
+
+export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: OrderItem) => void }) {
   const [itemStatuses, setItemStatuses] = useState<Record<string, 'pending' | 'in_progress' | 'completed'>>({});
   const shopifyCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE;
 
@@ -31,12 +41,12 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
   };
   
   // Helper to get workflow type for an item (simplified - use workspace level)
-  const getItemWorkflowType = (item: any) => {
+  const getItemWorkflowType = () => {
     return workspace.workflowType || 'pump_and_fill';
   };
   
   // Handle item selection
-  const handleSelectItem = (item: any) => {
+  const handleSelectItem = (item: OrderItem) => {
     if (onSelectItem) {
       // Mark item as in progress
       setItemStatuses(prev => ({
@@ -51,9 +61,9 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
   };
 
   // Get filtered items (exclude discounts)
-  const getFilteredItems = () => {
+  const getFilteredItems = (): OrderItem[] => {
     if (!workspace.shipstationData?.items) return [];
-    return workspace.shipstationData.items.filter((item: any) => 
+    return workspace.shipstationData.items.filter((item: OrderItem) => 
       !item.name?.toLowerCase().includes('discount') && 
       (!item.unitPrice || item.unitPrice >= 0) && 
       !item.lineItemKey?.includes('discount')
@@ -109,7 +119,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
               <div className="text-center">
                 <div className="worker-label text-gray-600 mb-2">Fulfillment Method:</div>
                 <div className="worker-text">
-                  {getItemWorkflowType(filteredItems[0]) === 'direct_resell' ? 'Ready to Ship' : 'Pump & Fill'}
+                  {getItemWorkflowType() === 'direct_resell' ? 'Ready to Ship' : 'Pump & Fill'}
                 </div>
               </div>
             </div>
@@ -172,8 +182,8 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
               Select an item to inspect:
             </div>
             <div className="space-y-4">
-              {filteredItems.map((item: any, idx: number) => {
-                const workflowType = getItemWorkflowType(item);
+              {filteredItems.map((item, idx) => {
+                const workflowType = getItemWorkflowType();
                 const status = itemStatuses[item.lineItemKey || item.sku || item.name] || 'pending';
 
                 return (

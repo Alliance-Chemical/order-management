@@ -1,5 +1,6 @@
 'use client';
 
+import type { ComponentType, SVGProps } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -13,6 +14,7 @@ import {
   ArchiveBoxIcon,
   ArrowTopRightOnSquareIcon,
   WrenchScrewdriverIcon,
+  BookOpenIcon,
 } from '@heroicons/react/24/solid';
 import {
   DropdownMenu,
@@ -33,7 +35,7 @@ interface DropdownItem {
 interface NavigationItem {
   name: string;
   href: string;
-  icon: any;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   color: string;
   bgColor: string;
   description?: string;
@@ -177,6 +179,15 @@ const navigationItems: NavigationItem[] = [
     color: 'text-red-600 hover:text-red-700',
     bgColor: 'hover:bg-red-50',
     description: 'Quick reference for workers',
+    section: 'tools'
+  },
+  {
+    name: 'Training Guide',
+    href: '/training',
+    icon: BookOpenIcon,
+    color: 'text-blue-600 hover:text-blue-700',
+    bgColor: 'hover:bg-blue-50',
+    description: 'Complete training & workflow guide',
     section: 'tools'
   }
 ];

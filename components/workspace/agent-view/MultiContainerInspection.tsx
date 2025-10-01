@@ -29,7 +29,7 @@ export default function MultiContainerInspection({
   orderNumber,
   customerName,
   item,
-  workflowType,
+  workflowType: _workflowType,
   containerType,
   onComplete,
   onSwitchToSupervisor,

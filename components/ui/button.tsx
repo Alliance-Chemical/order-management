@@ -103,7 +103,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             warning: [30, 40, 30],
             error: [40, 60, 40],
           }
-          // @ts-ignore - vibrate may not exist in some TS lib targets
+          // @ts-expect-error - vibrate may not exist in some TS lib targets
           navigator.vibrate?.(patterns[haptic] ?? 10)
         } catch {}
       }

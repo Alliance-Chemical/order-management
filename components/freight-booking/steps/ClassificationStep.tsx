@@ -4,18 +4,25 @@ import { useState } from 'react';
 import StatusLight from '@/components/ui/StatusLight';
 import HazmatCallout from '@/components/ui/HazmatCallout';
 import { HazmatRAGPanel, type RAGSuggestion } from '@/components/freight-booking/HazmatRAGPanel';
-import type { ShipStationOrder, ClassifiedItem, ManualClassificationInput } from '@/types/freight-booking';
+import type { ShipStationOrder, ClassifiedItem, ManualClassificationInput, FreightBookingData } from '@/types/freight-booking';
 import { linkProductToFreight } from '@/app/actions/freight';
+
+interface WarehouseFeedback {
+  success: () => void;
+  warning: () => void;
+  error: () => void;
+  buttonPress: () => void;
+}
 
 interface ClassificationStepProps {
   selectedOrder: ShipStationOrder;
   classifiedItems: ClassifiedItem[];
   manualInputs: Record<string, ManualClassificationInput>;
-  setManualInputs: (inputs: any) => void;
-  setBookingData: (data: any) => void;
+  setManualInputs: (updater: (prev: Record<string, ManualClassificationInput>) => Record<string, ManualClassificationInput>) => void;
+  setBookingData: (updater: (prev: FreightBookingData) => FreightBookingData) => void;
   onComplete: () => void;
   onBack: () => void;
-  warehouseFeedback: any;
+  warehouseFeedback: WarehouseFeedback;
 }
 
 export default function ClassificationStep({
@@ -30,18 +37,18 @@ export default function ClassificationStep({
 }: ClassificationStepProps) {
   const [savingStates, setSavingStates] = useState<Record<string, boolean>>({});
 
-  const handleManualSave = async (item: any) => {
+  const handleManualSave = async (item: ShipStationOrder['items'][number]) => {
     const inputs = manualInputs[item.sku] || { freightClass: '', nmfcCode: '', nmfcSub: '', description: '' };
     if (!inputs.freightClass) {
-      setManualInputs((prev: any) => ({ ...prev, [item.sku]: { ...inputs, error: 'Freight class is required' } }));
+      setManualInputs((prev) => ({ ...prev, [item.sku]: { ...inputs, error: 'Freight class is required' } }));
       warehouseFeedback.warning();
       return;
     }
-    
+
     try {
       setSavingStates(prev => ({ ...prev, [item.sku]: true }));
-      setManualInputs((prev: any) => ({ ...prev, [item.sku]: { ...inputs, saving: true, error: null } }));
-      
+      setManualInputs((prev) => ({ ...prev, [item.sku]: { ...inputs, saving: true, error: null } }));
+
       const data = await linkProductToFreight({
         sku: item.sku,
         freightClass: inputs.freightClass,
@@ -51,15 +58,15 @@ export default function ClassificationStep({
         approve: true,
         hazmatData: inputs.hazmatData || undefined,
       });
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to save classification');
       }
-      
+
       // Update local state
-      setBookingData((prev: any) => ({
+      setBookingData((prev) => ({
         ...prev,
-        classifiedItems: prev.classifiedItems.map((ci: ClassifiedItem) =>
+        classifiedItems: prev.classifiedItems.map((ci) =>
           ci.sku === item.sku ? {
             ...ci,
             classification: {
@@ -74,14 +81,15 @@ export default function ClassificationStep({
           } : ci
         )
       }));
-      
+
       warehouseFeedback.success();
-    } catch (err: any) {
-      setManualInputs((prev: any) => ({ ...prev, [item.sku]: { ...inputs, saving: false, error: err?.message || 'Save failed' } }));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Save failed';
+      setManualInputs((prev) => ({ ...prev, [item.sku]: { ...inputs, saving: false, error: errorMessage } }));
       warehouseFeedback.error();
     } finally {
       setSavingStates(prev => ({ ...prev, [item.sku]: false }));
-      setManualInputs((prev: any) => ({ ...prev, [item.sku]: { ...prev[item.sku], saving: false } }));
+      setManualInputs((prev) => ({ ...prev, [item.sku]: { ...prev[item.sku], saving: false } }));
     }
   };
 
@@ -100,8 +108,8 @@ export default function ClassificationStep({
         isHazmat: !!suggestion.un_number
       }
     };
-    
-    setManualInputs((prev: any) => ({
+
+    setManualInputs((prev) => ({
       ...prev,
       [sku]: {
         ...classificationData,
@@ -109,7 +117,7 @@ export default function ClassificationStep({
         successMessage: '⏳ Applying classification...'
       }
     }));
-    
+
     // Auto-save
     try {
       const data = await linkProductToFreight({
@@ -121,15 +129,15 @@ export default function ClassificationStep({
         approve: true,
         hazmatData: classificationData.hazmatData
       });
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to save classification');
       }
-      
+
       // Update local state
-      setBookingData((prev: any) => ({
+      setBookingData((prev) => ({
         ...prev,
-        classifiedItems: prev.classifiedItems.map((ci: ClassifiedItem) =>
+        classifiedItems: prev.classifiedItems.map((ci) =>
           ci.sku === sku ? {
             ...ci,
             classification: {
@@ -146,9 +154,9 @@ export default function ClassificationStep({
           } : ci
         )
       }));
-      
+
       warehouseFeedback.success();
-      setManualInputs((prev: any) => ({
+      setManualInputs((prev) => ({
         ...prev,
         [sku]: {
           ...prev[sku],
@@ -156,10 +164,10 @@ export default function ClassificationStep({
           successMessage: '✅ Classification applied and saved!'
         }
       }));
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => {
-        setManualInputs((prev: any) => ({
+        setManualInputs((prev) => ({
           ...prev,
           [sku]: {
             ...prev[sku],
@@ -167,14 +175,15 @@ export default function ClassificationStep({
           }
         }));
       }, 3000);
-      
-    } catch (err: any) {
-      setManualInputs((prev: any) => ({
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save classification';
+      setManualInputs((prev) => ({
         ...prev,
         [sku]: {
           ...prev[sku],
           saving: false,
-          error: err?.message || 'Failed to save classification',
+          error: errorMessage,
           successMessage: undefined
         }
       }));
@@ -247,7 +256,7 @@ export default function ClassificationStep({
                             <input
                               type="text"
                               value={manualInputs[item.sku]?.freightClass ?? ''}
-                              onChange={(e) => setManualInputs((prev: any) => ({
+                              onChange={(e) => setManualInputs((prev) => ({
                                 ...prev,
                                 [item.sku]: {
                                   ...prev[item.sku],
@@ -266,7 +275,7 @@ export default function ClassificationStep({
                             <input
                               type="text"
                               value={manualInputs[item.sku]?.nmfcCode ?? ''}
-                              onChange={(e) => setManualInputs((prev: any) => ({
+                              onChange={(e) => setManualInputs((prev) => ({
                                 ...prev,
                                 [item.sku]: {
                                   ...prev[item.sku],
@@ -285,7 +294,7 @@ export default function ClassificationStep({
                             <input
                               type="text"
                               value={manualInputs[item.sku]?.nmfcSub ?? ''}
-                              onChange={(e) => setManualInputs((prev: any) => ({
+                              onChange={(e) => setManualInputs((prev) => ({
                                 ...prev,
                                 [item.sku]: {
                                   ...prev[item.sku],
@@ -306,7 +315,7 @@ export default function ClassificationStep({
                           <input
                             type="text"
                             value={manualInputs[item.sku]?.description ?? ''}
-                            onChange={(e) => setManualInputs((prev: any) => ({
+                            onChange={(e) => setManualInputs((prev) => ({
                               ...prev,
                               [item.sku]: {
                                 ...prev[item.sku],

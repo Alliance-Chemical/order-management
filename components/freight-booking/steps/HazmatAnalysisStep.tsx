@@ -3,6 +3,13 @@
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import type { ShipStationOrder, HazmatOverride, NmfcOverride, NmfcSuggestion, ValidationErrors } from '@/types/freight-booking';
 
+interface WarehouseFeedback {
+  success: () => void;
+  warning: () => void;
+  error: () => void;
+  buttonPress: () => void;
+}
+
 interface HazmatAnalysisStepProps {
   selectedOrder: ShipStationOrder;
   hazmatBySku: Record<string, HazmatOverride>;
@@ -13,7 +20,7 @@ interface HazmatAnalysisStepProps {
   updateNmfcForSku: (sku: string, patch: Partial<NmfcOverride>) => void;
   suggestNmfcForSku: (sku: string, isHaz: boolean, packingGroup?: string | null, unitWeightLbs?: number, qty?: number) => void;
   onContinue: () => void;
-  warehouseFeedback: any;
+  warehouseFeedback: WarehouseFeedback;
 }
 
 export default function HazmatAnalysisStep({

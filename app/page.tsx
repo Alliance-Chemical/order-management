@@ -10,7 +10,23 @@ import {
   ArrowRightIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/solid';
-import PrintPreparationModalSimplified from '@/components/desktop/PrintPreparationModalSimplified';
+import dynamic from 'next/dynamic';
+
+// Code-split the print modal for better initial load performance
+const PrintPreparationModalSimplified = dynamic(
+  () => import('@/components/desktop/PrintPreparationModalSimplified'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-center text-gray-600">Loading print preview...</p>
+        </div>
+      </div>
+    ),
+  }
+);
 import FreightNavigation from '@/components/navigation/FreightNavigation';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { Button } from '@/components/ui/button';
@@ -69,6 +85,7 @@ export default function WorkQueueDashboard() {
   const [measurementExpanded, setMeasurementExpanded] = useState<Set<number>>(new Set());
   const [measurementDrafts, setMeasurementDrafts] = useState<Record<number, MeasurementDraft>>({});
   const [savingMeasurements, setSavingMeasurements] = useState<Set<number>>(new Set());
+  const [printingPackingSlips, setPrintingPackingSlips] = useState<Set<number>>(new Set());
   const [activeFilter, setActiveFilter] = useState<'all' | 'under24' | '24to48' | '48to72' | 'over72' | 'ready'>('all');
   const [search, setSearch] = useState('');
   const dimensionUnits = ['in', 'cm'];
@@ -94,7 +111,15 @@ export default function WorkQueueDashboard() {
       const data = await response.json();
       if (data.success) {
         const ordersWithWorkspaces: FreightOrder[] = [...data.created, ...data.existing]
-          .filter((order: FreightOrder) => order.workspaceId)
+          .filter((order: FreightOrder) => {
+            if (!order.workspaceId) return false;
+
+            const status = (order.status || '').toLowerCase();
+            const phase = (order.workflowPhase || '').toLowerCase();
+            const isCompleteStatus = status === 'ready_to_ship' || status === 'completed' || status === 'shipped';
+            const isCompletePhase = phase === 'ready_to_ship' || phase === 'completed' || phase === 'shipped';
+            return !(isCompleteStatus || isCompletePhase);
+          })
           .map((order: FreightOrder) => ({
             ...order,
             finalMeasurements: order.finalMeasurements ?? null,
@@ -214,6 +239,46 @@ export default function WorkQueueDashboard() {
         },
       };
     });
+  };
+
+  const handlePrintPackingSlip = async (orderId: number, orderNumber: string, size: '4x6' | 'letter') => {
+    setPrintingPackingSlips((prev) => new Set(prev).add(orderId));
+    try {
+      const response = await fetch(`/api/workspace/${orderId}/packing-slip?size=${size}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to generate packing slip');
+      }
+
+      // Download the PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `packing-slip-${orderNumber}-${size}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: 'Packing slip generated',
+        description: `${size} packing slip downloaded successfully`,
+      });
+    } catch (error) {
+      console.error('Error generating packing slip:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate packing slip. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setPrintingPackingSlips((prev) => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
+    }
   };
 
   const handleSaveMeasurements = async (order: FreightOrder) => {
@@ -852,6 +917,24 @@ export default function WorkQueueDashboard() {
 
                   <div className="mt-auto px-4 pb-4">
                     <div className="flex flex-col gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          onClick={() => handlePrintPackingSlip(order.orderId, order.orderNumber, '4x6')}
+                          disabled={printingPackingSlips.has(order.orderId)}
+                          variant="outline"
+                          className="h-11 justify-center gap-1 border-purple-300 text-purple-700 hover:bg-purple-50 text-xs"
+                        >
+                          📄 4x6
+                        </Button>
+                        <Button
+                          onClick={() => handlePrintPackingSlip(order.orderId, order.orderNumber, 'letter')}
+                          disabled={printingPackingSlips.has(order.orderId)}
+                          variant="outline"
+                          className="h-11 justify-center gap-1 border-purple-300 text-purple-700 hover:bg-purple-50 text-xs"
+                        >
+                          📄 8.5x11
+                        </Button>
+                      </div>
                       <Button
                         onClick={() => navigateToWorkspace(order.orderId, 'worker')}
                         className="h-11 justify-center gap-2 bg-blue-600 text-white hover:bg-blue-500"

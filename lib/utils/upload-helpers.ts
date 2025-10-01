@@ -1,4 +1,4 @@
-import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const MAX_RETRIES = 3;
@@ -57,7 +57,7 @@ async function sleep(ms: number): Promise<void> {
 }
 
 export async function uploadToS3WithRetry(
-  s3Client: any,
+  s3Client: S3Client,
   options: UploadOptions
 ): Promise<UploadResult> {
   let lastError: Error | undefined;

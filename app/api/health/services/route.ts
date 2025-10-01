@@ -6,7 +6,7 @@ interface ServiceCheck {
   name: string;
   status: 'healthy' | 'unhealthy' | 'degraded' | 'unknown';
   configured: boolean;
-  details?: any;
+  details?: Record<string, unknown>;
   error?: string;
   latency?: number;
 }

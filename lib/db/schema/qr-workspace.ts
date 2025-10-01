@@ -2,8 +2,7 @@ import { uuid, bigint, varchar, jsonb, timestamp, integer, boolean, index, pgSch
 import { relations } from 'drizzle-orm';
 
 type JsonObject = Record<string, unknown>;
-type JsonObjectMap = Record<string, JsonObject>;
-type JsonObjectArray = JsonObject[];
+type JsonObjectMap = Record<string, unknown>;
 type AlertRecipient = { type: 'sms' | 'email'; value: string };
 
 export const qrWorkspaceSchema = pgSchema('qr_workspace');
@@ -48,42 +47,7 @@ export const workspaces = qrWorkspaceSchema.table('workspaces', {
   phaseCompletedAt: jsonb('phase_completed_at').$type<Record<string, string>>().default({}),
   
   // Final Measurements (post-production)
-  finalMeasurements: jsonb('final_measurements').$type<{
-    weight?: { value: number; units: string; };
-    dimensions?: { length: number; width: number; height: number; units: string; };
-    entries?: Array<{
-      id: string;
-      weight: string;
-      weightUnit: string;
-      length: string;
-      width: string;
-      height: string;
-      dimensionUnit: string;
-      containerCode?: string | null;
-      measuredAt?: string;
-    }>;
-    pallets?: Array<{
-      id: string;
-      type: '48x48' | '48x40' | 'custom';
-      dimensions: { length: number; width: number; height: number; units: string; };
-      weight: { value: number; units: string; };
-      items: Array<{
-        sku: string;
-        name: string;
-        quantity: number;
-        position?: { x: number; y: number; z: number; };
-      }>;
-      stackable: boolean;
-      notes?: string;
-    }>;
-    mode?: 'single' | 'pallets';
-    palletCount?: number;
-    totalWeight?: number;
-    entryCount?: number;
-    measuredBy?: string;
-    measuredAt?: string;
-    scannedContainer?: string | null;
-  }>(),
+  finalMeasurements: jsonb('final_measurements').$type<JsonObject>().default({}),
   
   // Archive Management
   shippedAt: timestamp('shipped_at'),
@@ -454,3 +418,70 @@ export const containerTypes = qrWorkspaceSchema.table('container_types', {
 }));
 
 export const containerTypesRelations = relations(containerTypes, () => ({}));
+
+// LOT Numbers Table - migrated from legacy database
+export const lotNumbers = qrWorkspaceSchema.table('lot_numbers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Product Association
+  productId: varchar('product_id', { length: 255 }).notNull(),
+  productTitle: varchar('product_title', { length: 255 }).notNull().default('Default Title'),
+  sku: varchar('sku', { length: 255 }),
+
+  // LOT Identification
+  lotNumber: varchar('lot_number', { length: 255 }).notNull(),
+  month: varchar('month', { length: 20 }).notNull(),
+  year: integer('year').notNull(),
+
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow(),
+  createdBy: varchar('created_by', { length: 255 }),
+
+  // Legacy Migration
+  legacyId: integer('legacy_id'), // Reference to original legacy DB ID for migration tracking
+}, (table) => ({
+  productIdx: index('lot_numbers_product_idx').on(table.productId),
+  lotNumberIdx: index('lot_numbers_lot_idx').on(table.lotNumber),
+  yearMonthIdx: index('lot_numbers_year_month_idx').on(table.year, table.month),
+}));
+
+// Label Requests Table - migrated from legacy database
+export const labelRequests = qrWorkspaceSchema.table('label_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Product Association
+  productId: varchar('product_id', { length: 255 }),
+  productName: varchar('product_name', { length: 500 }),
+  sku: varchar('sku', { length: 255 }),
+  variantOption1: varchar('variant_option1', { length: 255 }),
+
+  // Request Details
+  quantity: integer('quantity'),
+  lotNumber: varchar('lot_number', { length: 255 }),
+  labelType: varchar('label_type', { length: 20 }).default('container'),
+
+  // Custom Request
+  customRequest: boolean('custom_request').default(false),
+  customDetails: varchar('custom_details', { length: 1000 }),
+  urgent: boolean('urgent').default(false),
+
+  // Status & Processing
+  status: varchar('status', { length: 20 }).default('pending'),
+  requestedAt: timestamp('requested_at').defaultNow(),
+  requestedBy: varchar('requested_by', { length: 255 }),
+  printedAt: timestamp('printed_at'),
+  printedBy: varchar('printed_by', { length: 255 }),
+
+  // Metadata
+  updatedAt: timestamp('updated_at').defaultNow(),
+
+  // Legacy Migration
+  legacyId: integer('legacy_id'), // Reference to original legacy DB ID for migration tracking
+}, (table) => ({
+  productIdx: index('label_requests_product_idx').on(table.productId),
+  statusIdx: index('label_requests_status_idx').on(table.status),
+  requestedIdx: index('label_requests_requested_idx').on(table.requestedAt),
+}));
+
+export const lotNumbersRelations = relations(lotNumbers, () => ({}));
+export const labelRequestsRelations = relations(labelRequests, () => ({}));

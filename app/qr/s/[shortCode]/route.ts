@@ -22,10 +22,9 @@ export async function GET(request: NextRequest, { params }: { params: { shortCod
     const url = new URL(`/workspace/${qr.orderId}`, origin);
     url.searchParams.set('sc', code);
     return NextResponse.redirect(url);
-  } catch (err) {
+  } catch (_err) {
     const origin = request.nextUrl.origin;
     const url = new URL('/', origin);
     return NextResponse.redirect(url);
   }
 }
-

@@ -3,7 +3,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
 import {
   CheckCircle,
   Clock,
@@ -11,10 +10,7 @@ import {
   Package,
   Truck,
   X,
-  Loader2,
-  Play,
-  Pause,
-  RotateCcw
+  Loader2
 } from "lucide-react"
 
 const orderStatusVariants = cva(

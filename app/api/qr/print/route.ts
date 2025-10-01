@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 
@@ -351,15 +350,8 @@ function generatePrintHTML(
     }
   };
   
-  // Helper function to get source information for container labels
-  // Removed source info - no longer needed
-  const getSourceInfo = (record: any): string => {
-    // Source label functionality removed
-    return '';
-  };
-  
   // Helper function to get order items list for master label
-  const getOrderItemsList = (record: any): string => {
+  const getOrderItemsList = (_record: any): string => {
     // Removed order items list functionality
     return '';
   };
@@ -507,7 +499,6 @@ function generatePrintHTML(
     const labelType = getLabelType(record);
     const productName = getProductName(record);
     const itemInfo = getItemInfo(record, override);
-    const sourceInfo = getSourceInfo(record);
     const orderItemsList = getOrderItemsList(record);
     const shortCode = record.shortCode || '';
     

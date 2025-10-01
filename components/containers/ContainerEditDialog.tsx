@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { InfoTooltip } from '@/components/ui/info-tooltip';
 import type { EditingContainer, ContainerEditForm } from '@/types/containers';
 
 interface ContainerEditDialogProps {
@@ -158,7 +159,14 @@ export default function ContainerEditDialog({
             
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label>Freight Class</Label>
+                <Label className="flex items-center gap-2">
+                  Freight Class
+                  <InfoTooltip
+                    title="Freight Class"
+                    content="NMFC freight classification (50-500). Determines shipping costs based on density, handling, and liability. Lower numbers = denser/cheaper shipping."
+                    example="55, 60, 65, 70"
+                  />
+                </Label>
                 <Input
                   value={editForm.freightClass}
                   onChange={(e) => setEditForm({...editForm, freightClass: e.target.value})}
@@ -166,7 +174,14 @@ export default function ContainerEditDialog({
                 />
               </div>
               <div>
-                <Label>NMFC Code</Label>
+                <Label className="flex items-center gap-2">
+                  NMFC Code
+                  <InfoTooltip
+                    title="NMFC Code"
+                    content="National Motor Freight Classification code. A standardized system to classify freight for LTL shipping."
+                    example="156000"
+                  />
+                </Label>
                 <Input
                   value={editForm.nmfcCode}
                   onChange={(e) => setEditForm({...editForm, nmfcCode: e.target.value})}
@@ -176,7 +191,14 @@ export default function ContainerEditDialog({
             </div>
 
             <div>
-              <Label>UN Rating</Label>
+              <Label className="flex items-center gap-2">
+                UN Rating
+                <InfoTooltip
+                  title="UN Rating"
+                  content="UN performance rating for hazmat packaging. Format: UN / Container Type / Packing Group / Max Weight (kg) / Year. Required for shipping hazardous materials."
+                  example="UN/1A1/X1.4/150/19"
+                />
+              </Label>
               <Input
                 value={editForm.unRating}
                 onChange={(e) => setEditForm({...editForm, unRating: e.target.value})}

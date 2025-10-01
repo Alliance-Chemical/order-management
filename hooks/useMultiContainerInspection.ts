@@ -78,6 +78,11 @@ export function useMultiContainerInspection({
       });
     }
     setContainers(containerList);
+
+    // Auto-open scanner for first container
+    if (containerList.length > 0) {
+      setShowScanner(true);
+    }
   }, [quantity]);
 
   const handleQRScan = useCallback((qrData: string) => {

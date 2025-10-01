@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { CheckCircleIcon, TruckIcon } from '@heroicons/react/24/outline';
 import FinalMeasurements from '@/components/workspace/FinalMeasurements';
@@ -162,20 +163,27 @@ export default function PreShipInspection({ orderId, initialState, onStateChange
 
   return (
     <div className="space-y-6">
-      {/* Progress Bar */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">Shipping Checklist Progress</span>
-          <span className="text-sm text-gray-500">{completedCount} of {totalCount}</span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex-1">
+          <div className="flex justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">Shipping Checklist Progress</span>
+            <span className="text-sm text-gray-500">{completedCount} of {totalCount}</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all ${
+                progress === 100 ? 'bg-green-600' : 'bg-blue-600'
+              }`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
-            className={`h-2 rounded-full transition-all ${
-              progress === 100 ? 'bg-green-600' : 'bg-blue-600'
-            }`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        <Link
+          href={`/workspace/${orderId}?mode=inspection-review`}
+          className="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50"
+        >
+          Review Worker Inspection
+        </Link>
       </div>
 
       {/* Shipping Information */}

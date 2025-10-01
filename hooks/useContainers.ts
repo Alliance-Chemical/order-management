@@ -109,6 +109,28 @@ export function useContainers() {
   };
 
   async function handleSingleMaterialToggle(containerId: string, material: 'metal' | 'poly') {
+    // Optimistic update: immediately update the UI
+    const previousProducts = [...products];
+
+    // Update the local state optimistically
+    setProducts(prevProducts =>
+      prevProducts.map(product => ({
+        ...product,
+        variants: product.variants.map(variant => {
+          if (variant.containerType?.id === containerId) {
+            return {
+              ...variant,
+              containerType: {
+                ...variant.containerType,
+                containerMaterial: material,
+              },
+            };
+          }
+          return variant;
+        }),
+      }))
+    );
+
     try {
       const response = await fetch(`/api/container-types/${containerId}`, {
         method: 'PUT',
@@ -120,12 +142,16 @@ export function useContainers() {
       });
 
       if (response.ok) {
-        await fetchProducts();
+        // Success - the optimistic update was correct
         toast({
           title: 'Success',
           description: 'Material updated successfully',
         });
+        // Optionally refresh to ensure consistency
+        await fetchProducts();
       } else {
+        // Revert optimistic update on error
+        setProducts(previousProducts);
         const data = await response.json();
         toast({
           title: 'Error',
@@ -134,6 +160,8 @@ export function useContainers() {
         });
       }
     } catch (err) {
+      // Revert optimistic update on error
+      setProducts(previousProducts);
       console.error('Error updating material:', err);
       toast({
         title: 'Error',

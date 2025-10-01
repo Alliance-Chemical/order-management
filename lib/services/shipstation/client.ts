@@ -1,3 +1,5 @@
+import { withTimeout } from '@/lib/utils/timeout';
+
 export interface ShipStationOrderItem extends Record<string, unknown> {
   lineItemKey?: string;
   sku?: string;
@@ -21,6 +23,7 @@ export class ShipStationClient {
   private apiKey: string;
   private apiSecret: string;
   private baseUrl: string = 'https://ssapi.shipstation.com';
+  private defaultTimeout: number = 5000; // 5 second timeout
 
   constructor() {
     // Trim any whitespace from environment variables
@@ -50,29 +53,67 @@ export class ShipStationClient {
     return response.json() as Promise<T>;
   }
 
-  async getOrder(orderId: number): Promise<ShipStationOrder> {
-    // ShipStation's /orders/{orderId} endpoint returns the full order including items
-    const order = await this.makeRequest<ShipStationOrder>(`/orders/${orderId}`);
+  /**
+   * Get order by ID with timeout
+   * Returns null if order not found, timeout, or error
+   */
+  async getOrder(orderId: number, timeoutMs?: number): Promise<ShipStationOrder | null> {
+    try {
+      const result = await withTimeout(
+        async () => {
+          // ShipStation's /orders/{orderId} endpoint returns the full order including items
+          const order = await this.makeRequest<ShipStationOrder>(`/orders/${orderId}`);
 
-    // If items are missing, try fetching via search endpoint which includes items
-    if (!order.items || order.items.length === 0) {
-      console.log(`Order ${orderId} missing items, fetching via search endpoint`);
-      const searchResponse = await this.makeRequest<ShipStationOrderSearchResponse>(
-        `/orders?orderId=${orderId}`
+          // If items are missing, try fetching via search endpoint which includes items
+          if (!order.items || order.items.length === 0) {
+            console.log(`Order ${orderId} missing items, fetching via search endpoint`);
+            const searchResponse = await this.makeRequest<ShipStationOrderSearchResponse>(
+              `/orders?orderId=${orderId}`
+            );
+            if (searchResponse.orders.length > 0) {
+              return searchResponse.orders[0];
+            }
+          }
+
+          return order;
+        },
+        {
+          timeoutMs: timeoutMs ?? this.defaultTimeout,
+          errorMessage: `ShipStation getOrder(${orderId}) timed out`,
+        }
       );
-      if (searchResponse.orders.length > 0) {
-        return searchResponse.orders[0];
-      }
-    }
 
-    return order;
+      return result;
+    } catch (error) {
+      console.error(`ShipStation getOrder(${orderId}) failed:`, error);
+      return null;
+    }
   }
 
-  async getOrderByNumber(orderNumber: string): Promise<ShipStationOrder | null> {
-    const response = await this.makeRequest<ShipStationOrderSearchResponse>(
-      `/orders?orderNumber=${encodeURIComponent(orderNumber)}`
-    );
-    return response.orders[0] ?? null;
+  /**
+   * Get order by order number with timeout
+   * Returns null if order not found, timeout, or error
+   */
+  async getOrderByNumber(orderNumber: string, timeoutMs?: number): Promise<ShipStationOrder | null> {
+    try {
+      const result = await withTimeout(
+        async () => {
+          const response = await this.makeRequest<ShipStationOrderSearchResponse>(
+            `/orders?orderNumber=${encodeURIComponent(orderNumber)}`
+          );
+          return response.orders[0] ?? null;
+        },
+        {
+          timeoutMs: timeoutMs ?? this.defaultTimeout,
+          errorMessage: `ShipStation getOrderByNumber(${orderNumber}) timed out`,
+        }
+      );
+
+      return result;
+    } catch (error) {
+      console.error(`ShipStation getOrderByNumber(${orderNumber}) failed:`, error);
+      return null;
+    }
   }
 
   async updateOrderTags(orderId: number, tags: number[]): Promise<ShipStationOrder> {

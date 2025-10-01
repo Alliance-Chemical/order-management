@@ -2,21 +2,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-
-interface Container {
-  id: string;
-  number: number;
-  scanned: boolean;
-  inspected: boolean;
-  issues: string[];
-  qrData?: string;
-}
-
-interface InspectionQuestion {
-  id: string;
-  label: string;
-  icon: string;
-}
+import type { Container, InspectionQuestion } from '@/types/components';
 
 interface ContainerInspectionFormProps {
   currentContainer: Container | undefined;
@@ -31,13 +17,13 @@ interface ContainerInspectionFormProps {
   onQuestionFail: () => void;
 }
 
-export function ContainerInspectionForm({
+export const ContainerInspectionForm = React.memo(function ContainerInspectionForm({
   currentContainer,
   containerNumber,
   containerType,
   currentQuestion,
   questions,
-  showScanner,
+  showScanner: _showScanner,
   onOpenScanner,
   onSkipScanning,
   onQuestionPass,
@@ -70,11 +56,12 @@ export function ContainerInspectionForm({
             variant="info"
             size="xlarge"
             className="max-w-md mx-auto w-full"
+            aria-label={`Open QR scanner for ${containerType} ${containerNumber}`}
           >
-            <svg className="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} 
+            <svg className="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
                 d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} 
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
                 d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             OPEN SCANNER
@@ -85,6 +72,7 @@ export function ContainerInspectionForm({
             variant="neutral"
             size="base"
             className="mt-4"
+            aria-label="Skip QR code scanning (testing mode only)"
           >
             Skip scanning (testing only)
           </Button>
@@ -121,24 +109,26 @@ export function ContainerInspectionForm({
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
+        <div className="grid grid-cols-2 gap-4 max-w-md mx-auto" role="group" aria-label="Inspection question response">
           <Button
             onClick={onQuestionPass}
             variant="go"
             size="xlarge"
+            aria-label={`Pass inspection: ${currentQ.label}`}
           >
-            <svg className="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
             </svg>
             YES
           </Button>
-          
+
           <Button
             onClick={onQuestionFail}
             variant="stop"
             size="xlarge"
+            aria-label={`Fail inspection: ${currentQ.label}`}
           >
-            <svg className="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
             </svg>
             NO
@@ -147,4 +137,4 @@ export function ContainerInspectionForm({
       </div>
     </div>
   );
-}
+});

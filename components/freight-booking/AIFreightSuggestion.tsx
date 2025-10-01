@@ -3,53 +3,16 @@
 import { useFreightActionTracking } from "@/app/lib/telemetry/freight-telemetry";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { Card } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { useCallback, useEffect, useState } from "react";
 import { suggestFreight } from '@/app/actions/freight';
-import {
-  HiCheckCircle,
-  HiClock,
-  HiCurrencyDollar,
-  HiInformationCircle,
-  HiLightBulb,
-  HiThumbDown,
-  HiThumbUp,
-  HiTruck,
-  HiXCircle,
-} from "react-icons/hi";
-
-interface FreightSuggestion {
-  carrier: {
-    name: string;
-    confidence: number;
-    reasoning: string;
-  };
-  service: {
-    type: string;
-    confidence: number;
-    reasoning: string;
-  };
-  accessorials: Array<{
-    type: string;
-    recommended: boolean;
-    confidence: number;
-    reasoning: string;
-  }>;
-  estimatedCost?: {
-    low: number;
-    high: number;
-    average: number;
-  };
-  estimatedTransitDays?: {
-    min: number;
-    max: number;
-    typical: number;
-  };
-  overallConfidence: number;
-  aiInsights: string[];
-}
+import type { FreightSuggestion, FreightAccessorial } from '@/types/components';
+import { FreightCarrierRecommendation } from './FreightCarrierRecommendation';
+import { FreightAccessorials } from './FreightAccessorials';
+import { FreightEstimates } from './FreightEstimates';
+import { FreightAIInsights } from './FreightAIInsights';
+import { HiCheckCircle, HiLightBulb, HiXCircle } from "react-icons/hi";
 
 interface AIFreightSuggestionProps {
   orderNumber: string;
@@ -68,10 +31,7 @@ export default function AIFreightSuggestion({
   const [suggestion, setSuggestion] = useState<FreightSuggestion | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const [feedbackReason, setFeedbackReason] = useState("");
-  const [showFeedback, setShowFeedback] = useState(false);
-  
+
   const { trackAISuggestionInteraction } = useFreightActionTracking();
 
   const fetchSuggestions = useCallback(async () => {
@@ -86,6 +46,10 @@ export default function AIFreightSuggestion({
         destination: orderData.destination || {},
         origin: orderData.origin || { city: "River Grove", state: "IL", zip: "60171" }
       });
+
+      if (!data) {
+        throw new Error('No data received from freight suggestion service');
+      }
       
       if (data.success && data.suggestion) {
         // Transform the response to match our expected format
@@ -117,13 +81,13 @@ export default function AIFreightSuggestion({
             typical: data.suggestion.estimatedTransitDays
           } : undefined,
           overallConfidence: data.confidence || 0.5,
-          aiInsights: data.isDefaultFallback ? 
+          aiInsights: data.isDefaultFallback ?
             ["Using default configuration", "Limited historical data available"] :
             [`Based on ${data.similarShipments?.length || 0} similar shipments`]
         };
-        
+
         setSuggestion(transformedSuggestion);
-      } else if (!response.ok && data.fallbackSuggestion) {
+      } else if (!data.success && data.fallbackSuggestion) {
         // Use fallback suggestion if provided
         const fallback = data.fallbackSuggestion;
         setSuggestion({
@@ -141,17 +105,27 @@ export default function AIFreightSuggestion({
 
     } catch (err) {
       console.error("AI suggestion error:", err);
-      // Don't block the user - provide a basic suggestion
-      setSuggestion({
-        carrier: { name: "SAIA", confidence: 0.2, reasoning: "Default fallback carrier" },
-        service: { type: "Standard", confidence: 0.2, reasoning: "Default service type" },
-        accessorials: [],
-        estimatedCost: { low: 400, high: 600, average: 500 },
-        estimatedTransitDays: { min: 2, max: 5, typical: 3 },
-        overallConfidence: 0.2,
-        aiInsights: ["Manual review recommended - AI assistance temporarily unavailable"]
-      });
-      // Don't show error to user - we have a fallback
+
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+
+      // Check if it's a network error that we should retry
+      const isNetworkError = errorMessage.toLowerCase().includes('fetch') ||
+                            errorMessage.toLowerCase().includes('network');
+
+      if (isNetworkError) {
+        setError('Network error - Click retry to try again');
+      } else {
+        // Don't block the user - provide a basic suggestion
+        setSuggestion({
+          carrier: { name: "SAIA", confidence: 0.2, reasoning: "Default fallback carrier" },
+          service: { type: "Standard", confidence: 0.2, reasoning: "Default service type" },
+          accessorials: [],
+          estimatedCost: { low: 400, high: 600, average: 500 },
+          estimatedTransitDays: { min: 2, max: 5, typical: 3 },
+          overallConfidence: 0.2,
+          aiInsights: ["Manual review recommended - AI assistance temporarily unavailable"]
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -169,22 +143,13 @@ export default function AIFreightSuggestion({
   };
 
   const handleReject = () => {
-    setShowFeedback(true);
-  };
-  
-  const submitRejection = () => {
     if (suggestion) {
-      trackAISuggestionInteraction("rejected", suggestion, feedbackReason);
-      onReject();
-      setShowFeedback(false);
-      setFeedbackReason("");
+      trackAISuggestionInteraction("rejected", suggestion);
     }
+    onReject();
   };
 
-  const handleAccessorialToggle = (accessorial: {
-    type: string;
-    recommended: boolean;
-  }) => {
+  const handleAccessorialToggle = (accessorial: FreightAccessorial) => {
     if (!suggestion) return;
 
     const modifiedSuggestion = {
@@ -225,9 +190,25 @@ export default function AIFreightSuggestion({
   if (error) {
     return (
       <Card className="w-full border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
-        <div className="flex items-center">
-          <HiXCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-          <span className="ml-2 text-red-600 dark:text-red-400">{error}</span>
+        <div className="p-4">
+          <div className="flex items-center mb-3">
+            <HiXCircle className="h-5 w-5 text-red-600 dark:text-red-400" aria-hidden="true" />
+            <span className="ml-2 text-red-600 dark:text-red-400 font-semibold">{error}</span>
+          </div>
+          <Button
+            onClick={() => {
+              setError(null);
+              fetchSuggestions();
+            }}
+            variant="destructive"
+            size="sm"
+            aria-label="Retry fetching freight suggestions"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Retry
+          </Button>
         </div>
       </Card>
     );
@@ -241,7 +222,7 @@ export default function AIFreightSuggestion({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <HiLightBulb className="h-6 w-6 text-yellow-400" />
+            <HiLightBulb className="h-6 w-6 text-yellow-400" aria-hidden="true" />
             <h3 className="ml-2 text-lg font-semibold text-gray-900 dark:text-white">
               AI Freight Recommendation
             </h3>
@@ -253,128 +234,35 @@ export default function AIFreightSuggestion({
         </div>
 
         {/* Carrier Recommendation */}
-        <div className="rounded-lg border p-4 dark:border-gray-600">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <HiTruck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              <span className="ml-2 font-medium">Carrier & Service</span>
-            </div>
-            <Progress
-              progress={suggestion.carrier.confidence * 100}
-              size="sm"
-              color={getConfidenceColor(suggestion.carrier.confidence)}
-              className="w-32"
-            />
-          </div>
-          <div className="mt-2">
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-              {suggestion.carrier.name} - {suggestion.service.type}
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {suggestion.carrier.reasoning}
-            </p>
-          </div>
-        </div>
+        <FreightCarrierRecommendation
+          carrier={suggestion.carrier}
+          service={suggestion.service}
+          getConfidenceColor={getConfidenceColor}
+        />
 
         {/* Accessorials */}
-        <div className="rounded-lg border p-4 dark:border-gray-600">
-          <h4 className="mb-3 font-medium">Recommended Accessorials</h4>
-          <div className="space-y-2">
-            {suggestion.accessorials.map((accessorial) => (
-              <div
-                key={accessorial.type}
-                className="flex items-center justify-between rounded-lg bg-gray-50 p-2 dark:bg-gray-700"
-              >
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={accessorial.recommended}
-                    onChange={() => handleAccessorialToggle(accessorial)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                  />
-                  <span className="ml-2 text-sm">{accessorial.type}</span>
-                  {accessorial.confidence >= 0.8 && (
-                    <Badge size="xs" color="success" className="ml-2">
-                      Recommended
-                    </Badge>
-                  )}
-                </div>
-                <button
-                  onClick={() => setShowDetails(!showDetails)}
-                  className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                >
-                  Why?
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <FreightAccessorials
+          accessorials={suggestion.accessorials}
+          onToggle={handleAccessorialToggle}
+        />
 
         {/* Cost & Transit Estimates */}
-        <div className="grid grid-cols-2 gap-4">
-          {suggestion.estimatedCost && (
-            <div className="rounded-lg border p-3 dark:border-gray-600">
-              <div className="flex items-center">
-                <HiCurrencyDollar className="h-5 w-5 text-green-600 dark:text-green-400" />
-                <span className="ml-2 text-sm font-medium">Estimated Cost</span>
-              </div>
-              <div className="mt-1 text-lg font-semibold">
-                ${suggestion.estimatedCost.average.toFixed(2)}
-              </div>
-              <div className="text-xs text-gray-500">
-                Range: ${suggestion.estimatedCost.low.toFixed(2)} - $
-                {suggestion.estimatedCost.high.toFixed(2)}
-              </div>
-            </div>
-          )}
-
-          {suggestion.estimatedTransitDays && (
-            <div className="rounded-lg border p-3 dark:border-gray-600">
-              <div className="flex items-center">
-                <HiClock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                <span className="ml-2 text-sm font-medium">Transit Time</span>
-              </div>
-              <div className="mt-1 text-lg font-semibold">
-                {suggestion.estimatedTransitDays.typical} days
-              </div>
-              <div className="text-xs text-gray-500">
-                Range: {suggestion.estimatedTransitDays.min}-
-                {suggestion.estimatedTransitDays.max} days
-              </div>
-            </div>
-          )}
-        </div>
+        <FreightEstimates
+          estimatedCost={suggestion.estimatedCost}
+          estimatedTransitDays={suggestion.estimatedTransitDays}
+        />
 
         {/* AI Insights */}
-        {suggestion.aiInsights.length > 0 && (
-          <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-            <div className="flex items-center">
-              <HiInformationCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              <span className="ml-2 text-sm font-medium text-blue-900 dark:text-blue-100">
-                AI Insights
-              </span>
-            </div>
-            <ul className="mt-2 space-y-1">
-              {suggestion.aiInsights.map((insight, index) => (
-                <li
-                  key={index}
-                  className="text-sm text-blue-800 dark:text-blue-200"
-                >
-                  {insight}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <FreightAIInsights insights={suggestion.aiInsights} />
 
         {/* Action Buttons */}
-        <div className="flex justify-end space-x-3">
-          <Button color="gray" onClick={handleReject}>
-            <HiXCircle className="mr-2 h-5 w-5" />
+        <div className="flex justify-end space-x-3" role="group" aria-label="Freight recommendation actions">
+          <Button color="gray" onClick={handleReject} aria-label="Reject AI recommendation and use manual selection">
+            <HiXCircle className="mr-2 h-5 w-5" aria-hidden="true" />
             Use Manual Selection
           </Button>
-          <Button color="success" onClick={handleAccept}>
-            <HiCheckCircle className="mr-2 h-5 w-5" />
+          <Button color="success" onClick={handleAccept} aria-label="Accept AI freight recommendation">
+            <HiCheckCircle className="mr-2 h-5 w-5" aria-hidden="true" />
             Accept Recommendation
           </Button>
         </div>
@@ -382,3 +270,5 @@ export default function AIFreightSuggestion({
     </Card>
   );
 }
+
+export default AIFreightSuggestion;

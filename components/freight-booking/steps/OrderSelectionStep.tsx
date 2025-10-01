@@ -4,12 +4,19 @@ import { TruckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { formatWarehouseText } from '@/lib/warehouse-ui-utils';
 import type { ShipStationOrder } from '@/types/freight-booking';
 
+interface WarehouseFeedback {
+  success: () => void;
+  warning: () => void;
+  error: () => void;
+  buttonPress: () => void;
+}
+
 interface OrderSelectionStepProps {
   availableOrders: ShipStationOrder[];
   loading: boolean;
   onOrderSelect: (order: ShipStationOrder) => void;
   onRefresh: () => void;
-  warehouseFeedback: any;
+  warehouseFeedback: WarehouseFeedback;
 }
 
 export default function OrderSelectionStep({

@@ -3,9 +3,10 @@
 import { WorkspaceService } from '@/lib/services/workspace/service'
 import { revalidatePath } from 'next/cache'
 import { getOptimizedDb } from '@/lib/db/neon'
-import { workspaces, documents } from '@/lib/db/schema/qr-workspace'
+import { workspaces, documents, activityLog } from '@/lib/db/schema/qr-workspace'
 import { eq, desc } from 'drizzle-orm'
 import { normalizeFinalMeasurementsPayload } from '@/lib/measurements/normalize'
+import { markFreightReady } from '@/lib/services/shipstation/tags'
 
 const workspaceService = new WorkspaceService()
 
@@ -26,13 +27,38 @@ type NotificationEntry = {
   timestamp: string
 }
 
+type ModuleStates = Record<string, unknown>
+
+function toModuleStates(value: unknown): ModuleStates {
+  if (value && typeof value === 'object') {
+    return { ...(value as Record<string, unknown>) }
+  }
+  return {}
+}
+
+function toNumericOrderId(orderId: string | number): number | null {
+  if (typeof orderId === 'number' && Number.isFinite(orderId)) {
+    return orderId
+  }
+
+  if (typeof orderId === 'string') {
+    const parsed = Number(orderId)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  return null
+}
+
 export async function createWorkspace(data: {
   orderId: string | number
   orderNumber: string
   userId?: string
+  workflowType?: 'pump_and_fill' | 'direct_resell'
 }) {
   try {
-    const { orderId, orderNumber, userId = 'system' } = data
+    const { orderId, orderNumber, userId = 'system', workflowType = 'pump_and_fill' } = data
 
     if (!orderId || !orderNumber) {
       return {
@@ -41,16 +67,26 @@ export async function createWorkspace(data: {
       }
     }
 
+    const numericOrderId = toNumericOrderId(orderId)
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
+
+    // Delegate entirely to WorkspaceService - single source of truth for workspace creation
     const workspace = await workspaceService.createWorkspace(
-      orderId.toString(),
+      numericOrderId,
       orderNumber,
-      userId
+      userId,
+      workflowType
     )
 
     // Revalidate relevant paths
     revalidatePath('/')
     revalidatePath('/dashboard')
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -68,10 +104,18 @@ export async function createWorkspace(data: {
 export async function shipWorkspace(orderId: string) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     // Get the workspace
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId))
+      where: eq(workspaces.orderId, numericOrderId)
     })
 
     if (!workspace) {
@@ -90,11 +134,11 @@ export async function shipWorkspace(orderId: string) {
         shippedAt: new Date(),
         workflowPhase: 'completed'
       })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .where(eq(workspaces.orderId, numericOrderId))
 
     // Revalidate paths
     revalidatePath('/')
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -115,6 +159,13 @@ export async function updateMeasurements(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     const normalized = normalizeFinalMeasurementsPayload(measurements, {
       userId:
         typeof (measurements as { measuredBy?: string } | undefined)?.measuredBy === 'string'
@@ -130,10 +181,10 @@ export async function updateMeasurements(
         finalMeasurements: normalized,
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .where(eq(workspaces.orderId, numericOrderId))
 
     // Revalidate workspace page
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -158,10 +209,18 @@ export async function addNote(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     // Get current workspace
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId))
+      where: eq(workspaces.orderId, numericOrderId)
     })
 
     if (!workspace) {
@@ -171,10 +230,6 @@ export async function addNote(
       }
     }
 
-    // Add note to notes array
-    const currentNotes = Array.isArray(workspace.notes)
-      ? (workspace.notes as WorkspaceNote[])
-      : []
     const newNote: WorkspaceNote = {
       id: `note-${Date.now()}`,
       content: note.content,
@@ -183,16 +238,17 @@ export async function addNote(
       createdAt: new Date().toISOString()
     }
 
-    await db
-      .update(workspaces)
-      .set({
-        notes: [...currentNotes, newNote],
-        updatedAt: new Date()
-      })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+    await workspaceService.repository.logActivity({
+      workspaceId: workspace.id,
+      activityType: newNote.type ?? 'note_added',
+      activityDescription: newNote.content,
+      performedBy: newNote.author ?? 'system',
+      module: 'notes',
+      metadata: newNote
+    })
 
     // Revalidate workspace page
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -222,6 +278,14 @@ export async function updateFinalMeasurements(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     // Update workspace with final measurements
     await db
@@ -231,10 +295,10 @@ export async function updateFinalMeasurements(
         updatedAt: new Date(),
         workflowPhase: 'shipping' // Move to shipping phase after measurements
       })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .where(eq(workspaces.orderId, numericOrderId))
 
     // Revalidate workspace page
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -266,6 +330,14 @@ export async function saveFinalMeasurements(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     // Update workspace with final measurements
     const measurements = {
@@ -284,10 +356,10 @@ export async function saveFinalMeasurements(
         updatedAt: new Date(),
         workflowPhase: 'shipping' // Move to shipping phase after measurements
       })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .where(eq(workspaces.orderId, numericOrderId))
 
     // Revalidate workspace page
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -312,10 +384,18 @@ export async function completePreShip(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     // Update workspace module states
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId))
+      where: eq(workspaces.orderId, numericOrderId)
     })
 
     if (!workspace) {
@@ -326,7 +406,7 @@ export async function completePreShip(
     }
 
     // Update module states to mark pre-ship as complete
-    const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {}
+    const currentModuleStates = toModuleStates(workspace.moduleStates)
     const preShipState = (currentModuleStates.preShip as Record<string, unknown> | undefined) || {}
     currentModuleStates.preShip = {
       ...preShipState,
@@ -344,10 +424,10 @@ export async function completePreShip(
         workflowPhase: 'ready_to_ship',
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .where(eq(workspaces.orderId, numericOrderId))
 
     // Revalidate workspace page
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -365,9 +445,17 @@ export async function completePreShip(
 export async function getWorkspace(orderId: string) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId)),
+      where: eq(workspaces.orderId, numericOrderId),
       with: {
         qrCodes: true,
         documents: true
@@ -400,6 +488,14 @@ export async function updateWorkspaceStatus(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     await db
       .update(workspaces)
@@ -407,11 +503,11 @@ export async function updateWorkspaceStatus(
         status,
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .where(eq(workspaces.orderId, numericOrderId))
 
     // Revalidate paths
     revalidatePath('/')
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -429,10 +525,18 @@ export async function updateWorkspaceStatus(
 export async function getWorkspaceActivity(orderId: string) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     // Get workspace with all related data
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId)),
+      where: eq(workspaces.orderId, numericOrderId),
       with: {
         documents: {
           orderBy: [desc(documents.uploadedAt)],
@@ -448,7 +552,12 @@ export async function getWorkspaceActivity(orderId: string) {
       }
     }
 
-    // Parse activity from module states and notes
+    const activityEntries = await db.query.activityLog.findMany({
+      where: eq(activityLog.workspaceId, workspace.id),
+      orderBy: [desc(activityLog.performedAt)],
+      limit: 100,
+    })
+
     const activities: Array<{
       id: string
       type: string
@@ -456,35 +565,32 @@ export async function getWorkspaceActivity(orderId: string) {
       description: string
       user: string
       timestamp: string
-    }> = []
-    
-    // Add notes as activities
-    if (workspace.notes && Array.isArray(workspace.notes)) {
-      (workspace.notes as WorkspaceNote[]).forEach((note) => {
-        activities.push({
-          id: note.id || `note-${activities.length}`,
-          type: 'note',
-          action: note.type || 'note_added',
-          description: note.content,
-          user: note.author || 'System',
-          timestamp: note.createdAt || new Date().toISOString()
-        })
-      })
-    }
-    
-    // Add document uploads as activities
+    }> = activityEntries.map((entry) => ({
+      id: entry.id,
+      type: entry.activityType,
+      action: entry.activityType,
+      description: entry.activityDescription ?? entry.activityType,
+      user: entry.performedBy,
+      timestamp: (entry.performedAt ?? new Date()).toISOString(),
+    }))
+
     workspace.documents?.forEach((doc) => {
+      const uploadedAt = doc.uploadedAt
+      const timestamp = uploadedAt instanceof Date
+        ? uploadedAt.toISOString()
+        : typeof uploadedAt === 'string'
+          ? uploadedAt
+          : new Date().toISOString()
       activities.push({
         id: doc.id,
         type: 'document',
         action: 'document_uploaded',
         description: `${doc.documentType} uploaded`,
         user: doc.uploadedBy || 'System',
-        timestamp: doc.uploadedAt || doc.createdAt
+        timestamp
       })
     })
-    
-    // Sort by timestamp descending
+
     activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
     return {
@@ -510,10 +616,18 @@ export async function notifyWorkspace(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
     
     // Get current workspace
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId))
+      where: eq(workspaces.orderId, numericOrderId)
     })
 
     if (!workspace) {
@@ -524,7 +638,7 @@ export async function notifyWorkspace(
     }
 
     // Store notification in module states
-    const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {}
+    const currentModuleStates = toModuleStates(workspace.moduleStates)
     const notifications = Array.isArray(currentModuleStates.notifications)
       ? (currentModuleStates.notifications as NotificationEntry[])
       : []
@@ -542,12 +656,12 @@ export async function notifyWorkspace(
         moduleStates: currentModuleStates,
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .where(eq(workspaces.orderId, numericOrderId))
 
     // You can add AWS SNS or other notification services here
 
     // Revalidate workspace page
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
 
     return {
       success: true,
@@ -569,10 +683,18 @@ export async function updateWorkspaceModuleState(
 ) {
   try {
     const db = getOptimizedDb()
+    const numericOrderId = toNumericOrderId(orderId)
+
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
 
     // Get current workspace
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId))
+      where: eq(workspaces.orderId, numericOrderId)
     })
 
     if (!workspace) {
@@ -583,7 +705,7 @@ export async function updateWorkspaceModuleState(
     }
 
     // Update module states
-    const currentModuleStates = (workspace.moduleStates as Record<string, unknown> | undefined) || {}
+    const currentModuleStates = toModuleStates(workspace.moduleStates)
 
     // Handle module aliases (pre_mix vs preMix, etc)
     const MODULE_STATE_ALIASES: Record<string, string[]> = {
@@ -593,6 +715,7 @@ export async function updateWorkspaceModuleState(
     }
 
     const aliases = MODULE_STATE_ALIASES[module]
+      || Object.entries(MODULE_STATE_ALIASES).find(([, values]) => values.includes(module))?.[1]
     const canonicalKey = aliases ? aliases[0] : module
 
     // Update the canonical key
@@ -607,17 +730,56 @@ export async function updateWorkspaceModuleState(
       }
     }
 
-    // Save to database
+    const updatePayload: Partial<typeof workspaces.$inferInsert> = {
+      moduleStates: currentModuleStates,
+      updatedAt: new Date()
+    }
+
+    let shouldMarkReady = false
+
+    if (canonicalKey === 'pre_ship') {
+      const completed = Boolean((state as { completed?: boolean } | undefined)?.completed)
+      if (completed) {
+        shouldMarkReady = true
+        const nowIso = new Date().toISOString()
+        const currentPhaseCompleted = (workspace.phaseCompletedAt as Record<string, string> | undefined) || {}
+
+        updatePayload.status = 'ready_to_ship'
+        updatePayload.workflowPhase = 'ready_to_ship'
+        updatePayload.phaseCompletedAt = {
+          ...currentPhaseCompleted,
+          pre_ship: nowIso
+        }
+      }
+    }
+
     await db
       .update(workspaces)
-      .set({
-        moduleStates: currentModuleStates,
-        updatedAt: new Date()
-      })
-      .where(eq(workspaces.orderId, BigInt(orderId)))
+      .set(updatePayload)
+      .where(eq(workspaces.orderId, numericOrderId))
+
+    if (shouldMarkReady) {
+      try {
+        await markFreightReady(numericOrderId)
+        await workspaceService.repository.logActivity({
+          workspaceId: workspace.id,
+          activityType: 'pre_ship_inspection_completed',
+          activityDescription: 'Pre-ship inspection marked complete via worker inspection.',
+          performedBy: 'worker_view',
+          module: 'warehouse',
+          metadata: {
+            source: 'worker_resilient_inspection',
+            checklist: (state as Record<string, unknown> | undefined)?.checklist,
+          }
+        })
+      } catch (tagError) {
+        console.error('Failed to mark freight ready:', tagError)
+      }
+    }
 
     // Revalidate workspace page
-    revalidatePath(`/workspace/${orderId}`)
+    revalidatePath(`/workspace/${numericOrderId}`)
+    revalidatePath('/')
 
     return {
       success: true,
@@ -629,5 +791,68 @@ export async function updateWorkspaceModuleState(
       success: false,
       error: error instanceof Error ? error.message : 'Failed to update module state'
     }
+  }
+}
+
+/**
+ * Ensure workspace exists in database, creating it if necessary
+ * This is the primary auto-creation point for worker views
+ *
+ * - Validates orderId
+ * - Creates workspace if missing
+ * - Fetches ShipStation data with timeout (non-blocking)
+ * - Returns workspace ready for inspection
+ */
+export async function ensureWorkspaceExists(orderId: string) {
+  try {
+    // Import validation
+    const { validateOrderId } = await import('@/lib/validation/order-id');
+
+    // Validate orderId first
+    const validation = validateOrderId(orderId);
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: validation.error || 'Invalid order ID',
+      };
+    }
+
+    const numericOrderId = validation.normalized!;
+
+    // Check if workspace already exists
+    const existingResult = await getWorkspace(orderId);
+    if (existingResult.success && existingResult.workspace) {
+      return {
+        success: true,
+        workspace: existingResult.workspace,
+        created: false,
+      };
+    }
+
+    // Workspace doesn't exist - create it
+    console.log(`[ensureWorkspaceExists] Creating workspace for order ${orderId}`);
+
+    const createResult = await workspaceService.createWorkspace(
+      numericOrderId,
+      orderId, // Use orderId as orderNumber fallback
+      'system', // Created by auto-creation system
+      'pump_and_fill' // Default workflow type
+    );
+
+    // Revalidate paths
+    revalidatePath(`/workspace/${orderId}`);
+    revalidatePath('/');
+
+    return {
+      success: true,
+      workspace: createResult,
+      created: true,
+    };
+  } catch (error) {
+    console.error('[ensureWorkspaceExists] Failed to ensure workspace exists:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create workspace',
+    };
   }
 }

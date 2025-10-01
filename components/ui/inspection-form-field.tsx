@@ -2,13 +2,13 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
-import { FormItem, FormLabel, FormControl, FormDescription, FormMessage, useFormField } from "@/components/ui/form"
+import { FormItem, FormLabel, FormControl, FormDescription, FormMessage } from "@/components/ui/form"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { AlertTriangle, CheckCircle, Camera, FileText } from "lucide-react"
+import { AlertTriangle, Camera, FileText } from "lucide-react"
 
 interface BaseInspectionFieldProps {
   label: string
@@ -176,7 +176,6 @@ const InspectionInput = ({
   value,
   onChange,
   type = "text",
-  validation,
   className,
 }: InspectionInputProps) => {
   return (

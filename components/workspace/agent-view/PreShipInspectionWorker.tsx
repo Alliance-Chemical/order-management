@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import { usePreShipInspection } from '@/hooks/usePreShipInspection';
 import { PreShipProgress } from '@/components/inspection/PreShipProgress';
 import { PreShipInspectionItem } from '@/components/inspection/PreShipInspectionItem';
@@ -17,8 +16,6 @@ interface PreShipInspectionWorkerProps {
 export default function PreShipInspectionWorkerView({ orderId, onCompleteAction }: PreShipInspectionWorkerProps) {
   const {
     currentStep,
-    checkedItems,
-    failureNotes,
     capturedPhotos,
     showCamera,
     isProcessing,
@@ -42,7 +39,6 @@ export default function PreShipInspectionWorkerView({ orderId, onCompleteAction 
     deletePhoto,
     handleComplete,
     skipToCompletion,
-    setNoteError,
   } = usePreShipInspection({ orderId, onComplete: onCompleteAction });
 
   // Auto-start camera when reaching photo step
@@ -50,10 +46,9 @@ export default function PreShipInspectionWorkerView({ orderId, onCompleteAction 
     if (isPhotoStep && showCamera) {
       startCamera();
     }
+    // Cleanup camera on unmount or when leaving photo step
     return () => {
-      if (isPhotoStep && !showCamera) {
-        stopCamera();
-      }
+      stopCamera();
     };
   }, [isPhotoStep, showCamera, startCamera, stopCamera]);
 

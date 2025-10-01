@@ -7,13 +7,15 @@ import { processDocumentOCR } from '@/app/actions/ai';
 
 interface AIDocumentUploadProps {
   orderId: string;
-  onUploadComplete: (data: any) => void;
+  onUploadComplete: (data: Record<string, unknown>) => void;
 }
 
-export default function AIDocumentUpload({ orderId, onUploadComplete }: AIDocumentUploadProps) {
+type ExtractedDocumentData = Record<string, unknown> & { confidence?: number };
+
+export default function AIDocumentUpload({ orderId: _orderId, onUploadComplete }: AIDocumentUploadProps) {
   const { toast } = useToast()
   const [isUploading, setIsUploading] = useState(false);
-  const [extractedData, setExtractedData] = useState<any>(null);
+  const [extractedData, setExtractedData] = useState<ExtractedDocumentData | null>(null);
   const [selectedType, setSelectedType] = useState<'BOL' | 'COA'>('BOL');
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,8 +36,9 @@ export default function AIDocumentUpload({ orderId, onUploadComplete }: AIDocume
       });
 
       if (result.success) {
-        setExtractedData(result);
-        onUploadComplete(result);
+        const documentData = result as ExtractedDocumentData;
+        setExtractedData(documentData);
+        onUploadComplete(documentData);
       } else {
         throw new Error(result.error);
       }
@@ -66,7 +69,7 @@ export default function AIDocumentUpload({ orderId, onUploadComplete }: AIDocume
               type="radio"
               value="BOL"
               checked={selectedType === 'BOL'}
-              onChange={(e) => setSelectedType('BOL')}
+              onChange={() => setSelectedType('BOL')}
               className="mr-2"
             />
             <span className="font-medium">Bill of Lading (BOL)</span>
@@ -76,7 +79,7 @@ export default function AIDocumentUpload({ orderId, onUploadComplete }: AIDocume
               type="radio"
               value="COA"
               checked={selectedType === 'COA'}
-              onChange={(e) => setSelectedType('COA')}
+              onChange={() => setSelectedType('COA')}
               className="mr-2"
             />
             <span className="font-medium">Certificate of Analysis (COA)</span>

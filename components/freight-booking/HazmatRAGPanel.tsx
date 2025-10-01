@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert } from '@/components/ui/alert';
 import { Spinner } from '@/components/ui/spinner';
 import { HiLightBulb, HiSparkles, HiCheckCircle, HiArrowRight, HiRefresh, HiExclamation } from 'react-icons/hi';
 import Link from 'next/link';

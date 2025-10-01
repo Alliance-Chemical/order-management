@@ -54,11 +54,25 @@ export function useCruzInspection(orderId: string, initialState?: unknown) {
         .then((result) => {
           if (result && typeof result === 'object' && 'runsById' in (result as any)) {
             setState(result as CruzInspectionState)
+            setError(null) // Clear any previous errors on success
           }
         })
         .catch((err) => {
           console.error('Inspection mutation failed', err)
-          setError(err instanceof Error ? err.message : 'Unknown error')
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+
+          // Make error messages more user-friendly
+          if (errorMessage.includes('Workspace not found')) {
+            setError('Workspace not found in database. The system will try to create it automatically.')
+          } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
+            setError('Request timed out. Please check your connection and try again.')
+          } else if (errorMessage.includes('network') || errorMessage.includes('fetch failed')) {
+            setError('Network error. Please check your connection and try again.')
+          } else if (errorMessage.includes('Database')) {
+            setError('Database connection error. Please try again in a moment.')
+          } else {
+            setError(errorMessage)
+          }
         })
     })
   }, [])

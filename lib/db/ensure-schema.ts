@@ -7,7 +7,7 @@ export async function ensureCoreFreightSchema() {
 
   // Create extension needed for gen_random_uuid()
   try {
-    await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    await sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`;
   } catch (_) {
     // ignore if not permitted; UUIDs may be set by DB default instead
   }

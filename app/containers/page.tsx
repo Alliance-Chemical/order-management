@@ -1,13 +1,27 @@
 'use client';
 
 import { Package } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useContainers } from '@/hooks/useContainers';
 import ContainerStats from '@/components/containers/ContainerStats';
 import ContainerFilters from '@/components/containers/ContainerFilters';
 import ContainerTable from '@/components/containers/ContainerTable';
-import ContainerEditDialog from '@/components/containers/ContainerEditDialog';
+
+// Code-split the edit dialog for better performance
+const ContainerEditDialog = dynamic(
+  () => import('@/components/containers/ContainerEditDialog'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-center text-gray-600">Loading editor...</p>
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default function ContainersPage() {
   const {
@@ -21,7 +35,6 @@ export default function ContainersPage() {
     isEditDialogOpen,
     setIsEditDialogOpen,
     editingContainer,
-    setEditingContainer,
     editForm,
     setEditForm,
     
