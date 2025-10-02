@@ -79,6 +79,7 @@ export default function WorkQueueDashboard() {
   const { toast } = useToast();
   const [orders, setOrders] = useState<FreightOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<FreightOrder | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
@@ -91,8 +92,14 @@ export default function WorkQueueDashboard() {
   const dimensionUnits = ['in', 'cm'];
   const weightUnits = ['lbs', 'kg'];
 
-  const fetchFreightOrders = async () => {
-    setLoading(true);
+  const fetchFreightOrders = async (options: { background?: boolean } = {}) => {
+    const { background = false } = options;
+
+    if (background) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const response = await fetch('/api/freight-orders/poll');
       if (!response.ok) {
@@ -129,13 +136,17 @@ export default function WorkQueueDashboard() {
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
-      setLoading(false);
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchFreightOrders();
-    const interval = setInterval(fetchFreightOrders, 30000);
+    const interval = setInterval(() => fetchFreightOrders({ background: true }), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -188,7 +199,7 @@ export default function WorkQueueDashboard() {
   const handlePrintComplete = () => {
     setShowPrintModal(false);
     setSelectedOrder(null);
-    fetchFreightOrders();
+    fetchFreightOrders({ background: true });
   };
 
   const toggleOrderExpanded = (orderId: number) => {
@@ -517,13 +528,20 @@ export default function WorkQueueDashboard() {
               <FreightNavigation />
               <Button
                 variant="outline"
-                onClick={fetchFreightOrders}
+                onClick={() => fetchFreightOrders({ background: true })}
                 className="h-10 px-4"
+                disabled={loading || refreshing}
               >
-                Refresh
+                {loading ? 'Loading…' : refreshing ? 'Refreshing…' : 'Refresh'}
               </Button>
             </div>
           </div>
+          {!loading && refreshing && (
+            <div className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-500">
+              <span className="h-2 w-2 animate-ping rounded-full bg-blue-500" />
+              Syncing latest freight order data…
+            </div>
+          )}
           {loading && (
             <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-blue-100">
               <div className="h-full w-full animate-pulse rounded-full bg-blue-500" />
