@@ -170,7 +170,7 @@ async function oldSequentialPolling(orders: ShipStationOrder[]): Promise<{
   const existing: unknown[] = [];
 
   // Simulate old behavior: query DB for each order individually
-  const db = (await import('@/src/data/db/client')).getDb();
+  const db = (await import('@/lib/db/neon')).getOptimizedDb();
   const { workspaces } = await import('@/lib/db/schema/qr-workspace');
   const { eq } = await import('drizzle-orm');
 

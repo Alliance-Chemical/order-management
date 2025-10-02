@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import { eq } from 'drizzle-orm';
 import { config } from 'dotenv';
 import { workspaces, qrCodes } from '../lib/db/schema/qr-workspace';
 import { v4 as uuidv4 } from 'uuid';
@@ -126,10 +127,7 @@ async function seedTestData() {
       isActive: true
     });
 
-    // Update workspace with master QR ID
-    await db.update(workspaces)
-      .set({ masterQrId })
-      .where({ id: workspace.id });
+    // Note: masterQrId field removed from schema - QR linked via workspaceId foreign key
 
     console.log('✅ Created QR codes for test workspace');
 

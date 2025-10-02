@@ -930,7 +930,7 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, sh
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-700">Inspector</label>
           <select
-            value={INSPECTORS.includes(inspector as any) ? inspector : inspector ? 'custom' : ''}
+            value={INSPECTORS.includes(inspector as typeof INSPECTORS[number]) ? inspector : inspector ? 'custom' : ''}
             onChange={(event) => {
               const value = event.target.value
               if (value === 'custom') {
@@ -952,7 +952,7 @@ function InspectionInfoStepForm({ run, payload, onSubmit, isPending, orderId, sh
             ))}
             <option value="custom">Other…</option>
           </select>
-          {!INSPECTORS.includes(inspector as any) && (
+          {!INSPECTORS.includes(inspector as typeof INSPECTORS[number]) && (
             <Input
               className="mt-2"
               value={inspector}

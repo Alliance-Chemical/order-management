@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/lib/error-handler';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
-import { asBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
 import { db } from '@/lib/db';
 import { activityLog } from '@/lib/db/schema/qr-workspace';
 import { and, eq, sql } from 'drizzle-orm';
@@ -30,7 +30,7 @@ export const POST = withErrorHandler(async (
   { params }: { params: Promise<{ orderId: string; phase: string }> }
 ) => {
   const { orderId: orderIdStr, phase } = await params;
-  const orderId = asBigInt(orderIdStr);
+  const orderId = normalizeOrderId(orderIdStr);
   const { result, data, userId = 'system', idempotencyKey } = await request.json() as InspectionPayload;
   
   // Validate result (support pass | fail | hold)

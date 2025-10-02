@@ -1,6 +1,7 @@
 'use server'
 
 import { openaiChat, openaiEmbedding, openaiService } from '@/lib/services/ai/openai-service'
+import { classifyWithRAG } from '@/lib/hazmat/classify'
 
 type GenericRecord = Record<string, unknown>
 
@@ -138,4 +139,93 @@ export async function generateFreightEmbedding(text: string) {
   return openaiEmbedding(text)
 }
 
+export async function classifyHazmat(data: { sku: string; productName: string }) {
+  try {
+    const result = await classifyWithRAG(data.sku, data.productName)
+    return {
+      success: true,
+      ...result
+    }
+  } catch (error) {
+    console.error('Error classifying hazmat:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+}
+
 export const aiAnalysisService = openaiService
+
+export async function ragChat({ query }: { query: string }): Promise<{
+  success: boolean
+  classification?: Awaited<ReturnType<typeof classifyWithRAG>>
+  results?: Array<{ text: string; metadata?: Record<string, unknown> }>
+  message?: string
+  error?: string
+}> {
+  const prompt = query?.trim()
+
+  if (!prompt) {
+    return {
+      success: false,
+      error: 'Please provide a query to classify.'
+    }
+  }
+
+  try {
+    const classification = await classifyWithRAG(null, prompt)
+
+    return {
+      success: true,
+      classification,
+      results: [],
+      message: classification.exemption_reason
+        ? 'Material considered non-regulated based on available data.'
+        : 'Classification completed successfully.'
+    }
+  } catch (error) {
+    console.error('Error running ragChat:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unable to complete hazmat lookup.'
+    }
+  }
+}
+
+export async function reportIssue(data: {
+  issueType: string
+  description: string
+  severity?: 'low' | 'medium' | 'high' | 'critical'
+  imageBase64?: string
+  mimeType?: string
+  workspaceId: string
+}): Promise<{ success: true; issueId: string } | { success: false; error: string }> {
+  try {
+    if (!data.description?.trim()) {
+      return { success: false, error: 'Description is required.' }
+    }
+
+    // Placeholder persistence – in a real implementation this would insert into a DB or trigger a workflow
+    console.info('AI issue report received', {
+      issueType: data.issueType,
+      severity: data.severity || 'medium',
+      workspaceId: data.workspaceId,
+    })
+
+    if (data.imageBase64 && data.mimeType) {
+      console.info('Issue includes supporting image', { mimeType: data.mimeType, size: data.imageBase64.length })
+    }
+
+    return {
+      success: true,
+      issueId: `ISSUE-${Date.now()}`
+    }
+  } catch (error) {
+    console.error('Error reporting issue:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to submit issue report.'
+    }
+  }
+}

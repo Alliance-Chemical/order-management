@@ -14,9 +14,10 @@ export const runtime = 'nodejs';
  */
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { orderId: string } }
+  props: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await props.params;
     const orderId = parseInt(params.orderId, 10);
 
     if (!orderId || isNaN(orderId)) {

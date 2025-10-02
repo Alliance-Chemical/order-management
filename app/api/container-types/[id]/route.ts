@@ -8,9 +8,10 @@ export const runtime = 'edge';
 // GET - Fetch single container type by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await props.params;
     const { id } = params;
     
     const containerType = await db.select()
@@ -40,9 +41,10 @@ export async function GET(
 // PUT - Update single container type
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await props.params;
     const { id } = params;
     const body = await request.json();
     
@@ -87,7 +89,7 @@ export async function PUT(
     };
     
     // Remove undefined fields
-    Object.keys(updateData).forEach(key => {
+    (Object.keys(updateData) as Array<keyof typeof updateData>).forEach(key => {
       if (updateData[key] === undefined) {
         delete updateData[key];
       }
@@ -114,10 +116,11 @@ export async function PUT(
 // DELETE - Delete single container type
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const params = await props.params;
+    const { id} = params;
     
     // Check if container type exists
     const existing = await db.select()

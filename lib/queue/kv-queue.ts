@@ -15,6 +15,7 @@ export type QueueMessage = {
   attempts?: number;
   lastAttempt?: string;
   maxRetries?: number;
+  lastError?: string;
 };
 
 // Environment-based key prefixing to avoid cross-pollution

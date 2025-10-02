@@ -32,7 +32,7 @@ import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { INSPECTORS } from '@/lib/inspection/inspectors';
+import { INSPECTORS, isInspectorName } from '@/lib/inspection/inspectors';
 
 interface OrderItem {
   name: string;
@@ -842,7 +842,7 @@ export default function WorkQueueDashboard() {
                                 value={(() => {
                                   const current = measurementDraft?.measuredBy || '';
                                   if (!current) return '';
-                                  return INSPECTORS.includes(current) ? current : 'custom';
+                                  return isInspectorName(current) ? current : 'custom';
                                 })()}
                                 onChange={(event) => {
                                   const value = event.target.value;
@@ -860,7 +860,7 @@ export default function WorkQueueDashboard() {
                                 ))}
                                 <option value="custom">Other / Not Listed</option>
                               </select>
-                              {(!measurementDraft?.measuredBy || !INSPECTORS.includes(measurementDraft.measuredBy)) && (
+                              {(!measurementDraft?.measuredBy || !isInspectorName(measurementDraft.measuredBy)) && (
                                 <Input
                                   placeholder="Enter team member name"
                                   value={measurementDraft?.measuredBy ?? ''}

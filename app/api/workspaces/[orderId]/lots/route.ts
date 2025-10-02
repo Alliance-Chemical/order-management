@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
 
 type LotAssignment = {
   id: string;
@@ -18,12 +18,12 @@ export async function GET(
 ) {
   try {
     const { orderId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -33,9 +33,7 @@ export async function GET(
     // Get lot assignments from workspace data
     const lots = workspace.shipstationData?.lots || [];
     
-    return new NextResponse(jsonStringifyWithBigInt({ lots }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json({ lots });
   } catch (error) {
     console.error('Error fetching lots:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -48,7 +46,7 @@ export async function POST(
 ) {
   try {
     const { orderId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     const body = await request.json() as {
       qrCodeId?: string;
       lotNumber?: string;
@@ -58,7 +56,7 @@ export async function POST(
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -85,12 +83,9 @@ export async function POST(
         shipstationData: { ...currentData, lots },
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, orderIdBigInt));
+      .where(eq(workspaces.orderId, orderIdNum));
     
-    return new NextResponse(jsonStringifyWithBigInt(lotAssignment), {
-      status: 201,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json(lotAssignment, { status: 201 });
   } catch (error) {
     console.error('Error assigning lot:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -103,7 +98,7 @@ export async function DELETE(
 ) {
   try {
     const { orderId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     const { searchParams } = new URL(request.url);
     const lotId = searchParams.get('lotId');
     
@@ -114,7 +109,7 @@ export async function DELETE(
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -131,7 +126,7 @@ export async function DELETE(
         shipstationData: { ...currentData, lots },
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, orderIdBigInt));
+      .where(eq(workspaces.orderId, orderIdNum));
     
     return NextResponse.json({ success: true });
   } catch (error) {

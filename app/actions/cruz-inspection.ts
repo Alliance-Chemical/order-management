@@ -159,16 +159,18 @@ async function logActivity(
 function redactPayloadForLog(stepId: CruzStepId, payload: CruzStepPayload) {
   if (!payload) return payload
   const clone: Record<string, unknown> = { ...payload }
-  if ('photos' in clone && Array.isArray(clone.photos)) {
-    clone.photos = clone.photos.map((photo: any) => ({
+  if ('photos' in clone && Array.isArray((clone as { photos?: unknown[] }).photos)) {
+    const photos = (clone as { photos: Array<import('@/lib/inspection/cruz').InspectionPhoto> }).photos;
+    (clone as { photos: Array<Partial<import('@/lib/inspection/cruz').InspectionPhoto>> }).photos = photos.map((photo) => ({
       id: photo.id,
       name: photo.name,
       uploadedAt: photo.uploadedAt,
       documentId: photo.documentId,
     }))
   }
-  if ('lots' in clone && Array.isArray(clone.lots)) {
-    clone.lots = clone.lots.map((lot: any) => ({
+  if ('lots' in clone && Array.isArray((clone as { lots?: unknown[] }).lots)) {
+    const lots = (clone as { lots: Array<import('@/lib/inspection/cruz').LotNumberEntry & { confirmed?: boolean }> }).lots;
+    (clone as { lots: Array<{ id: string; lotRaw: string; confirmed?: boolean }> }).lots = lots.map((lot) => ({
       id: lot.id,
       lotRaw: lot.lotRaw,
       confirmed: 'confirmed' in lot ? lot.confirmed : undefined,
@@ -358,9 +360,9 @@ export async function recordStep(params: RecordStepParams) {
     const validatedPayload = validateStepPayload(stepId, payload) as CruzStepPayload
     const nowIso = new Date().toISOString()
 
-    const previousStatus = run.status
+    const previousStatus = run.status as CruzRunStatus;
 
-    run.steps[stepId] = validatedPayload as any
+    (run.steps as Record<string, CruzStepPayload>)[stepId] = validatedPayload
     run.updatedAt = nowIso
 
     const nextStepId = outcome === 'PASS' ? getNextStepId(stepId) : null
@@ -534,7 +536,7 @@ export async function groupInspectionRuns(orderId: string, runIds: string[], use
       outcome: 'PASS',
       recordedAt: nowIso,
       recordedBy: userId,
-      payload: { groupedWith: rest.map((run) => run.id) },
+      payload: ({ groupedWith: rest.map((run) => run.id) } as unknown as Partial<CruzStepPayload>),
     })
     baseRun.history = [...baseRun.history, ...rest.flatMap((run) => run.history)]
     baseRun.history.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt))
@@ -672,11 +674,11 @@ export async function bindRunToQr(orderId: string, runId: string, qr: BindRunToQ
       validatedAt: new Date().toISOString(),
       qrCodeId: qr.qrCodeId,
       shortCode: qr.shortCode,
-    })
+    }) as import('@/lib/inspection/cruz').ScanQrStepPayload
 
     run.steps.scan_qr = payload
 
-    const previousStatus = run.status
+    const previousStatus = run.status as CruzRunStatus
     const nextStatus = computeRunStatusAfterStep(run, 'scan_qr', payload, 'PASS')
     applyStatusTransition(state, run as Mutable<CruzInspectionRun>, previousStatus, nextStatus)
 

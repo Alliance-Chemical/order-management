@@ -30,21 +30,19 @@ export async function GET(request: NextRequest) {
     }
     
     const result = await withEdgeRetry(async () => {
-      let query = db.select().from(products);
-      
       // Build where conditions
       const conditions = [];
-      
+
       if (active) {
         conditions.push(eq(products.isActive, true));
       }
-      
+
       if (hazardous === 'true') {
         conditions.push(eq(products.isHazardous, true));
       } else if (hazardous === 'false') {
         conditions.push(eq(products.isHazardous, false));
       }
-      
+
       if (search) {
         conditions.push(
           or(
@@ -56,16 +54,18 @@ export async function GET(request: NextRequest) {
           )
         );
       }
-      
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-      
-      const productList = await query
+
+      // Build query conditionally to avoid type reassignment issues
+      const baseQuery = db.select().from(products);
+      const queryWithConditions = conditions.length > 0
+        ? baseQuery.where(and(...conditions))
+        : baseQuery;
+
+      const productList = await queryWithConditions
         .limit(limit)
         .offset(offset)
         .execute();
-      
+
       return productList;
     });
     

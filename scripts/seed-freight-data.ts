@@ -4,7 +4,7 @@
  * Run with: npx tsx scripts/seed-freight-data.ts
  */
 
-import { getDb } from '@/src/data/db/client';
+import { getDb } from '@/lib/db';
 import { freightClassifications, products, productFreightLinks } from '@/lib/db/schema/freight';
 import { v4 as uuid } from 'uuid';
 

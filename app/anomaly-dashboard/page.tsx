@@ -43,6 +43,7 @@ type AnomalyDashboardResponse = {
   riskPatterns?: RiskPattern[];
   highRiskCombinations?: HighRiskCombination[];
   alerts?: AlertEntry[];
+  recommendations?: string[];
 };
 
 export default function AnomalyDashboard() {
@@ -163,7 +164,7 @@ export default function AnomalyDashboard() {
             </div>
 
             {/* High Risk Combinations */}
-            {analysisData.highRiskCombinations?.length > 0 && (
+            {(analysisData.highRiskCombinations?.length ?? 0) > 0 && (
               <div className="bg-white rounded-lg shadow-md p-6 mb-6">
                 <h2 className="text-xl font-semibold mb-4 text-red-600">
                   ⚠️ High Risk Product-Customer Combinations
@@ -206,7 +207,7 @@ export default function AnomalyDashboard() {
             )}
 
             {/* Risk Patterns */}
-            {analysisData.riskPatterns?.length > 0 && (
+            {(analysisData.riskPatterns?.length ?? 0) > 0 && (
               <div className="bg-white rounded-lg shadow-md p-6 mb-6">
                 <h2 className="text-xl font-semibold mb-4">Identified Risk Patterns</h2>
                 <div className="space-y-4">
@@ -241,13 +242,13 @@ export default function AnomalyDashboard() {
             )}
 
             {/* Recommendations */}
-            {analysisData.recommendations?.length > 0 && (
+            {(analysisData.recommendations?.length ?? 0) > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                 <h2 className="text-xl font-semibold mb-4 text-blue-900">
                   AI Recommendations
                 </h2>
                 <ul className="space-y-2">
-                  {analysisData.recommendations.map((rec: string, i: number) => (
+                  {analysisData.recommendations?.map((rec: string, i: number) => (
                     <li key={i} className="flex items-start">
                       <span className="text-blue-600 mr-2">•</span>
                       <span>{rec}</span>

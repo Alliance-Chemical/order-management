@@ -149,9 +149,9 @@ export class SlidingWindow {
  */
 export class BM25 {
   private documents: Document[];
-  private idf: Map<string, number>;
-  private avgDocLength: number;
-  private docFreq: Map<string, number>;
+  private idf: Map<string, number> = new Map();
+  private avgDocLength = 0;
+  private docFreq: Map<string, number> = new Map();
 
   constructor(documents: Document[]) {
     this.documents = documents;

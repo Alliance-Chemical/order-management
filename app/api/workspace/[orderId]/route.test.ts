@@ -30,7 +30,7 @@ describe.skip('/api/workspace/[orderId]', () => {
       const request = new NextRequest('http://localhost:3000/api/workspace/12345')
       
       // Call the handler
-      const response = await GET(request, { params: { orderId: '12345' } })
+      const response = await GET(request, { params: Promise.resolve({ orderId: '12345' }) })
       
       // Assert the response
       expect(response.status).toBe(200)
@@ -48,7 +48,7 @@ describe.skip('/api/workspace/[orderId]', () => {
       const request = new NextRequest('http://localhost:3000/api/workspace/99999')
       
       // Call the handler
-      const response = await GET(request, { params: { orderId: '99999' } })
+      const response = await GET(request, { params: Promise.resolve({ orderId: '99999' }) })
       
       // Assert the response
       expect(response.status).toBe(404)

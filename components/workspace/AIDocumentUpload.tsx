@@ -116,16 +116,16 @@ export default function AIDocumentUpload({ orderId: _orderId, onUploadComplete }
             <h4 className="font-semibold mb-3 flex items-center justify-between">
               <span>Extracted Information</span>
               <span className={`text-sm px-2 py-1 rounded ${
-                extractedData.confidence >= 70 
-                  ? 'bg-green-100 text-green-800' 
+                (extractedData.confidence ?? 0) >= 70
+                  ? 'bg-green-100 text-green-800'
                   : 'bg-yellow-100 text-yellow-800'
               }`}>
-                {Math.round(extractedData.confidence)}% Confidence
+                {Math.round(extractedData.confidence ?? 0)}% Confidence
               </span>
             </h4>
             
             <div className="space-y-2 text-sm">
-              {Object.entries(extractedData.extractedData).map(([key, value]) => (
+              {extractedData.extractedData && typeof extractedData.extractedData === 'object' && Object.entries(extractedData.extractedData).map(([key, value]) => (
                 <div key={key} className="flex justify-between">
                   <span className="text-gray-600 capitalize">
                     {key.replace(/_/g, ' ')}:
@@ -135,7 +135,7 @@ export default function AIDocumentUpload({ orderId: _orderId, onUploadComplete }
               ))}
             </div>
 
-            {extractedData.validationErrors?.length > 0 && (
+            {Array.isArray(extractedData.validationErrors) && extractedData.validationErrors.length > 0 && (
               <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded">
                 <p className="text-sm font-medium text-yellow-800">Validation Issues:</p>
                 <ul className="text-xs text-yellow-700 mt-1">

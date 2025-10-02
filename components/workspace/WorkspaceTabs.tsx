@@ -66,7 +66,7 @@ export function WorkspaceTabs() {
         }
         break;
       case 'activity':
-        const recentActivity = workspace.activityLog?.filter((a: any) => {
+        const recentActivity = workspace.activityLog?.filter((a: { performedAt: string | number | Date }) => {
           const activityTime = new Date(a.performedAt);
           const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
           return activityTime > hourAgo;

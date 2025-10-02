@@ -66,9 +66,9 @@ function getDensityBasedClass(density: number): {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { 
-      sku, 
-      productName, 
+    let {
+      sku,
+      productName,
       weight,      // in lbs
       length,      // in inches
       width,       // in inches
@@ -108,9 +108,9 @@ export async function POST(request: NextRequest) {
       let finalLength = length;
       let finalWidth = width;
       let finalHeight = height;
-      
-      if (productData.length > 0) {
-        const product = productData[0];
+
+      if (Array.isArray(productData) && productData.length > 0) {
+        const product = productData[0] as Record<string, any>;
         finalWeight = weight || product.weight;
         finalLength = length || product.length;
         finalWidth = width || product.width;
@@ -131,12 +131,12 @@ export async function POST(request: NextRequest) {
             AND pfl.is_approved = true
           LIMIT 1
         `;
-        
-        if (existing.length > 0) {
-          const record = existing[0];
+
+        if (Array.isArray(existing) && existing.length > 0) {
+          const record = existing[0] as Record<string, any>;
           // Parse NMFC code and sub if combined (e.g., "43940-01")
           const nmfcParts = record.nmfc_code?.split('-') || [];
-          
+
           return NextResponse.json({
             success: true,
             source: 'saved-classification',
@@ -155,12 +155,12 @@ export async function POST(request: NextRequest) {
           });
         }
       }
-      
-      // Update dimensions for density calculation
-      if (!weight && finalWeight) weight = finalWeight;
-      if (!length && finalLength) length = finalLength;
-      if (!width && finalWidth) width = finalWidth;
-      if (!height && finalHeight) height = finalHeight;
+
+      // Update dimensions for density calculation (use let instead of const reassignment)
+      weight = weight || finalWeight;
+      length = length || finalLength;
+      width = width || finalWidth;
+      height = height || finalHeight;
     }
 
     // ==========================
@@ -173,15 +173,15 @@ export async function POST(request: NextRequest) {
       if (unNumber && !hazardClass) {
         // Try to find in existing products first
         const productLookup = await sql`
-          SELECT hazmat_class 
+          SELECT hazmat_class
           FROM freight_classifications fc
           JOIN products p ON p.un_number = ${unNumber}
           WHERE fc.is_hazmat = true
           LIMIT 1
         `;
-        
-        if (productLookup.length > 0) {
-          finalHazardClass = productLookup[0].hazmat_class;
+
+        if (Array.isArray(productLookup) && productLookup.length > 0) {
+          finalHazardClass = (productLookup[0] as Record<string, any>).hazmat_class;
         }
       }
       

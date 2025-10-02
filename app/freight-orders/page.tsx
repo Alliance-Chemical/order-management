@@ -9,6 +9,18 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import { useToast } from '@/hooks/use-toast';
 import FreightHUD from '@/components/workspace/supervisor-view/FreightHUD';
 
+interface OrderItem {
+  sku?: string;
+  name?: string;
+  quantity?: number;
+}
+
+interface PollingStats {
+  total?: number;
+  new?: number;
+  existing?: number;
+}
+
 interface FreightOrder {
   orderId: number;
   orderNumber: string;
@@ -17,7 +29,26 @@ interface FreightOrder {
   customerName?: string;
   orderDate?: string;
   orderTotal?: number;
-  items?: any[];
+  items?: OrderItem[];
+  isNew?: boolean;
+}
+
+interface BookingReadyOrder {
+  orderId: number;
+  orderNumber: string;
+  customerName?: string;
+  finalMeasurements?: {
+    dimensions?: {
+      length: number;
+      width: number;
+      height: number;
+      units: string;
+    };
+    weight?: {
+      value: number;
+      units: string;
+    };
+  };
 }
 
 function FreightOrdersContent() {
@@ -25,12 +56,12 @@ function FreightOrdersContent() {
   const [orders, setOrders] = useState<FreightOrder[]>([]);
   const [, setLoading] = useState(false);
   const [polling, setPolling] = useState(false);
-  const [stats, setStats] = useState<any>({});
+  const [stats, setStats] = useState<PollingStats>({});
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = (searchParams?.get('tab') === 'hud') ? 'hud' : (searchParams?.get('tab') === 'ready') ? 'ready' : 'orders';
-  const [activeTab, setActiveTab] = useState<'orders' | 'ready' | 'hud'>(initialTab as any);
-  const [readyOrders, setReadyOrders] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'orders' | 'ready' | 'hud'>(initialTab as 'orders' | 'ready' | 'hud');
+  const [readyOrders, setReadyOrders] = useState<BookingReadyOrder[]>([]);
   const [readyLoading, setReadyLoading] = useState(false);
   const [readyError, setReadyError] = useState<string | null>(null);
 
@@ -48,9 +79,9 @@ function FreightOrdersContent() {
         });
         
         // Combine created and existing orders
-        const allOrders = [
-          ...data.created.map((o: any) => ({ ...o, isNew: true })),
-          ...data.existing.map((o: any) => ({ ...o, isNew: false })),
+        const allOrders: FreightOrder[] = [
+          ...data.created.map((o: FreightOrder) => ({ ...o, isNew: true })),
+          ...data.existing.map((o: FreightOrder) => ({ ...o, isNew: false })),
         ];
         setOrders(allOrders);
       }
@@ -74,9 +105,9 @@ function FreightOrdersContent() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load');
       setReadyOrders(data.orders || []);
-    } catch (e: any) {
+    } catch (e) {
       console.error('Error loading booking-ready:', e);
-      setReadyError(e?.message || 'Failed to load');
+      setReadyError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
       setReadyLoading(false);
     }
@@ -346,7 +377,7 @@ function FreightOrdersContent() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {readyOrders.map((o: any) => {
+                      {readyOrders.map((o) => {
                         const d = o.finalMeasurements?.dimensions;
                         const w = o.finalMeasurements?.weight;
                         return (

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
 
 type PalletItem = {
   id: string;
@@ -25,13 +25,13 @@ export async function POST(
 ) {
   try {
     const { orderId, palletId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     const body = await request.json() as Record<string, unknown>;
     
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -67,12 +67,9 @@ export async function POST(
         shipstationData: { ...currentData, pallets },
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, orderIdBigInt));
+      .where(eq(workspaces.orderId, orderIdNum));
     
-    return new NextResponse(jsonStringifyWithBigInt(newItem), {
-      status: 201,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json(newItem, { status: 201 });
   } catch (error) {
     console.error('Error adding items to pallet:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

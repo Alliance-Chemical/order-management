@@ -17,12 +17,12 @@ type ProductHazmatRow = {
 
 export async function getCfrHazmatBySku(sku: string): Promise<CFRHazmat | null> {
   const sql = getEdgeSql();
-  const rows = await sql<ProductHazmatRow[]>`
+  const rows = await sql`
     SELECT is_hazardous, un_number
     FROM products
     WHERE sku = ${sku}
     LIMIT 1
-  `;
+  ` as ProductHazmatRow[];
 
   if (!rows.length) return null;
 

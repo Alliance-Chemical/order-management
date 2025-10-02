@@ -30,13 +30,11 @@ export async function POST(request: NextRequest) {
     // Return the hazmat-focused AI suggestion
     return NextResponse.json({
       success: true,
-      suggestion: decision.recommendation,
+      suggestion: decision.suggestion,
       confidence: decision.confidence,
       complianceScore: decision.complianceScore,
       riskAssessment: decision.riskAssessment,
-      historicalIncidents: decision.historicalIncidents || [],
       reasoning: decision.reasoning || "Based on chemical compatibility and regulatory requirements",
-      similarShipments: decision.similarShipments || [],
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

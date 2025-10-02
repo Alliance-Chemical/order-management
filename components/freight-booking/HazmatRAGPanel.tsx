@@ -50,7 +50,7 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
             productName: item.name 
           });
           
-          if (data.success) {
+          if (data.success && 'confidence' in data) {
             if ((data.confidence > 0.35 && data.un_number) || data.exemption_reason) {
               newSuggestions[sku] = {
                 un_number: data.un_number,
@@ -71,6 +71,12 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
     
     setSuggestions(newSuggestions);
     setIsLoading(false);
+  };
+
+  const getConfidenceClass = (confidence: number) => {
+    if (confidence >= 0.8) return 'bg-emerald-500';
+    if (confidence >= 0.6) return 'bg-amber-500';
+    return 'bg-rose-500';
   };
 
   if (unclassifiedSKUs.length === 0) {
@@ -96,7 +102,7 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
               {unclassifiedSKUs.length} product{unclassifiedSKUs.length > 1 ? 's' : ''} need classification before shipping
             </p>
           </div>
-          <Badge color="failure" size="lg">
+          <Badge className="border-rose-200 bg-rose-100 px-3 py-1 text-rose-800">
             Action Required
           </Badge>
         </div>
@@ -107,7 +113,7 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
             <p className="font-semibold text-gray-900 dark:text-white">
               {currentItem?.name || currentSKU}
             </p>
-            <Badge color="gray">{currentSKU}</Badge>
+          <Badge className="border-gray-200 bg-gray-100 text-gray-700">{currentSKU}</Badge>
           </div>
           
           {isLoading && !currentSuggestion ? (
@@ -125,9 +131,14 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
               </div>
               
               {currentSuggestion.exemption_reason ? (
-                <Alert color="info" className="py-2">
-                  <span className="font-medium">Not Regulated</span>
-                  <p className="text-sm mt-1">{currentSuggestion.exemption_reason}</p>
+                <Alert className="border-sky-200 bg-sky-50 py-3 dark:border-sky-700/60 dark:bg-sky-900/30">
+                  <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
+                    <HiLightBulb className="mt-0.5 h-4 w-4 text-sky-600" />
+                    <div>
+                      <span className="font-semibold">Not Regulated</span>
+                      <p className="mt-1 text-sm leading-snug">{currentSuggestion.exemption_reason}</p>
+                    </div>
+                  </div>
                 </Alert>
               ) : (
                 <div className="bg-orange-100 dark:bg-orange-900/30 border border-orange-300 dark:border-orange-700 rounded p-3">
@@ -155,9 +166,14 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
               )}
             </div>
           ) : (
-            <Alert color="warning" className="py-2">
-              <span className="font-medium">Manual Classification Needed</span>
-              <p className="text-sm mt-1">RAG couldn't determine classification automatically</p>
+            <Alert className="border-amber-300 bg-amber-50 py-3 dark:border-amber-700/60 dark:bg-amber-900/30">
+              <div className="flex items-start gap-2 text-slate-700 dark:text-slate-300">
+                <HiExclamation className="mt-0.5 h-4 w-4 text-amber-600" />
+                <div>
+                  <span className="font-semibold">Manual Classification Needed</span>
+                  <p className="mt-1 text-sm leading-snug">RAG couldn't determine classification automatically</p>
+                </div>
+              </div>
             </Alert>
           )}
         </div>
@@ -185,8 +201,8 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
         {/* Actions */}
         <div className="flex gap-2">
           {currentSuggestion && currentSuggestion.confidence > 0.75 && !currentSuggestion.exemption_reason && (
-            <Button 
-              color="success" 
+            <Button
+              variant="go"
               className="flex-1"
               onClick={() => {
                 if (onSuggestionAccepted) {
@@ -199,14 +215,14 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
             </Button>
           )}
           <Link href={`/link?query=${currentSKU}`} className={currentSuggestion && currentSuggestion.confidence > 0.75 ? "" : "flex-1"}>
-            <Button color="failure" className="w-full">
+            <Button variant="stop" className="w-full">
               <HiArrowRight className="mr-2 h-4 w-4" />
               Go to Link Page
             </Button>
           </Link>
           {hasSuggestions && (
             <Button
-              color="gray"
+              variant="secondary"
               onClick={fetchSuggestionsForAll}
               disabled={isLoading}
             >

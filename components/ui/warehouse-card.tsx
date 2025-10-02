@@ -140,6 +140,7 @@ interface OrderCardProps extends Omit<WarehouseCardProps, 'icon' | 'metadata'> {
 }
 
 const OrderCard = ({ orderId, customerName, itemCount, weight, orderStatus, priority, ...props }: OrderCardProps) => {
+  const { title: _title, ...forwardProps } = props
   const getStatusConfig = (status: string) => {
     switch (status) {
       case "ready": return { label: "Ready", variant: "success" as const }
@@ -167,7 +168,7 @@ const OrderCard = ({ orderId, customerName, itemCount, weight, orderStatus, prio
         { label: "Weight", value: weight },
         ...(priority ? [{ label: "Priority", value: priority.charAt(0).toUpperCase() + priority.slice(1) }] : [])
       ]}
-      {...props}
+      {...forwardProps}
     />
   )
 }
@@ -181,6 +182,7 @@ interface InspectionCardProps extends Omit<WarehouseCardProps, 'icon' | 'metadat
 }
 
 const InspectionCard = ({ inspectionType, inspector, completedAt, itemsChecked, issuesFound, ...props }: InspectionCardProps) => {
+  const { title: _title, ...forwardProps } = props
   const getVariant = () => {
     if (issuesFound > 0) return "warning"
     if (completedAt) return "success"
@@ -201,7 +203,7 @@ const InspectionCard = ({ inspectionType, inspector, completedAt, itemsChecked, 
         { label: "Issues Found", value: issuesFound.toString() },
         ...(completedAt ? [{ label: "Completed", value: new Date(completedAt).toLocaleDateString() }] : [])
       ]}
-      {...props}
+      {...forwardProps}
     />
   )
 }

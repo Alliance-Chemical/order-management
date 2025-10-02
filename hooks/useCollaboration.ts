@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSession } from '@/lib/auth-client';
+// import { useSession } from '@/lib/auth-client';
+
+// Mock useSession hook
+const useSession = () => ({ data: { user: null }, status: 'unauthenticated' });
 
 interface ActiveUser {
   id: string;

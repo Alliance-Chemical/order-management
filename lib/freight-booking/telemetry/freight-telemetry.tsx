@@ -52,7 +52,7 @@ export function FreightTelemetryProvider({
     null,
   );
   const eventsQueue = useRef<TelemetryEvent[]>([]);
-  const flushTimeout = useRef<NodeJS.Timeout>();
+  const flushTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Generate session ID
   const generateSessionId = () => {

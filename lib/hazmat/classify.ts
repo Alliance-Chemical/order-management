@@ -3,7 +3,7 @@ import path from 'path';
 import type { ClassificationResult } from '@/lib/services/rag/database-rag';
 
 type Classification = ClassificationResult;
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue } | undefined;
 type JsonMap = Record<string, JsonValue>;
 
 interface HmtIndex extends JsonMap {
@@ -217,12 +217,18 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   // Heuristic overrides for tricky families
   // Prefer Ethyl acetate explicitly when present
   if (/(ethyl\s+acetate|ethyl\s+ethanoate|\betoac\b|acetic\s+acid\s+ethyl\s+ester)/i.test(productName)) {
-    const ea = reranked.find(r => (r.doc.metadata?.base_name || '').toLowerCase() === 'ethyl acetate');
+    const ea = reranked.find((r) => {
+      const baseName = r.doc.metadata?.base_name;
+      return typeof baseName === 'string' && baseName.toLowerCase() === 'ethyl acetate';
+    });
     if (ea) reranked = [ea, ...reranked.filter(r => r !== ea)];
   }
   // Prefer Hexanes when hexane family present
   if (/(\bn-?hexane\b|\bhexanes?\b)/i.test(productName)) {
-    const hx = reranked.find(r => /hexane/i.test(r.doc.metadata?.base_name || ''));
+    const hx = reranked.find((r) => {
+      const baseName = r.doc.metadata?.base_name;
+      return typeof baseName === 'string' && /hexane/i.test(baseName);
+    });
     if (hx) reranked = [hx, ...reranked.filter(r => r !== hx)];
   }
   // For sulfuric drain cleaners with unknown %, prefer >51% (UN1830)
@@ -278,10 +284,10 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   if ((/ethyl\s+acetate|ethyl\s+ethanoate|\betoac\b|acetic\s+acid\s+ethyl\s+ester/i).test(productName) && metaBaseName.toLowerCase() === 'ethyl acetate') {
     confidence = Math.max(confidence, 0.8);
   }
-  if ((/denatured\s+alcohol|ethyl\s+alcohol|ethanol/i).test(productName) && (/proof/i).test(productName) && (/^UN(1170|1987)$/.test(meta.id_number || ''))) {
+  if ((/denatured\s+alcohol|ethyl\s+alcohol|ethanol/i).test(productName) && (/proof/i).test(productName) && (/^UN(1170|1987)$/.test(metaIdNumber))) {
     confidence = Math.max(confidence, 0.8);
   }
-  if ((/sulfuric/i).test(productName) && (/drain/i).test(productName) && (meta.id_number === 'UN1830')) {
+  if ((/sulfuric/i).test(productName) && (/drain/i).test(productName) && (metaIdNumber === 'UN1830')) {
     confidence = Math.max(confidence, 0.75);
   }
   if ((/\bn-?hexane\b|\bhexanes?\b/i).test(productName) && /hexane/i.test(metaBaseName)) {
@@ -326,26 +332,38 @@ export async function classifyWithRAG(sku: string | null, productName: string): 
   };
 }
 
-function directMapToHMT(productName: string, rows: any[]): Classification | null {
+function directMapToHMT(productName: string, rows: HmtRow[]): Classification | null {
   const s = productName.toLowerCase();
   const pct = ((): number | null => {
     const m = s.match(/(\d{1,3})(?:\.(\d+))?\s*%/);
     if (!m) return null; return parseFloat(m[0]);
   })();
-  function pickByBaseName(regex: RegExp): any | null {
-    const cands = rows.filter(r => regex.test((r.base_name || '').toLowerCase()));
+  function pickByBaseName(regex: RegExp): HmtRow | null {
+    const cands = rows.filter((r) => {
+      const baseName = typeof r.base_name === 'string' ? r.base_name : '';
+      return regex.test(baseName.toLowerCase());
+    });
     return cands[0] || null;
   }
-  function pickByBaseNameAndPG(regex: RegExp, desiredPg: 'I'|'II'|'III'): any | null {
-    const cands = rows.filter(r => regex.test((r.base_name || '').toLowerCase()) && String(r.packing_group||'').toUpperCase() === desiredPg);
+  function pickByBaseNameAndPG(regex: RegExp, desiredPg: 'I'|'II'|'III'): HmtRow | null {
+    const cands = rows.filter((r) => {
+      const baseName = typeof r.base_name === 'string' ? r.base_name : '';
+      const pg = String(r.packing_group ?? '').toUpperCase();
+      return regex.test(baseName.toLowerCase()) && pg === desiredPg;
+    });
     return cands[0] || null;
   }
-  function build(r: any, note: string): Classification {
+  function build(r: HmtRow, note: string): Classification {
     const pg = String(r.packing_group || '').toUpperCase();
-    const normalizedPG = (pg === 'I' || pg === 'II' || pg === 'III') ? (pg as any) : (pg ? 'NONE' : null);
+    const normalizedPG: Classification['packing_group'] =
+      pg === 'I' || pg === 'II' || pg === 'III' ? pg : pg ? 'NONE' : null;
+    const baseName = r.base_name ?? null;
+    const shippingName = baseName
+      ? (r.qualifier ? `${baseName} — ${r.qualifier}` : baseName)
+      : null;
     return {
       un_number: r.id_number || null,
-      proper_shipping_name: r.qualifier ? `${r.base_name} — ${r.qualifier}` : r.base_name,
+      proper_shipping_name: shippingName,
       hazard_class: r.class_or_division || null,
       packing_group: normalizedPG,
       labels: Array.isArray(r.label_codes) ? r.label_codes.join(', ') : undefined,
@@ -471,7 +489,7 @@ function directMapToHMT(productName: string, rows: any[]): Classification | null
         }
       }
       const pg = String(pgOverride || '').toUpperCase();
-      const normalizedPG = (pg === 'I' || pg === 'II' || pg === 'III') ? (pg as any) : (pg ? 'NONE' : null);
+      const normalizedPG: Classification['packing_group'] = (pg === 'I' || pg === 'II' || pg === 'III') ? pg : (pg ? 'NONE' : null);
       return {
         un_number: 'UN1791',
         proper_shipping_name: `Hypochlorite solutions${qualifierText}`,

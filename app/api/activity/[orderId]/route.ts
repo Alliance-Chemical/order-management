@@ -16,10 +16,7 @@ export async function GET(
     }
 
     // Get activity logs for this workspace
-    const activities = await repository.getActivityLogs(workspace.id, {
-      limit: 100,
-      offset: 0,
-    });
+    const activities = await repository.getRecentActivity(workspace.id, 100);
 
     return NextResponse.json({
       success: true,

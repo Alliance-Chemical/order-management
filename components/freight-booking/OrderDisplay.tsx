@@ -8,17 +8,17 @@ import {
   HiExclamation,
   HiCheckCircle,
 } from "react-icons/hi";
-import type { IOrder } from "shipstation-node/typings/models/Order";
+import type { ShipStationOrder } from "@/types/freight-booking";
 
 const OrderDisplay = ({
   order,
   skusWithNoClassification = [],
 }: {
-  order: IOrder;
+  order: ShipStationOrder;
   skusWithNoClassification?: string[];
 }) => {
-  const hasUnlinkedSKUs = order.items.some(item => 
-    skusWithNoClassification.includes(item.sku)
+  const hasUnlinkedSKUs = order.items?.some((item: any) =>
+    item.sku && skusWithNoClassification.includes(item.sku)
   );
 
   return (
@@ -38,8 +38,8 @@ const OrderDisplay = ({
                 <p>The following SKUs need freight classification before this order can be shipped:</p>
                 <ul className="mt-2 list-disc pl-5 space-y-1">
                   {order.items
-                    .filter(item => skusWithNoClassification.includes(item.sku))
-                    .map((item, idx) => (
+                    ?.filter((item: any) => item.sku && skusWithNoClassification.includes(item.sku))
+                    .map((item: any, idx: number) => (
                       <li key={idx}>
                         <span className="font-medium">{item.sku}</span> - {item.name}
                         <Link
@@ -94,7 +94,7 @@ const OrderDisplay = ({
 
       {/* Item List */}
       <div className="space-y-4">
-        {order.items.map((item, index) => (
+        {order.items?.map((item: any, index: number) => (
           <div
             key={index}
             className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:translate-y-[-2px] hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800"

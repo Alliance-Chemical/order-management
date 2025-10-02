@@ -113,7 +113,10 @@ export class QRValidationService {
             suggestion: 'Proceed to the next item or use supervisor override if appropriate',
           },
         };
-        const mapped = code && messageMap[code];
+        let mapped: (typeof messageMap)[keyof typeof messageMap] | undefined;
+        if (code && Object.prototype.hasOwnProperty.call(messageMap, code)) {
+          mapped = messageMap[code as keyof typeof messageMap];
+        }
         return {
           valid: false,
           error: mapped?.error || errorBody.message || 'Validation failed',

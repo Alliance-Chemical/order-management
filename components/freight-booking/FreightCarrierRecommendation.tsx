@@ -8,13 +8,13 @@ import type { FreightCarrier, FreightService } from '@/types/components';
 interface FreightCarrierRecommendationProps {
   carrier: FreightCarrier;
   service: FreightService;
-  getConfidenceColor: (confidence: number) => string;
+  getConfidenceClass: (confidence: number) => string;
 }
 
 export const FreightCarrierRecommendation = React.memo(function FreightCarrierRecommendation({
   carrier,
   service,
-  getConfidenceColor,
+  getConfidenceClass,
 }: FreightCarrierRecommendationProps) {
   return (
     <div className="rounded-lg border p-4 dark:border-gray-600">
@@ -26,7 +26,7 @@ export const FreightCarrierRecommendation = React.memo(function FreightCarrierRe
         <Progress
           progress={carrier.confidence * 100}
           size="sm"
-          color={getConfidenceColor(carrier.confidence)}
+          indicatorClassName={getConfidenceClass(carrier.confidence)}
           className="w-32"
           aria-label={`Carrier confidence: ${Math.round(carrier.confidence * 100)}%`}
         />

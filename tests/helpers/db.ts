@@ -32,58 +32,19 @@ export async function cleanupTestDb(db: ReturnType<typeof createTestDb>) {
 // Helper to seed test data
 export async function seedTestWorkspace(db: ReturnType<typeof createTestDb>, orderId = '12345') {
   const workspace = await db.insert(schema.workspaces).values({
+    orderId: parseInt(orderId),
     orderNumber: orderId,
-    shipStationOrderId: orderId,
-    shipStationOrderKey: `key-${orderId}`,
+    workspaceUrl: `http://localhost:3000/workspace/${orderId}`,
     status: 'pending',
     workflowPhase: 'pre_mix',
     currentUsers: [],
-    currentViewMode: 'worker',
-    modules: {
-      inspection: {
-        status: 'not_started',
-        inspector: null,
-        timestamp: null,
-        results: {},
-        issues: []
-      },
-      documentation: {
-        status: 'not_started',
-        documents: [],
-        timestamp: null
-      },
-      shipping: {
-        status: 'not_started',
-        carrier: null,
-        trackingNumber: null,
-        timestamp: null
-      },
-      quality: {
-        status: 'not_started',
-        inspector: null,
-        results: {},
-        timestamp: null
-      }
+    activeModules: {
+      preMix: true,
+      warehouse: true,
+      documents: true,
+      freight: true
     },
-    metadata: {
-      customerName: 'Test Customer',
-      productName: 'Test Product',
-      quantity: 2,
-      drumCount: 2,
-      orderDate: new Date().toISOString(),
-      orderTotal: 1000.00,
-      items: [
-        {
-          sku: 'TEST-SKU-001',
-          name: 'Test Product',
-          quantity: 2,
-          unitPrice: 500.00,
-          lineItemTotal: 1000.00
-        }
-      ]
-    },
-    createdAt: new Date(),
-    updatedAt: new Date()
+    moduleStates: {}
   }).returning()
 
   return workspace[0]

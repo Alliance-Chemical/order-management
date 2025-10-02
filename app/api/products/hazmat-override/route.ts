@@ -44,14 +44,14 @@ export async function POST(request: NextRequest) {
     // Resolve product
     const productRows = await withEdgeRetry(async () => {
       if (productId) {
-        return sql<ProductRow[]>`
+        return sql`
           SELECT id, sku, name
           FROM products
           WHERE id = ${productId}
           LIMIT 1
         `;
       }
-      return sql<ProductRow[]>`
+      return sql`
         SELECT id, sku, name
         FROM products
         WHERE sku = ${sku}
@@ -59,10 +59,10 @@ export async function POST(request: NextRequest) {
       `;
     });
 
-    if (!productRows?.length) {
+    if (!Array.isArray(productRows) || !productRows.length) {
       return NextResponse.json({ success: false, error: 'Product not found' }, { status: 404 });
     }
-    const product = productRows[0];
+    const product = productRows[0] as ProductRow;
 
     // Upsert override by product id
     await withEdgeRetry(async () => {

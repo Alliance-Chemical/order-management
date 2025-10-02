@@ -65,14 +65,14 @@ export async function POST(request: NextRequest) {
     // Resolve product ID - create if doesn't exist
     let productRows = await withEdgeRetry(async () => {
       if (productId) {
-        return sql<ProductRow[]>`
+        return sql`
           SELECT id, sku, name
           FROM products
           WHERE id = ${productId}
           LIMIT 1
         `;
       }
-      return sql<ProductRow[]>`
+      return sql`
         SELECT id, sku, name
         FROM products
         WHERE sku = ${sku}
@@ -80,11 +80,11 @@ export async function POST(request: NextRequest) {
       `;
     });
 
-    if (!productRows?.length) {
+    if (!Array.isArray(productRows) || !productRows.length) {
       // Create product if it doesn't exist (common for first-time SKUs)
       const productName = description || hazmatData?.properShippingName || `Product ${sku}`;
       productRows = await withEdgeRetry(async () =>
-        sql<ProductRow[]>`
+        sql`
           INSERT INTO products (
             id, sku, name, is_hazardous, un_number, created_at, updated_at
           ) VALUES (
@@ -100,7 +100,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const product = productRows[0];
+    const product = (Array.isArray(productRows) ? productRows[0] : null) as ProductRow | null;
+    if (!product) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to resolve product' },
+        { status: 500 }
+      );
+    }
     
     // Update product with hazmat info if provided
     if (hazmatData) {
@@ -123,9 +129,9 @@ export async function POST(request: NextRequest) {
 
     // Find or create classification row (by nmfc_code + freight_class + description)
     const existingClassRows = await withEdgeRetry(async () =>
-      sql<ClassificationRow[]>`
-        SELECT id 
-        FROM freight_classifications 
+      sql`
+        SELECT id
+        FROM freight_classifications
         WHERE freight_class = ${freightClass}
           AND COALESCE(nmfc_code, '') = COALESCE(${nmfc_full}, '')
           AND COALESCE(description, '') = COALESCE(${description || ''}, '')
@@ -134,8 +140,8 @@ export async function POST(request: NextRequest) {
     );
 
     let classificationId: string;
-    if (existingClassRows.length) {
-      classificationId = existingClassRows[0].id;
+    if (Array.isArray(existingClassRows) && existingClassRows.length) {
+      classificationId = (existingClassRows[0] as ClassificationRow).id;
       // Update classification with hazmat data if provided
       if (hazmatData) {
         await withEdgeRetry(async () => {
@@ -152,9 +158,9 @@ export async function POST(request: NextRequest) {
       }
     } else {
       const inserted = await withEdgeRetry(async () =>
-        sql<ClassificationRow[]>`
+        sql`
           INSERT INTO freight_classifications (
-            id, description, nmfc_code, freight_class, is_hazmat, 
+            id, description, nmfc_code, freight_class, is_hazmat,
             hazmat_class, packing_group, created_at, updated_at
           ) VALUES (
             gen_random_uuid(),
@@ -169,20 +175,26 @@ export async function POST(request: NextRequest) {
           RETURNING id
         `
       );
-      classificationId = inserted[0].id;
+      classificationId = (Array.isArray(inserted) ? (inserted[0] as ClassificationRow).id : '');
+      if (!classificationId) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to create classification' },
+          { status: 500 }
+        );
+      }
     }
 
     // Link product -> classification (manual, approved per flag)
     // Use existence check to avoid requiring a DB unique constraint
     const existingLinkRows = await withEdgeRetry(async () =>
-      sql<FreightLinkRow[]>`
+      sql`
         SELECT id FROM product_freight_links
         WHERE product_id = ${product.id} AND classification_id = ${classificationId}
         LIMIT 1
       `
     );
 
-    if (existingLinkRows.length) {
+    if (Array.isArray(existingLinkRows) && existingLinkRows.length) {
       await withEdgeRetry(async () => {
         await sql`
           UPDATE product_freight_links
@@ -192,7 +204,7 @@ export async function POST(request: NextRequest) {
             approved_by = ${approve ? 'api/products/freight-link' : null},
             approved_at = ${approve ? sql`NOW()` : null},
             updated_at = NOW()
-          WHERE id = ${existingLinkRows[0].id}
+          WHERE id = ${(existingLinkRows[0] as FreightLinkRow).id}
         `;
       });
     } else {

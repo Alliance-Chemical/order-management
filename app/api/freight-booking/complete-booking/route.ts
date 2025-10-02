@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
 
       const result = await workspaceFreightLinker.createWorkspaceWithFreight(
         {
-          orderId: bookingData.orderId,
+          orderId: typeof bookingData.orderId === 'string' ? parseInt(bookingData.orderId, 10) : bookingData.orderId,
           orderNumber: bookingData.orderNumber,
           workspaceUrl,
           status: 'active',
@@ -228,7 +228,7 @@ export async function POST(request: NextRequest) {
           },
         },
         {
-          orderId: bookingData.orderId,
+          orderId: typeof bookingData.orderId === 'string' ? parseInt(bookingData.orderId, 10) : bookingData.orderId,
           orderNumber: bookingData.orderNumber,
           carrierName: bookingData.carrierName,
           serviceType: bookingData.serviceType,
@@ -249,8 +249,8 @@ export async function POST(request: NextRequest) {
         orderId: result.workspace.orderId,
         orderNumber: result.workspace.orderNumber,
         workspaceUrl: result.workspace.workspaceUrl,
-        status: result.workspace.status,
-        activeModules: result.workspace.activeModules,
+        status: result.workspace.status ?? 'active',
+        activeModules: result.workspace.activeModules ?? undefined,
       };
 
       await KVCache.set(cacheKey, workspace, 600);
@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
     const freightOrder = await workspaceFreightLinker.linkFreightToWorkspace(
       workspace.id,
       {
-        orderId: bookingData.orderId,
+        orderId: typeof bookingData.orderId === 'string' ? parseInt(bookingData.orderId, 10) : bookingData.orderId,
         orderNumber: bookingData.orderNumber,
         carrierName: bookingData.carrierName,
         serviceType: bookingData.serviceType,

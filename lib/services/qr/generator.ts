@@ -40,6 +40,10 @@ export class QRGenerator {
     return `${this.baseUrl}/workspace/${qrData.orderId}?qr=${encoded}`;
   }
 
+  createShortCodeUrl(shortCode: string): string {
+    return `${this.baseUrl}/qr/s/${shortCode}`;
+  }
+
   async generateQRCode(qrData: QRData, options?: { quietZoneModules?: number }): Promise<string> {
     const url = this.createQRUrl(qrData);
     const quietZoneModules = options?.quietZoneModules ?? 8; // Default 8 modules for quiet zone

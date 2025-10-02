@@ -76,18 +76,8 @@ export async function POST(request: NextRequest) {
       uploadedBy: 'system', // Replace with actual user
     });
 
-    // Update workspace documents JSONB
-    const currentDocs = workspace.documents || { coa: [], sds: [], other: [] };
-    if (currentDocs[documentType]) {
-      currentDocs[documentType].push(document.id);
-    } else {
-      currentDocs.other.push(document.id);
-    }
-
-    await repository.updateWorkspace(workspace.id, {
-      documents: currentDocs,
-      totalDocumentSize: (workspace.totalDocumentSize || 0) + file.size,
-    });
+    // Document is already saved in the documents table via repository.createDocument above
+    // No need to update workspace record - documents are managed separately
 
     // Log activity
     await repository.logActivity({

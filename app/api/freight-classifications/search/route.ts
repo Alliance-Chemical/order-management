@@ -96,22 +96,22 @@ export async function POST(request: NextRequest) {
       // ========== HAZMAT CLASSIFICATION LOGIC ==========
       // For hazmat items, we NEVER use density calculations
       // We look up specific hazmat classifications
-      
-      const conditions = [];
-      
+
+      const conditions: ReturnType<typeof eq | typeof ilike>[] = [];
+
       // Always filter for hazmat classifications
       conditions.push(eq(freightClassifications.isHazmat, true));
-      
-      // Match on hazard class
-      if (body.hazardClass) {
+
+      // Match on hazard class (only if defined)
+      if (body.hazardClass && typeof body.hazardClass === 'string') {
         conditions.push(eq(freightClassifications.hazmatClass, body.hazardClass));
       }
-      
+
       // Match on packing group if provided
       if (body.packingGroup) {
         conditions.push(eq(freightClassifications.packingGroup, body.packingGroup));
       }
-      
+
       // Try to find exact match first
       const exactMatches = await withEdgeRetry(async () => {
         return await db.select()
@@ -173,12 +173,13 @@ export async function POST(request: NextRequest) {
       // If no specific matches found, look for generic hazmat classifications
       if (matches.length === 0 && body.hazardClass) {
         const genericHazmat = await withEdgeRetry(async () => {
+          const filters = [eq(freightClassifications.isHazmat, true)];
+          if (body.hazardClass) {
+            filters.push(eq(freightClassifications.hazmatClass, body.hazardClass));
+          }
           return await db.select()
             .from(freightClassifications)
-            .where(and(
-              eq(freightClassifications.isHazmat, true),
-              eq(freightClassifications.hazmatClass, body.hazardClass)
-            ))
+            .where(and(...filters))
             .limit(1);
         });
         

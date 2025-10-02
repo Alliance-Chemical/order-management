@@ -2,53 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { batchHistory, qrCodes } from '@/lib/db/schema/qr-workspace';
 import { eq, inArray } from 'drizzle-orm';
+import { renderPDF } from '@/lib/pdf';
 
-// Import PDF generation utilities based on environment
 type BatchHistoryRecord = typeof batchHistory.$inferSelect;
 type QrCodeRecord = typeof qrCodes.$inferSelect;
-
-let generatePDF: (htmlContent: string) => Promise<Buffer>;
-
-if (process.env.VERCEL) {
-  // Production environment - use puppeteer-core with chrome-aws-lambda
-  const chromium = require('@sparticuz/chromium');
-  const puppeteer = require('puppeteer-core');
-  
-  generatePDF = async (htmlContent: string) => {
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-    });
-    
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-    const pdf = await page.pdf({
-      format: 'Letter',
-      printBackground: true,
-      margin: { top: '0.5in', right: '0.5in', bottom: '0.5in', left: '0.5in' }
-    });
-    await browser.close();
-    return pdf;
-  };
-} else {
-  // Development environment - use Playwright
-  const { chromium } = require('playwright');
-  
-  generatePDF = async (htmlContent: string) => {
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle' });
-    const pdf = await page.pdf({
-      format: 'Letter',
-      printBackground: true,
-      margin: { top: '0.5in', right: '0.5in', bottom: '0.5in', left: '0.5in' }
-    });
-    await browser.close();
-    return pdf;
-  };
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,7 +45,11 @@ export async function POST(request: NextRequest) {
     const htmlContent = generateElegantHTML(batch, destinationContainers);
 
     // Generate PDF
-    const pdfBuffer = await generatePDF(htmlContent);
+    const pdfBuffer = await renderPDF(htmlContent, {
+      format: 'Letter',
+      printBackground: true,
+      margin: { top: '0.5in', right: '0.5in', bottom: '0.5in', left: '0.5in' }
+    });
 
     // Return PDF
     return new NextResponse(pdfBuffer, {

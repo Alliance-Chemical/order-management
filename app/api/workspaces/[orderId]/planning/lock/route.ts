@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withErrorHandler } from '@/lib/error-handler';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
 
 const workspaceService = new WorkspaceService();
 
@@ -11,7 +11,7 @@ export const POST = withErrorHandler(async (
   { params }: { params: Promise<{ orderId: string }> }
 ) => {
   const { orderId: orderIdStr } = await params;
-  const orderId = asBigInt(orderIdStr);
+  const orderId = normalizeOrderId(orderIdStr);
   const body = await request.json();
   
   // Find workspace
@@ -22,7 +22,7 @@ export const POST = withErrorHandler(async (
   
   // Update module state with locked planning
   const moduleStates = workspace.moduleStates || {};
-  moduleStates.planning = { ...moduleStates.planning, locked: true, plan: body.plan };
+  moduleStates.planning = { ...(moduleStates.planning as any), locked: true, plan: body.plan };
   
   await workspaceService.repository.update(workspace.id, {
     moduleStates,
@@ -61,13 +61,10 @@ export const POST = withErrorHandler(async (
     });
   }
   
-  return NextResponse.json(
-    jsonStringifyWithBigInt({ 
-      success: true, 
-      workspaceId: workspace.id,
-      phase: result.finalPhase,
-      tags: result.finalTags
-    }),
-    { headers: { 'Content-Type': 'application/json' } }
-  );
+  return NextResponse.json({
+    success: true,
+    workspaceId: workspace.id,
+    phase: result.finalPhase,
+    tags: result.finalTags
+  });
 });

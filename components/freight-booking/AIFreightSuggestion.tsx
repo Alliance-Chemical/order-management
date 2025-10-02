@@ -32,7 +32,7 @@ export default function AIFreightSuggestion({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { trackAISuggestionInteraction } = useFreightActionTracking();
+  const { trackAction } = useFreightActionTracking();
 
   const fetchSuggestions = useCallback(async () => {
     setLoading(true);
@@ -41,10 +41,10 @@ export default function AIFreightSuggestion({
     try {
       const data = await suggestFreight({
         orderId: orderNumber,
-        items: orderData.items || [],
+        items: (Array.isArray(orderData.items) ? orderData.items : []),
         customer: orderData.customer || {},
         destination: orderData.destination || {},
-        origin: orderData.origin || { city: "River Grove", state: "IL", zip: "60171" }
+        origin: orderData.origin || { city: "River Grove", state: "IL", zipCode: "60171" }
       });
 
       if (!data) {
@@ -137,14 +137,14 @@ export default function AIFreightSuggestion({
 
   const handleAccept = () => {
     if (suggestion) {
-      trackAISuggestionInteraction("accepted", suggestion);
+      trackAction('ai_suggestion.accepted', suggestion as Record<string, unknown>);
       onAccept(suggestion);
     }
   };
 
   const handleReject = () => {
     if (suggestion) {
-      trackAISuggestionInteraction("rejected", suggestion);
+      trackAction('ai_suggestion.rejected', suggestion as Record<string, unknown>);
     }
     onReject();
   };
@@ -162,10 +162,16 @@ export default function AIFreightSuggestion({
     setSuggestion(modifiedSuggestion);
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return "success";
-    if (confidence >= 0.6) return "warning";
-    return "failure";
+  const getConfidenceBadgeClass = (confidence: number) => {
+    if (confidence >= 0.8) return 'border-emerald-200 bg-emerald-100 text-emerald-800';
+    if (confidence >= 0.6) return 'border-amber-200 bg-amber-100 text-amber-800';
+    return 'border-rose-200 bg-rose-100 text-rose-800';
+  };
+
+  const getConfidenceIndicatorClass = (confidence: number) => {
+    if (confidence >= 0.8) return 'bg-emerald-500';
+    if (confidence >= 0.6) return 'bg-amber-500';
+    return 'bg-rose-500';
   };
 
   const getConfidenceLabel = (confidence: number) => {
@@ -227,7 +233,7 @@ export default function AIFreightSuggestion({
               AI Freight Recommendation
             </h3>
           </div>
-          <Badge color={getConfidenceColor(suggestion.overallConfidence)}>
+          <Badge className={getConfidenceBadgeClass(suggestion.overallConfidence)}>
             {getConfidenceLabel(suggestion.overallConfidence)} Confidence (
             {Math.round(suggestion.overallConfidence * 100)}%)
           </Badge>
@@ -237,7 +243,7 @@ export default function AIFreightSuggestion({
         <FreightCarrierRecommendation
           carrier={suggestion.carrier}
           service={suggestion.service}
-          getConfidenceColor={getConfidenceColor}
+          getConfidenceClass={getConfidenceIndicatorClass}
         />
 
         {/* Accessorials */}
@@ -257,11 +263,11 @@ export default function AIFreightSuggestion({
 
         {/* Action Buttons */}
         <div className="flex justify-end space-x-3" role="group" aria-label="Freight recommendation actions">
-          <Button color="gray" onClick={handleReject} aria-label="Reject AI recommendation and use manual selection">
+          <Button variant="secondary" onClick={handleReject} aria-label="Reject AI recommendation and use manual selection">
             <HiXCircle className="mr-2 h-5 w-5" aria-hidden="true" />
             Use Manual Selection
           </Button>
-          <Button color="success" onClick={handleAccept} aria-label="Accept AI freight recommendation">
+          <Button variant="go" onClick={handleAccept} aria-label="Accept AI freight recommendation">
             <HiCheckCircle className="mr-2 h-5 w-5" aria-hidden="true" />
             Accept Recommendation
           </Button>
@@ -270,5 +276,3 @@ export default function AIFreightSuggestion({
     </Card>
   );
 }
-
-export default AIFreightSuggestion;

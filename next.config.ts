@@ -61,12 +61,16 @@ const withPWA = require('next-pwa')({
 const nextConfig: NextConfig = {
   /* config options here */
   eslint: {
-    // Disable ESLint during production builds to allow deployment
-    ignoreDuringBuilds: true,
+    // ⚠️ QUALITY GATES RE-ENABLED (Oct 2025)
+    // ESLint errors will now BLOCK builds - fix errors, don't ignore them!
+    // For emergency deploys only: set ignoreDuringBuilds: true
+    ignoreDuringBuilds: false,
   },
   typescript: {
-    // Allow production builds to complete even with TypeScript errors
-    ignoreBuildErrors: true,
+    // ⚠️ QUALITY GATES RE-ENABLED (Oct 2025)
+    // TypeScript errors will now BLOCK builds - fix errors, don't ignore them!
+    // For emergency deploys only: set ignoreBuildErrors: true
+    ignoreBuildErrors: false,
   },
   experimental: {
     serverActions: {

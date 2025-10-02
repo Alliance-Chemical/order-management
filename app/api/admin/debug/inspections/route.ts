@@ -26,7 +26,7 @@ export async function GET() {
         // No inspections table, using module states instead
 
         const moduleState = (workspace.moduleStates as Record<string, ModuleStateEntry> | undefined) || {};
-        const currentInspection = moduleState[workspace.workflowPhase] || {};
+        const currentInspection = workspace.workflowPhase ? (moduleState[workspace.workflowPhase] || {}) : {};
 
         const lastUpdated = workspace.updatedAt instanceof Date
           ? workspace.updatedAt.toISOString()

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "NEXT_DISABLE_ESLINT_PLUGIN=1 next lint",
+    "lint": "next lint",
     "setup:aws": "tsx scripts/setup-aws-resources.ts",
     "db:init": "tsx scripts/init-database.ts",
     "db:push": "drizzle-kit push",

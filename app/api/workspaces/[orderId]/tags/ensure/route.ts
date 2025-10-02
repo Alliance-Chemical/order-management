@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
 
 export async function POST(
   request: NextRequest,
@@ -8,7 +8,7 @@ export async function POST(
 ) {
   try {
     const { orderId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     const body = await request.json();
     const { phase, userId = 'system' } = body;
     
@@ -18,7 +18,7 @@ export async function POST(
     
     // Use the tag sync service to ensure correct tags for the phase
     const result = await tagSyncService.ensurePhase(
-      orderIdBigInt,
+      orderIdNum,
       phase,
       userId
     );
@@ -30,14 +30,12 @@ export async function POST(
       }, { status: 500 });
     }
     
-    return new NextResponse(jsonStringifyWithBigInt({
+    return NextResponse.json({
       success: true,
       orderId: orderId.toString(),
       phase: result.finalPhase,
       tags: result.finalTags,
       changes: result.changes
-    }), {
-      headers: { 'Content-Type': 'application/json' }
     });
     
   } catch (error) {

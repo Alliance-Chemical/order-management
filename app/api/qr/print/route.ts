@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
+import { renderPDF } from '@/lib/pdf';
 
 const repository = new WorkspaceRepository();
 
 export async function POST(request: NextRequest) {
-  let browser = null;
-
   try {
     const body = await request.json();
     const { qrCodes, labelSize = '4x6', fulfillmentMethod = 'standard', orderId } = body;
@@ -69,8 +68,14 @@ export async function POST(request: NextRequest) {
       // Generate QR code as raw SVG string using shortCode-first URL
       const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '')?.trim() || 'http://localhost:3000';
       const shortUrl = `${baseUrl}/qr/s/${qrRecord.shortCode}`;
-      const { renderQRSvg } = await import('@/src/services/qr/qrSvgRenderer');
-      const qrSvg = await renderQRSvg(shortUrl, { quietZoneModules: 8 });
+      const QRCode = (await import('qrcode')).default;
+      const qrSvg = await QRCode.toString(shortUrl, {
+        type: 'svg',
+        errorCorrectionLevel: 'Q',
+        margin: 8, // quietZoneModules
+        width: 300,
+        color: { dark: '#000000', light: '#FFFFFF' }
+      });
       
       // Push both the QR SVG and the full record
       const sequenceNumber = typeof qr.sequenceNumber === 'number' ? qr.sequenceNumber : undefined;
@@ -126,55 +131,15 @@ export async function POST(request: NextRequest) {
     console.log(`[PRINT API] ✓ Error correction: Q (25% recovery)`);
     console.log(`[PRINT API] ✓ PDF: Deterministic sizing, no scaling`);
     console.log('[PRINT API] === End Self-Check ===');
-    
-    // Check if we're running on Vercel
-    const isVercel = process.env.VERCEL === '1';
-    
-    if (isVercel) {
-      console.log('[PRINT API] Running on Vercel - using puppeteer-core with chromium');
-      
-      // Dynamic imports for Vercel environment
-      const puppeteer = await import('puppeteer-core');
-      const chromium = await import('@sparticuz/chromium');
-      
-      browser = await puppeteer.default.launch({
-        args: chromium.default.args,
-        defaultViewport: (chromium.default as any).defaultViewport,
-        executablePath: await chromium.default.executablePath(),
-        headless: (chromium.default as any).headless,
-      });
-    } else {
-      console.log('[PRINT API] Running locally - using playwright');
-      
-      // Dynamic import for local development
-      const { chromium } = await import('playwright');
-      
-      browser = await chromium.launch({ 
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-    }
-    
-    const page = await browser.newPage();
-    
-    // Emulate print media for proper CSS page handling
-    if ('emulateMedia' in page) {
-      await (page as any).emulateMedia({ media: 'print' });
-    } else if ('emulateMediaType' in page) {
-      // Fallback for older versions
-      await (page as any).emulateMediaType('print');
-    }
-    
-    // Set content
-    await page.setContent(html, { waitUntil: isVercel ? 'domcontentloaded' as any : 'networkidle' as any });
-    
+
     console.log('[PRINT API] Generating PDF from HTML...');
+
     // Generate PDF with deterministic settings
     const pdfOptions: any = {
       printBackground: true,
       preferCSSPageSize: true, // Respect CSS @page size
     };
-    
+
     // Set size explicitly without format parameter
     if (labelSize === '4x6') {
       pdfOptions.width = '4in';
@@ -188,9 +153,9 @@ export async function POST(request: NextRequest) {
       pdfOptions.format = 'Letter';
       pdfOptions.margin = { top: '0.5in', bottom: '0.5in', left: '0.5in', right: '0.5in' };
     }
-    
-    const pdfBuffer = await page.pdf(pdfOptions);
-    
+
+    const pdfBuffer = await renderPDF(html, pdfOptions);
+
     console.log(`[PRINT API] PDF generated successfully. Size: ${pdfBuffer.length} bytes`);
     
     // Return PDF response
@@ -214,10 +179,6 @@ export async function POST(request: NextRequest) {
     console.error('[PRINT API] FATAL ERROR:', error);
     console.error('[PRINT API] Error stack:', (error as Error).stack);
     return NextResponse.json({ error: 'Failed to generate labels' }, { status: 500 });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
 

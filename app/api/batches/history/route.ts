@@ -10,19 +10,21 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build query
-    let query = db.select().from(batchHistory);
-    
-    // Filter by workspace if provided
-    if (workspaceId) {
-      query = query.where(eq(batchHistory.workspaceId, workspaceId));
-    }
-    
-    // Order by creation date and apply pagination
-    const batches = await query
-      .orderBy(desc(batchHistory.createdAt))
-      .limit(limit)
-      .offset(offset);
+    // Build query with optional workspace filter
+    const batches = workspaceId
+      ? await db
+          .select()
+          .from(batchHistory)
+          .where(eq(batchHistory.workspaceId, workspaceId))
+          .orderBy(desc(batchHistory.createdAt))
+          .limit(limit)
+          .offset(offset)
+      : await db
+          .select()
+          .from(batchHistory)
+          .orderBy(desc(batchHistory.createdAt))
+          .limit(limit)
+          .offset(offset);
 
     // Convert decimal fields to numbers for client
     const formattedBatches = batches.map(batch => ({

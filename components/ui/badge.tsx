@@ -25,11 +25,34 @@ const badgeVariants = cva(
 
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
+    VariantProps<typeof badgeVariants> {
+  color?: 'default' | 'success' | 'warning' | 'failure' | 'info' | 'gray' | 'blue'
+  size?: 'xs' | 'sm' | 'md'
+}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
+function Badge({ className, variant, color, size, ...props }: BadgeProps) {
+  const colorClass = (() => {
+    switch (color) {
+      case 'success':
+        return 'border-emerald-200 bg-emerald-100 text-emerald-800'
+      case 'warning':
+        return 'border-amber-200 bg-amber-100 text-amber-800'
+      case 'failure':
+        return 'border-rose-200 bg-rose-100 text-rose-800'
+      case 'info':
+      case 'blue':
+        return 'border-sky-200 bg-sky-100 text-sky-800'
+      case 'gray':
+        return 'border-gray-200 bg-gray-100 text-gray-700'
+      default:
+        return undefined
+    }
+  })()
+
+  const sizeClass = size === 'sm' ? 'px-2 py-0.5 text-[10px]' : undefined
+
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <div className={cn(badgeVariants({ variant }), colorClass, sizeClass, className)} {...props} />
   )
 }
 

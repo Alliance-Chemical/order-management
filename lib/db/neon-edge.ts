@@ -1,37 +1,41 @@
 import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import { drizzle, NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import * as qrSchema from './schema/qr-workspace';
 import * as freightSchema from './schema/freight';
+
+const edgeSchema = {
+  ...qrSchema,
+  ...freightSchema,
+} as const;
 
 // Create Edge Runtime compatible connection with all schemas
 const connectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
 
 // Lazy initialization for Edge Runtime
 let sql: ReturnType<typeof neon> | null = null;
-let edgeDb: ReturnType<typeof drizzle> | null = null;
+let edgeDb: NeonHttpDatabase<typeof edgeSchema> | null = null;
 
-function initializeEdgeDb() {
+function initializeEdgeDb(): NeonHttpDatabase<typeof edgeSchema> {
   if (!sql && connectionString) {
     // Neon serverless driver optimized for Edge Runtime
     sql = neon(connectionString, {
       // Edge Runtime optimizations (connection cache now always on by default)
       fullResults: false, // Smaller payloads for faster responses
     });
-    
+
     // Create drizzle instance with all schemas for freight platform
-    const schema = { ...qrSchema, ...freightSchema };
-    edgeDb = drizzle(sql, { schema });
+    edgeDb = drizzle(sql, { schema: edgeSchema });
   }
-  
+
   if (!edgeDb) {
     throw new Error('Edge database not initialized. Check DATABASE_URL.');
   }
-  
+
   return edgeDb;
 }
 
 // Export optimized Edge Runtime database connection
-export function getEdgeDb() {
+export function getEdgeDb(): NeonHttpDatabase<typeof edgeSchema> {
   return initializeEdgeDb();
 }
 

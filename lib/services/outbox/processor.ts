@@ -18,9 +18,9 @@
  *   await processor.stop();
  */
 
-import { getDb } from '@/src/data/db/client';
+import { getDb, extractRows } from '@/lib/db';
 import { outboxEvents } from '@/lib/db/schema/outbox';
-import { eq, and, or, sql } from 'drizzle-orm';
+import { eq, and, or, sql, isNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { kvQueue } from '@/lib/queue/kv-queue';
 
@@ -113,7 +113,7 @@ export class OutboxProcessor {
             eq(outboxEvents.processed, false),
             or(
               // Never attempted
-              eq(outboxEvents.lastAttemptAt, null),
+              isNull(outboxEvents.lastAttemptAt),
               // Or last attempt was long ago (visibility timeout)
               sql`${outboxEvents.lastAttemptAt} < NOW() - INTERVAL '${this.visibilityTimeoutMs} milliseconds'`
             )
@@ -345,7 +345,7 @@ export class OutboxProcessor {
     failed: number;
     avgProcessingTime: number;
   }> {
-    const [stats] = await this.db.execute(sql`
+    const result = await this.db.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE processed = false) as pending,
         COUNT(*) FILTER (WHERE processed = true AND last_error IS NULL) as processed,
@@ -354,11 +354,13 @@ export class OutboxProcessor {
       FROM ${outboxEvents}
     `);
 
+    const [stats = {}] = extractRows(result as unknown as Array<Record<string, unknown>> | { rows: Record<string, unknown>[] });
+
     return {
-      pending: parseInt(stats.pending as string) || 0,
-      processed: parseInt(stats.processed as string) || 0,
-      failed: parseInt(stats.failed as string) || 0,
-      avgProcessingTime: parseFloat(stats.avg_processing_time_seconds as string) || 0,
+      pending: Number(stats.pending ?? 0),
+      processed: Number(stats.processed ?? 0),
+      failed: Number(stats.failed ?? 0),
+      avgProcessingTime: Number(stats.avg_processing_time_seconds ?? 0),
     };
   }
 }

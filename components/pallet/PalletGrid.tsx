@@ -18,7 +18,7 @@ interface PalletGridProps {
   onUpdateDimensions: (palletId: string, dims: Partial<Pallet['dimensions']>) => void
   onShowDimensionInput: (id: string | null) => void
   onCreatePallet: (type: '48x48' | '48x40') => void
-  getWeightWarning: (weight: number) => string
+  getWeightWarning: (weight: number) => 'danger' | 'warning' | 'success'
 }
 
 export function PalletGrid({
@@ -76,8 +76,17 @@ export function PalletGrid({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {pallets.map((pallet) => (
-            <div
+          {pallets.map((pallet) => {
+            const weightStatus = getWeightWarning(pallet.weight.value)
+            const statusLightStatus = weightStatus === 'danger' ? 'stop' : weightStatus === 'warning' ? 'caution' : 'go'
+            const weightBarClass = weightStatus === 'danger'
+              ? 'bg-red-500'
+              : weightStatus === 'warning'
+                ? 'bg-yellow-500'
+                : 'bg-green-500'
+
+            return (
+              <div
               key={pallet.id}
               className={`bg-white rounded-lg border-4 ${
                 selectedPallet === pallet.id ? 'border-blue-500' : 'border-gray-300'
@@ -118,15 +127,11 @@ export function PalletGrid({
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-semibold text-gray-600">Weight</span>
-                  <StatusLight status={getWeightWarning(pallet.weight.value)} />
+                  <StatusLight status={statusLightStatus} />
                 </div>
                 <div className="bg-gray-100 rounded-full h-4 overflow-hidden">
                   <div
-                    className={`h-full transition-all ${
-                      getWeightWarning(pallet.weight.value) === 'danger' ? 'bg-red-500' :
-                      getWeightWarning(pallet.weight.value) === 'warning' ? 'bg-yellow-500' :
-                      'bg-green-500'
-                    }`}
+                    className={`h-full transition-all ${weightBarClass}`}
                     style={{ width: `${Math.min((pallet.weight.value / MAX_PALLET_WEIGHT_LBS) * 100, 100)}%` }}
                   />
                 </div>
@@ -210,8 +215,9 @@ export function PalletGrid({
                   Adjust Dimensions
                 </button>
               )}
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

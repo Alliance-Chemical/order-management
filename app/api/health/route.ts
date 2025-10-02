@@ -64,8 +64,8 @@ export async function GET() {
     };
 
     // Get workspace stats (last 7 days)
-    const stats = await sql<WorkspaceStatsRow>`
-      SELECT 
+    const stats = await sql`
+      SELECT
         COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
         COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending
       FROM qr_workspace.workspaces
@@ -73,7 +73,7 @@ export async function GET() {
     `;
 
     if (Array.isArray(stats) && stats.length > 0) {
-      const [row] = stats;
+      const row = stats[0] as WorkspaceStatsRow;
       checks.stats.activeWorkspaces = Number(row.active ?? 0);
       checks.stats.pendingInspections = Number(row.pending ?? 0);
     }

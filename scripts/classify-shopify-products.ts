@@ -1,5 +1,5 @@
 #!/usr/bin/env npx tsx
-import { getDb, withRetry } from '@/src/data/db/client';
+import { getDb, withRetry } from '@/lib/db';
 import { products as productsTable } from '@/lib/db/schema/freight';
 import { eq } from 'drizzle-orm';
 

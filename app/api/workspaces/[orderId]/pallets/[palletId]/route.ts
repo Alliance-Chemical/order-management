@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
+
+type Pallet = { id: string; [k: string]: unknown };
 
 export async function PATCH(
   request: NextRequest,
@@ -10,13 +12,13 @@ export async function PATCH(
 ) {
   try {
     const { orderId, palletId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     const body = await request.json();
-    
+
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -25,8 +27,8 @@ export async function PATCH(
     
     // Update pallet
     const currentData = workspace.shipstationData || {};
-    const pallets = currentData.pallets || [];
-    const palletIndex = pallets.findIndex((p: any) => p.id === palletId);
+    const pallets: Pallet[] = currentData.pallets || [];
+    const palletIndex = pallets.findIndex((p: Pallet) => p.id === palletId);
     
     if (palletIndex === -1) {
       return NextResponse.json({ error: 'Pallet not found' }, { status: 404 });
@@ -44,11 +46,9 @@ export async function PATCH(
         shipstationData: { ...currentData, pallets },
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, orderIdBigInt));
+      .where(eq(workspaces.orderId, orderIdNum));
     
-    return new NextResponse(jsonStringifyWithBigInt(pallets[palletIndex]), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json(pallets[palletIndex]);
   } catch (error) {
     console.error('Error updating pallet:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -61,12 +61,12 @@ export async function DELETE(
 ) {
   try {
     const { orderId, palletId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
-    
+    const orderIdNum = normalizeOrderId(orderId);
+
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -75,7 +75,7 @@ export async function DELETE(
     
     // Remove pallet
     const currentData = workspace.shipstationData || {};
-    const pallets = (currentData.pallets || []).filter((p: any) => p.id !== palletId);
+    const pallets = (currentData.pallets || []).filter((p: Pallet) => p.id !== palletId);
     
     await db
       .update(workspaces)
@@ -83,8 +83,8 @@ export async function DELETE(
         shipstationData: { ...currentData, pallets },
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, orderIdBigInt));
-    
+      .where(eq(workspaces.orderId, orderIdNum));
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting pallet:', error);

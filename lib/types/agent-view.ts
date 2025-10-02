@@ -141,7 +141,7 @@ export interface WorkspaceData {
     scannedContainer?: string | null;
     entryCount?: number;
   };
-  documents: Array<{
+  documents?: Array<{
     id: string;
     fileName: string;
     fileType: string;
@@ -151,7 +151,7 @@ export interface WorkspaceData {
     s3Key?: string;
     fileSize?: number;
   }>;
-  activities: Array<{
+  activities?: Array<{
     id: string;
     activityType: string;
     activityDescription: string;
@@ -160,7 +160,7 @@ export interface WorkspaceData {
     module?: string;
     metadata?: Record<string, unknown>;
   }>;
-  totalDocumentSize: number;
+  totalDocumentSize?: number;
   createdAt?: string;
   updatedAt?: string;
   lastAccessedAt?: string;
@@ -169,6 +169,7 @@ export interface WorkspaceData {
 
 export type ViewMode = 'worker' | 'supervisor';
 export type WorkerStep = 'entry' | 'inspection' | 'complete';
+export type AgentStep = WorkerStep; // Alias for backward compatibility
 
 export interface WorkerViewState {
   viewMode: ViewMode;

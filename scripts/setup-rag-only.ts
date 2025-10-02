@@ -18,8 +18,8 @@ if (!DATABASE_URL) {
 }
 
 async function setupRAG() {
-  const db = neon(DATABASE_URL);
-  
+  const db = neon(DATABASE_URL!);
+
   try {
     console.log('🚀 Setting up RAG with pgvector...\n');
     

@@ -22,14 +22,22 @@ export const POST = withErrorHandler(async (
   const { workspaceId } = await params;
   const body = (await request.json()) as TouchPresencePayload;
   const { userId, userName, role, activity } = body;
-  
+
   if (!userId || !userName || !role || !activity) {
     return NextResponse.json(
       { error: 'userId, userName, role, and activity required' },
       { status: 400 }
     );
   }
-  
+
+  // Validate role type
+  if (role !== 'agent' && role !== 'supervisor') {
+    return NextResponse.json(
+      { error: 'role must be either "agent" or "supervisor"' },
+      { status: 400 }
+    );
+  }
+
   await touchPresence(workspaceId, {
     id: userId,
     name: userName,

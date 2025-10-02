@@ -10,8 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { HiCheck, HiSearch, HiInformationCircle } from "react-icons/hi";
-import { getFreightClassifications, searchFreightClassifications } from "@/helpers/getData";
-import type { SelectFreightClassification } from "@/types/db/types";
+import { getFreightClassifications, searchFreightClassifications, type FreightClassificationRecord } from "@/helpers/getData";
 
 interface ClassificationLinkModalProps {
   isOpen: boolean;
@@ -28,13 +27,13 @@ export default function ClassificationLinkModal({
   productName,
   onLink,
 }: ClassificationLinkModalProps) {
-  const [classifications, setClassifications] = useState<SelectFreightClassification[]>([]);
-  const [filteredClassifications, setFilteredClassifications] = useState<SelectFreightClassification[]>([]);
+  const [classifications, setClassifications] = useState<FreightClassificationRecord[]>([]);
+  const [filteredClassifications, setFilteredClassifications] = useState<FreightClassificationRecord[]>([]);
   const [selectedClassificationId, setSelectedClassificationId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [linking, setLinking] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<SelectFreightClassification[]>([]);
+  const [suggestions, setSuggestions] = useState<FreightClassificationRecord[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -146,10 +145,16 @@ export default function ClassificationLinkModal({
                             {suggestion.description}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-2">
-                            <Badge color="gray">NMFC: {suggestion.nmfc}</Badge>
-                            <Badge color="blue">Class: {suggestion.freightClass}</Badge>
+                            <Badge className="border-gray-200 bg-gray-100 text-gray-700">
+                              NMFC: {suggestion.nmfc ?? 'N/A'}
+                            </Badge>
+                            <Badge className="border-blue-200 bg-blue-100 text-blue-700">
+                              Class: {suggestion.freightClass ?? 'N/A'}
+                            </Badge>
                             {suggestion.hazardous && (
-                              <Badge color="warning">Hazmat: {suggestion.hazardId}</Badge>
+                              <Badge className="border-amber-200 bg-amber-100 text-amber-800">
+                                Hazmat: {suggestion.hazardId ?? 'N/A'}
+                              </Badge>
                             )}
                           </div>
                         </div>
@@ -199,7 +204,7 @@ export default function ClassificationLinkModal({
                       key={classification.classificationId}
                       value={classification.classificationId?.toString() ?? ""}
                     >
-                      {classification.description} - NMFC: {classification.nmfc} - Class: {classification.freightClass}
+                      {classification.description} - NMFC: {classification.nmfc ?? 'N/A'} - Class: {classification.freightClass ?? 'N/A'}
                       {classification.hazardous ? " (HAZMAT)" : ""}
                     </SelectItem>
                   ))}

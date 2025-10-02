@@ -3,7 +3,7 @@
  * Remove the sample freight data that was incorrectly added
  */
 
-import { getDb } from '@/src/data/db/client';
+import { getDb } from '@/lib/db';
 import { freightClassifications, products, productFreightLinks } from '@/lib/db/schema/freight';
 import { inArray, eq } from 'drizzle-orm';
 

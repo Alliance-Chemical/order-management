@@ -40,8 +40,11 @@ export class TagSyncService {
       }
 
       // Extract current tag IDs
-      const currentTagIds = (order.tagIds || []) as number[];
-      const currentPhase = derivePhase(currentTagIds, order.orderStatus);
+      const currentTagIds = Array.isArray(order.tagIds)
+        ? order.tagIds.map((tag) => Number(tag)).filter((tag) => Number.isFinite(tag))
+        : [];
+      const orderStatus = typeof order.orderStatus === 'string' ? order.orderStatus : undefined;
+      const currentPhase = derivePhase(currentTagIds, orderStatus);
       const { add, remove } = calculateTagDelta(currentTagIds, targetPhase);
 
       // If we're already in the desired phase and no tag changes are needed,
@@ -75,8 +78,12 @@ export class TagSyncService {
 
       // Refetch to confirm final state
       const updatedOrder = await this.client.getOrder(oid);
-      const finalTagIds = (updatedOrder.tagIds || []) as number[];
-      const finalPhase = derivePhase(finalTagIds, updatedOrder.orderStatus);
+      const finalOrder = updatedOrder ?? order;
+      const finalTagIds = Array.isArray(finalOrder.tagIds)
+        ? finalOrder.tagIds.map((tag) => Number(tag)).filter((tag) => Number.isFinite(tag))
+        : [];
+      const finalStatus = typeof finalOrder.orderStatus === 'string' ? finalOrder.orderStatus : undefined;
+      const finalPhase = derivePhase(finalTagIds, finalStatus);
 
       // Update our database mirror
       await this.updateWorkspaceMirror(orderId, finalTagIds, finalPhase);
@@ -111,8 +118,11 @@ export class TagSyncService {
         return 'planning';
       }
 
-      const tagIds = (order.tagIds || []) as number[];
-      const phase = derivePhase(tagIds, order.orderStatus);
+      const tagIds = Array.isArray(order.tagIds)
+        ? order.tagIds.map((tag) => Number(tag)).filter((tag) => Number.isFinite(tag))
+        : [];
+      const status = typeof order.orderStatus === 'string' ? order.orderStatus : undefined;
+      const phase = derivePhase(tagIds, status);
 
       await this.updateWorkspaceMirror(orderId, tagIds, phase);
       
@@ -133,11 +143,11 @@ export class TagSyncService {
     tagIds: number[], 
     phase: Phase
   ) {
-    const workspace = await this.repository.findByOrderId(orderId);
+    const workspace = await this.repository.findByOrderId(Number(orderId));
     if (!workspace) return;
 
     await this.repository.update(workspace.id, {
-      shipstationTags: tagIds,
+      shipstationTags: tagIds.map((tag) => String(tag)),
       workflowPhase: phase,
       lastShipstationSync: new Date()
     });
@@ -150,7 +160,7 @@ export class TagSyncService {
     targetPhase: Phase,
     userId: string
   ) {
-    const workspace = await this.repository.findByOrderId(orderId);
+    const workspace = await this.repository.findByOrderId(Number(orderId));
     if (!workspace) return;
 
     await this.repository.logActivity({

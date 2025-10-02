@@ -38,7 +38,7 @@ export async function ensureCoreFreightSchema() {
   // Ensure critical product columns exist (in case of older table definition)
   const productCols = await sql`
     SELECT column_name FROM information_schema.columns WHERE table_name = 'products'
-  ` as any[];
+  ` as Array<{ column_name: string }>;
   const has = (c: string) => productCols.some((r) => r.column_name === c);
   if (!has('sku')) {
     await sql`ALTER TABLE products ADD COLUMN sku varchar(100)`;

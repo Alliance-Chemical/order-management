@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
-import { jsonStringifyWithBigInt } from '@/lib/utils/bigint';
 import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { desc, eq } from 'drizzle-orm';
@@ -20,18 +19,31 @@ export async function GET() {
     )
       .limit(100);
 
-    return new NextResponse(jsonStringifyWithBigInt({ workspaces: allWorkspaces }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json({ workspaces: allWorkspaces });
   } catch (error) {
     console.error('Error fetching workspaces:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
+type ActiveModules = NonNullable<typeof workspaces.$inferInsert['activeModules']>;
+type ShipstationData = NonNullable<typeof workspaces.$inferInsert['shipstationData']>;
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const db = getEdgeDb();
+    const body = await request.json() as {
+      orderId: number | string;
+      orderNumber: string;
+      customerName?: string;
+      customerEmail?: string;
+      shipTo?: unknown;
+      items?: unknown;
+      workflowType?: 'pump_and_fill' | 'direct_resell';
+      workflowPhase?: string;
+      activeModules?: ActiveModules;
+      userId?: string;
+    };
     const { 
       orderId, 
       orderNumber, 
@@ -59,14 +71,21 @@ export async function POST(request: NextRequest) {
     const workspace = await workspaceService.createWorkspace(orderIdNum, orderNumber, userId, workflowType);
     
     // Update workspace with additional fields if provided
-    const updateData: any = {};
-    if (customerName) updateData.customerName = customerName;
-    if (customerEmail) updateData.customerEmail = customerEmail;
-    if (shipTo) updateData.shipTo = shipTo;
-    if (items) updateData.items = items;
+    const updateData: Partial<typeof workspaces.$inferInsert> = {};
     if (workflowPhase) updateData.workflowPhase = workflowPhase;
     if (activeModules) updateData.activeModules = activeModules;
-    
+
+    // Map customer/order details into shipstationData JSON
+    const shipstationPatch: Record<string, unknown> = {};
+    if (customerName) shipstationPatch.customerName = customerName;
+    if (customerEmail) shipstationPatch.customerEmail = customerEmail;
+    if (shipTo) shipstationPatch.shipTo = shipTo;
+    if (items) shipstationPatch.items = items;
+
+    if (Object.keys(shipstationPatch).length > 0) {
+      updateData.shipstationData = shipstationPatch as ShipstationData;
+    }
+
     if (Object.keys(updateData).length > 0) {
       updateData.updatedAt = new Date();
       await db

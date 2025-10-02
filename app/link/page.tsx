@@ -132,7 +132,7 @@ export default function LinkPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as any)?.error || 'Approve failed');
+        throw new Error((data as { error?: string })?.error || 'Approve failed');
       }
       await loadRecentLinks();
       await loadUnlinkedProducts();
@@ -167,7 +167,7 @@ export default function LinkPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as any)?.error || 'Batch approve failed');
+        throw new Error((data as { error?: string })?.error || 'Batch approve failed');
       }
       toast({ title: 'Approved', description: `Approved ${pending.length} links` });
       await loadRecentLinks();

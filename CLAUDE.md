@@ -45,10 +45,26 @@ npm run demo:reset            # Reset and reseed demo data
 
 ## Architecture Overview
 
+### Directory Structure
+**IMPORTANT:** All application code lives in `/lib`, `/app`, and `/components`. The `/src` directory was eliminated in October 2025 to consolidate architecture.
+
+- **`/lib`** - All shared libraries, services, database schemas, utilities
+- **`/app`** - Next.js 15 App Router pages and API routes
+- **`/components`** - React components
+- **`/scripts`** - Database and utility scripts
+
 ### Database Schema (Drizzle ORM)
-- **Primary Schema:** `lib/db/schema/qr-workspace.ts` - Core workspace, QR codes, documents, alerts
-- **Freight Schema:** `lib/db/schema/freight.ts` - Freight orders, quotes, events, chemical products
-- **RAG Schema:** `lib/db/schema/rag-embeddings.ts` - AI embeddings for hazmat classification
+All schemas are in `/lib/db/schema/`:
+- **`qr-workspace.ts`** - Core workspace, QR codes, documents, alerts
+- **`freight.ts`** - Freight orders, quotes, events, chemical products, classifications
+- **`rag-embeddings.ts`** - AI embeddings for hazmat classification
+- **`iso9001.ts`** - Quality management system
+- **`outbox.ts`** - Event outbox pattern for reliable messaging
+
+### Database Client
+- **Location:** `/lib/db/client.ts` - Unified database client
+- **Features:** Runtime detection (edge/serverless/node), lazy initialization, retry logic
+- **Usage:** `import { db, getDb } from '@/lib/db';`
 
 ### Key Application Structure
 

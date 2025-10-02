@@ -1,7 +1,7 @@
 'use client';
 
 import PalletSummaryDisplay from '@/components/freight-booking/PalletSummaryDisplay';
-import type { FreightBookingData } from '@/types/freight-booking';
+import type { FreightBookingData, PalletData } from '@/types/freight-booking';
 
 interface WarehouseFeedback {
   success: () => void;
@@ -10,18 +10,9 @@ interface WarehouseFeedback {
   buttonPress: () => void;
 }
 
-interface Pallet {
-  id?: string;
-  length?: number;
-  width?: number;
-  height?: number;
-  weight?: number;
-  [key: string]: unknown;
-}
-
 interface ConfirmationStepProps {
   bookingData: FreightBookingData;
-  palletData: Pallet[] | null;
+  palletData: PalletData[] | null;
   booking: boolean;
   setBookingData: (fn: (prev: FreightBookingData) => FreightBookingData) => void;
   onBack: () => void;

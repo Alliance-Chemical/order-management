@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { workspaces, qrCodes, documents, alertConfigs, activityLog } from '@/lib/db/schema/qr-workspace';
+import { workspaces, qrCodes, documents, alertConfigs, activityLog, alertHistory } from '@/lib/db/schema/qr-workspace';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import type { DocumentInsert } from '@/types/documents';
 import { resolveDocumentName } from '@/lib/utils/document-name';
@@ -70,6 +70,10 @@ export class WorkspaceRepository {
     return updated;
   }
 
+  async updateWorkspace(id: string, data: Partial<typeof workspaces.$inferInsert>) {
+    return this.update(id, data);
+  }
+
   async updateAccessTime(id: string, _userId: string) {
     const [updated] = await db
       .update(workspaces)
@@ -110,7 +114,7 @@ export class WorkspaceRepository {
 
   async findQRByShortCode(shortCode: string, orderId?: number | bigint) {
     if (orderId !== undefined) {
-      const oid = BigInt(orderId);
+      const oid = Number(orderId);
       return await db.query.qrCodes.findFirst({
         where: and(eq(qrCodes.shortCode, shortCode), eq(qrCodes.orderId, oid)),
       });
@@ -158,9 +162,41 @@ export class WorkspaceRepository {
     return config;
   }
 
+  async getAlertConfig(workspaceId: string, alertType: string) {
+    return await db.query.alertConfigs.findFirst({
+      where: and(eq(alertConfigs.workspaceId, workspaceId), eq(alertConfigs.alertType, alertType)),
+    });
+  }
+
+  async updateAlertConfig(id: string, data: Partial<typeof alertConfigs.$inferInsert>) {
+    const [updated] = await db
+      .update(alertConfigs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(alertConfigs.id, id))
+      .returning();
+    return updated;
+  }
+
   async logActivity(data: typeof activityLog.$inferInsert) {
     const [activity] = await db.insert(activityLog).values(data).returning();
     return activity;
+  }
+
+  /**
+   * Paginated activity logs for a workspace.
+   */
+  async getActivityLogs(
+    workspaceId: string,
+    opts?: { limit?: number; offset?: number }
+  ) {
+    const limit = opts?.limit ?? 50;
+    const offset = opts?.offset ?? 0;
+    return await db.query.activityLog.findMany({
+      where: eq(activityLog.workspaceId, workspaceId),
+      orderBy: desc(activityLog.performedAt),
+      limit,
+      offset,
+    });
   }
 
   async getRecentActivity(workspaceId: string, limit: number = 50) {
@@ -226,5 +262,10 @@ export class WorkspaceRepository {
       .offset(offset);
 
     return results;
+  }
+
+  async logAlertHistory(data: typeof alertHistory.$inferInsert) {
+    const [row] = await db.insert(alertHistory).values(data).returning();
+    return row;
   }
 }

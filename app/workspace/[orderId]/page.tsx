@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
 import { buildInspectionItems } from '@/lib/inspection/items';
+import type { SSItem } from '@/types/shipstation';
 import { getWorkspace, updateWorkspaceModuleState } from '@/app/actions/workspace';
 
 // Import worker view components
@@ -81,12 +82,13 @@ export default function WorkspacePage() {
     return hasQrParam || explicitWorkerView ? 'inspection' : 'entry';
   });
   const [activeTab, setActiveTab] = useState('overview'); // For supervisor view
-  const [selectedItem, setSelectedItem] = useState<any>(null); // Track which item is being inspected
+  const [selectedItem, setSelectedItem] = useState<SSItem | null>(null); // Track which item is being inspected
   const [showPrintModal, setShowPrintModal] = useState(false);
   const autoStartRef = useRef(false);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
   const [autoCompleteEnabled, setAutoCompleteEnabled] = useState(() => !isReviewMode);
   const hasAppliedReviewModeRef = useRef(false);
+  const lastInteractionRef = useRef<number>(Date.now());
 
   useEffect(() => {
     const queryMode: ViewMode = viewQuery === 'supervisor' ? 'supervisor' : 'worker';
@@ -134,9 +136,37 @@ export default function WorkspacePage() {
     updateViewMode('worker');
   }, [updateViewMode]);
 
+  // Track user interactions to pause auto-reload
+  useEffect(() => {
+    const updateInteraction = () => {
+      lastInteractionRef.current = Date.now();
+    };
+
+    // Track various user interactions
+    const events = ['mousedown', 'keydown', 'touchstart', 'input', 'change'];
+    events.forEach(event => {
+      document.addEventListener(event, updateInteraction);
+    });
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, updateInteraction);
+      });
+    };
+  }, []);
+
   useEffect(() => {
     fetchWorkspace();
-    const interval = setInterval(fetchWorkspace, 30000);
+
+    // Reduce frequency to 5 minutes and check for recent interaction
+    const interval = setInterval(() => {
+      const timeSinceInteraction = Date.now() - lastInteractionRef.current;
+      // Only fetch if no interaction in last 10 seconds
+      if (timeSinceInteraction > 10000) {
+        fetchWorkspace();
+      }
+    }, 300000); // 5 minutes
+
     return () => clearInterval(interval);
   }, [orderId]);
 
@@ -174,7 +204,7 @@ export default function WorkspacePage() {
     }
   };
 
-  const handleModuleStateChange = async (module: string, state: Record<string, any>) => {
+  const handleModuleStateChange = async (module: string, state: Record<string, unknown>) => {
     try {
       const aliases = MODULE_STATE_ALIASES[module];
       const canonicalKey = aliases ? aliases[0] : module;
@@ -220,9 +250,10 @@ export default function WorkspacePage() {
 
     // Save inspection results
     const workflowModule = resolveWorkerInspectionPhase(workspace.workflowPhase);
-    const statePayload: Record<string, any> = { ...results };
+    const statePayload: Record<string, unknown> = { ...results };
 
-    if (workflowModule === 'pre_ship') {
+    // Mark both pre_mix and pre_ship as completed when inspection finishes
+    if (workflowModule === 'pre_ship' || workflowModule === 'pre_mix') {
       statePayload.completed = true;
       statePayload.completedAt = statePayload.completedAt || new Date().toISOString();
       statePayload.completedBy = statePayload.completedBy || 'worker';
@@ -246,7 +277,7 @@ export default function WorkspacePage() {
     setWorkerStep('inspection');
   }, []);
 
-  const startInspection = useCallback((item?: any) => {
+  const startInspection = useCallback((item?: SSItem) => {
     setSelectedItem(item ?? null);
     setRedirectCountdown(null);
     setAutoCompleteEnabled(true);
@@ -364,7 +395,7 @@ export default function WorkspacePage() {
         );
       } else if (workerStep === 'inspection') {
         // Build inspection items via shared helper
-        const inspectionItems = buildInspectionItems(workerWorkspace as any);
+        const inspectionItems = buildInspectionItems(workerWorkspace);
 
         // If a specific item was selected, show only that item
         const itemsToInspect = selectedItem ? [selectedItem] : (workspace.shipstationData?.items || []);
@@ -572,8 +603,8 @@ export default function WorkspacePage() {
             }
             return workspace.moduleStates?.[activeTab] || {};
           })()}
-          onStateChange={(state: Record<string, any>) => handleModuleStateChange(activeTab, state)}
-          onStateChangeAction={(state: Record<string, any>) => handleModuleStateChange(activeTab, state)}
+          onStateChange={(state: Record<string, unknown>) => handleModuleStateChange(activeTab, state)}
+          onStateChangeAction={(state: Record<string, unknown>) => handleModuleStateChange(activeTab, state)}
         />
       </main>
 

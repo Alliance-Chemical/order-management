@@ -70,7 +70,8 @@ async function testForeignKeyConstraint() {
       `;
       console.log('❌ ERROR: Invalid freight order should have failed but succeeded');
     } catch (error) {
-      console.log('✅ Foreign key constraint working - invalid workspace_id rejected:', error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      console.log('✅ Foreign key constraint working - invalid workspace_id rejected:', message);
     }
     
     // Test 3: Verify the relationship query works

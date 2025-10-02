@@ -5,14 +5,14 @@ import { MessageSquare, Send, X, Loader2, Check, Package } from 'lucide-react';
 import { ragChat } from '@/app/actions/ai';
 
 interface ClassificationData {
-  un_number?: string;
-  proper_shipping_name?: string;
-  hazard_class?: string;
-  packing_group?: string;
-  labels?: string;
-  erg_guide?: string;
+  un_number?: string | null;
+  proper_shipping_name?: string | null;
+  hazard_class?: string | null;
+  packing_group?: string | null;
+  labels?: string | null;
+  erg_guide?: string | null;
   confidence?: number;
-  exemption_reason?: string;
+  exemption_reason?: string | null;
 }
 
 interface SearchResult {

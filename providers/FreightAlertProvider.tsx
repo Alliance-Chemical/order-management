@@ -49,12 +49,13 @@ export function FreightAlertProvider({ children }: { children: React.ReactNode }
     const seenOrders = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     const cutoffTime = Date.now() - (RETENTION_DAYS * 24 * 60 * 60 * 1000);
     
-    const cleaned = Object.entries(seenOrders).reduce((acc, [orderId, timestamp]) => {
-      if ((timestamp as number) > cutoffTime) {
-        acc[orderId] = timestamp;
+    const cleaned = Object.entries(seenOrders).reduce<Record<string, number>>((acc, [orderId, timestamp]) => {
+      const parsed = typeof timestamp === 'number' ? timestamp : Number(timestamp);
+      if (Number.isFinite(parsed) && parsed > cutoffTime) {
+        acc[orderId] = parsed;
       }
       return acc;
-    }, {} as Record<string, number>);
+    }, {});
     
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
     return cleaned;

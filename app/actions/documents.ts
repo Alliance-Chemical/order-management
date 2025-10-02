@@ -303,7 +303,7 @@ export async function getWorkspaceDocuments(orderId: string) {
 
     const normalizedDocuments = documentsWithUrls.map((doc) => ({
       ...doc,
-      fileName: doc.documentName ?? doc.fileName,
+      fileName: doc.documentName,
       documentUrl: doc.documentUrl ?? doc.s3Url
     }))
 
@@ -378,7 +378,7 @@ export async function deleteDocument(documentId: string) {
   }
 }
 
-export async function deleteWorkspaceDocument(documentId: number, orderId: string) {
+export async function deleteWorkspaceDocument(documentId: string, orderId: string) {
   try {
     const db = getOptimizedDb()
     

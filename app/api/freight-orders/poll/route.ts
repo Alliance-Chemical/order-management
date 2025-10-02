@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
-import { getDb } from '@/src/data/db/client';
+import { getDb } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 interface ShipStationAddress {
   name?: string | null;
@@ -89,7 +89,7 @@ export async function GET(_request: NextRequest) {
       console.log(`[Pagination] Page ${page}/${data.pages || 1}: Found ${orders.length} orders. Total so far: ${allFreightOrders.length}`);
       
       // Check if there are more pages
-      hasMorePages = data.pages && page < data.pages;
+      hasMorePages = Boolean(data.pages && page < data.pages);
       page++;
       
       // Add a small delay to avoid rate limiting
@@ -165,11 +165,13 @@ export async function GET(_request: NextRequest) {
         });
       } catch (error) {
         // Handle duplicate key error - workspace may have been created by another process
-        if (error?.message?.includes('duplicate key')) {
+        if (error instanceof Error && error.message.includes('duplicate key')) {
           console.log(`Workspace already exists for order ${order.orderNumber}, checking again`);
-          const existingWorkspace = await db.query.workspaces.findFirst({
-            where: eq(workspaces.orderId, order.orderId),
-          });
+          const [existingWorkspace] = await db
+            .select()
+            .from(workspaces)
+            .where(eq(workspaces.orderId, order.orderId))
+            .limit(1);
           
           if (existingWorkspace) {
             existing.push({

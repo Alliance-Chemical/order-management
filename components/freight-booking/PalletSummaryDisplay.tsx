@@ -1,38 +1,17 @@
 'use client';
 
 import { CubeIcon, ScaleIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/solid';
-
-interface Pallet {
-  id: string;
-  type: '48x48' | '48x40' | 'custom';
-  dimensions: {
-    length: number;
-    width: number;
-    height: number;
-    units: 'in' | 'cm';
-  };
-  weight: {
-    value: number;
-    units: 'lbs' | 'kg';
-  };
-  items: Array<{
-    sku: string;
-    name: string;
-    quantity: number;
-  }>;
-  stackable: boolean;
-  notes?: string;
-}
+import type { PalletData } from '@/types/freight-booking';
 
 interface PalletSummaryDisplayProps {
-  pallets: Pallet[];
+  pallets: PalletData[];
   className?: string;
 }
 
 export default function PalletSummaryDisplay({ pallets, className = '' }: PalletSummaryDisplayProps) {
-  const totalWeight = pallets.reduce((sum, p) => sum + p.weight.value, 0);
+  const totalWeight = pallets.reduce((sum, p) => sum + (p.weight?.value ?? 0), 0);
   const totalItems = pallets.reduce((sum, p) => 
-    sum + p.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0
+    sum + (p.items || []).reduce((itemSum, item) => itemSum + (item.quantity ?? 0), 0), 0
   );
 
   return (
@@ -60,53 +39,64 @@ export default function PalletSummaryDisplay({ pallets, className = '' }: Pallet
 
       {/* Pallet Details */}
       <div className="space-y-4">
-        {pallets.map((pallet, index) => (
-          <div key={pallet.id} className="border-2 border-gray-200 rounded-lg p-4 bg-gray-50">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h4 className="font-bold text-lg text-gray-800">
-                  Pallet #{index + 1} - {pallet.type}
-                </h4>
-                <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
-                  <span className="flex items-center">
-                    <ArrowsPointingOutIcon className="h-4 w-4 mr-1" />
-                    {pallet.dimensions.length} × {pallet.dimensions.width} × {pallet.dimensions.height} {pallet.dimensions.units}
-                  </span>
-                  <span className="flex items-center">
-                    <ScaleIcon className="h-4 w-4 mr-1" />
-                    {pallet.weight.value} {pallet.weight.units}
-                  </span>
-                </div>
-              </div>
-              {pallet.stackable && (
-                <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">
-                  STACKABLE
-                </span>
-              )}
-            </div>
+        {pallets.map((pallet, index) => {
+          const id = (pallet as { id?: string }).id ?? `${pallet.type || 'pallet'}-${index}`;
+          const dimensions = pallet.dimensions || {};
+          const weight = pallet.weight || {};
+          const units = dimensions.units ?? 'in';
+          const weightUnits = weight.units ?? 'lbs';
 
-            {/* Items on Pallet */}
-            <div className="bg-white rounded p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Contents</div>
-              <div className="space-y-1">
-                {pallet.items.map((item) => (
-                  <div key={item.sku} className="flex justify-between text-sm">
-                    <span className="text-gray-700">{item.name}</span>
-                    <span className="font-medium text-gray-900">
-                      Qty: {item.quantity} | SKU: {item.sku}
+          return (
+            <div key={id} className="border-2 border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h4 className="font-bold text-lg text-gray-800">
+                    Pallet #{index + 1} - {pallet.type || 'Custom'}
+                  </h4>
+                  <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
+                    <span className="flex items-center">
+                      <ArrowsPointingOutIcon className="h-4 w-4 mr-1" />
+                      {dimensions.length ?? '—'} × {dimensions.width ?? '—'} × {dimensions.height ?? '—'} {units}
+                    </span>
+                    <span className="flex items-center">
+                      <ScaleIcon className="h-4 w-4 mr-1" />
+                      {(weight.value ?? 0).toString()} {weightUnits}
                     </span>
                   </div>
-                ))}
+                </div>
+                {pallet.stackable && (
+                  <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">
+                    STACKABLE
+                  </span>
+                )}
               </div>
-            </div>
 
-            {pallet.notes && (
-              <div className="mt-3 text-sm text-gray-600 italic">
-                Note: {pallet.notes}
+              {/* Items on Pallet */}
+              <div className="bg-white rounded p-3">
+                <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Contents</div>
+                <div className="space-y-1">
+                  {(pallet.items || []).map((item, itemIndex) => {
+                    const key = item.sku ?? `${id}-item-${itemIndex}`;
+                    return (
+                      <div key={key} className="flex justify-between text-sm">
+                        <span className="text-gray-700">{item.name ?? 'Item'}</span>
+                        <span className="font-medium text-gray-900">
+                          Qty: {item.quantity ?? 0}{item.sku ? ` | SKU: ${item.sku}` : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            )}
-          </div>
-        ))}
+
+              {pallet.notes && (
+                <div className="mt-3 text-sm text-gray-600 italic">
+                  Note: {pallet.notes}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Freight Class Calculation Hint */}

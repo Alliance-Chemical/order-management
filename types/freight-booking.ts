@@ -61,6 +61,35 @@ export interface FreightBookingData {
   hazmatAnalysis: any;
 }
 
+export interface PalletItem {
+  sku?: string;
+  name?: string;
+  quantity?: number;
+  position?: { x: number; y: number; z: number };
+}
+
+export interface WeightDetails {
+  value?: number;
+  units?: string;
+}
+
+export interface DimensionDetails {
+  length?: number;
+  width?: number;
+  height?: number;
+  units?: string;
+}
+
+export interface PalletData {
+  id?: string;
+  type: string;
+  items: PalletItem[];
+  weight?: WeightDetails;
+  dimensions?: DimensionDetails;
+  stackable?: boolean;
+  notes?: string;
+}
+
 export type BookingStep = 'selection' | 'classification' | 'hazmat-analysis' | 'confirmation';
 
 export interface HazmatOverride {

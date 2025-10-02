@@ -4,6 +4,19 @@ import { getEdgeSql } from '@/lib/db/neon-edge';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
+type ClassificationRow = {
+  sku: string;
+  name: string;
+  is_hazardous: boolean | null;
+  un_number: string | null;
+  classification_description: string | null;
+  nmfc_code: string | null;
+  freight_class: string | null;
+  is_hazmat: boolean | null;
+  hazmat_class: string | null;
+  packing_group: string | null;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const { sku } = await request.json();
@@ -16,16 +29,16 @@ export async function POST(request: NextRequest) {
     }
 
     const sql = getEdgeSql();
-    
+
     // First check if product exists
     const productCheck = await sql`
-      SELECT id, sku, name, is_hazardous, un_number 
-      FROM products 
-      WHERE sku = ${sku} 
+      SELECT id, sku, name, is_hazardous, un_number
+      FROM products
+      WHERE sku = ${sku}
       LIMIT 1
     `;
-    
-    if (productCheck.length === 0) {
+
+    if (Array.isArray(productCheck) && productCheck.length === 0) {
       // Product doesn't exist yet - this is normal for new products
       return NextResponse.json({
         success: true,
@@ -36,7 +49,7 @@ export async function POST(request: NextRequest) {
     
     // Check if product has approved classification links
     const result = await sql`
-      SELECT 
+      SELECT
          p.sku, p.name, p.is_hazardous, p.un_number,
          fc.description as classification_description,
          fc.nmfc_code, fc.freight_class, fc.is_hazmat,
@@ -48,8 +61,8 @@ export async function POST(request: NextRequest) {
        LIMIT 1
     `;
 
-    if (result.length > 0) {
-      const classification = result[0];
+    if (Array.isArray(result) && result.length > 0) {
+      const classification = result[0] as ClassificationRow;
       return NextResponse.json({
         success: true,
         hasClassification: true,

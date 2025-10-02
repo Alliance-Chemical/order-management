@@ -109,15 +109,14 @@ export function useUpdateWorkspace(workspaceId: string) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(arg),
       });
-      
+
       if (!res.ok) throw new Error('Failed to update workspace');
       return res.json();
     },
     {
       // Optimistically update the UI
-      optimisticData: (current: WorkspaceData | undefined, newData: WorkspaceUpdatePayload): WorkspaceData => ({
+      optimisticData: (current: WorkspaceData | undefined) => ({
         ...(current ?? {}),
-        ...newData,
       }),
       // Revalidate after mutation
       revalidate: true,

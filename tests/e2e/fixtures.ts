@@ -1,10 +1,34 @@
 import { test as base, Page } from '@playwright/test';
 import { v4 as uuidv4 } from 'uuid';
 
+// Define types for fixtures
+type MockKV = {
+  enqueue: () => Promise<void>;
+  process: () => Promise<void>;
+  stats: () => Promise<{ ready: number; scheduled: number; dead: number }>;
+};
+
+type MockShipStation = {
+  getOrder: (orderId: string) => Promise<{
+    orderId: string;
+    orderNumber: string;
+    orderStatus: string;
+    tagIds: number[];
+  }>;
+  updateOrder: (orderId: string, data: any) => Promise<any>;
+  addTag: (orderId: string, tagId: string) => Promise<any>;
+  removeTag: (orderId: string, tagId: string) => Promise<any>;
+};
+
+type CustomFixtures = {
+  mockKV: MockKV;
+  mockShipStation: MockShipStation;
+};
+
 // Extend the base test with custom fixtures
-export const test = base.extend({
+export const test = base.extend<CustomFixtures>({
   mockKV: async ({ page }, use) => {
-    const mock = {
+    const mock: MockKV = {
       enqueue: async () => {},
       process: async () => {},
       stats: async () => ({ ready: 0, scheduled: 0, dead: 0 })
@@ -12,7 +36,7 @@ export const test = base.extend({
     await use(mock);
   },
   mockShipStation: async ({ page }, use) => {
-    const mock = {
+    const mock: MockShipStation = {
       getOrder: async (orderId: string) => ({
         orderId,
         orderNumber: `TEST-${orderId}`,
@@ -40,6 +64,11 @@ export const test = base.extend({
 });
 
 export { expect } from '@playwright/test';
+
+// Helper function to wait for activity
+export async function waitForActivity(page: Page, timeout: number = 5000) {
+  await page.waitForLoadState('networkidle', { timeout });
+}
 
 export async function createTestWorkspace(page: Page, orderId: string, options: any = {}) {
   // Add random suffix to make orderId unique for each test run

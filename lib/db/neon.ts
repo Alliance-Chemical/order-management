@@ -17,11 +17,11 @@ function initializeNeonDb() {
   
   if (!sql && connectionString) {
     // Use Neon's serverless driver which handles connection pooling automatically
-    sql = neon<false, false>(connectionString);
-    
+    sql = neon(connectionString);
+
     // Create drizzle instance with the Neon driver
     const schema: typeof qrSchema = { ...qrSchema };
-    neonDb = drizzle<typeof qrSchema>(sql, { schema });
+    neonDb = drizzle(sql, { schema });
   }
   
   if (!neonDb) {

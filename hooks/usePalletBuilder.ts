@@ -242,7 +242,7 @@ export function usePalletBuilder({
     return pallets.reduce((sum, p) => sum + p.weight.value, 0)
   }
 
-  const getWeightWarning = (weight: number) => {
+  const getWeightWarning = (weight: number): 'danger' | 'warning' | 'success' => {
     if (weight > MAX_PALLET_WEIGHT_LBS) return 'danger'
     if (weight > MAX_PALLET_WEIGHT_LBS * 0.8) return 'warning'
     return 'success'

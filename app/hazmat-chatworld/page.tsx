@@ -425,7 +425,7 @@ export default function HazmatChatworldPage() {
               {/* Input Area */}
               <div className="border-t dark:border-gray-700 p-4">
                 {error && (
-                  <Alert color="failure" className="mb-3">
+                  <Alert color="danger" className="mb-3">
                     <HiExclamation className="mr-2 h-4 w-4" />
                     {error}
                   </Alert>
@@ -537,7 +537,7 @@ export default function HazmatChatworldPage() {
         </div>
 
         {/* Footer Info */}
-        <Alert color="info" icon={HiInformationCircle} className="mt-4 bg-white/90 dark:bg-gray-800/90 backdrop-blur-lg">
+        <Alert color="info" icon={<HiInformationCircle />} className="mt-4 bg-white/90 dark:bg-gray-800/90 backdrop-blur-lg">
           <div className="text-sm">
             <strong>GPT-5 nano (2025-08-07)</strong> • 80% cheaper than GPT-4o-mini • 400K context window • May 31, 2024 knowledge cutoff
           </div>

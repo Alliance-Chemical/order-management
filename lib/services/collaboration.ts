@@ -59,9 +59,9 @@ export class CollaborationService {
   ): Promise<void> {
     // Get current presence to preserve other fields
     const users = await listPresence(workspaceId);
-    const user = users.find(u => u.id === userId);
+    const user = users.find((u) => u.id === userId);
     
-    if (user) {
+    if (user && user.name && user.role) {
       await touchPresence(workspaceId, {
         id: userId,
         name: user.name,
@@ -78,18 +78,22 @@ export class CollaborationService {
     const users = await listPresence(workspaceId);
     
     // Convert KV format to ActiveUser format
-    return users.map(u => ({
-      id: u.id,
-      name: u.name,
-      role: u.role,
-      activity: u.activity,
-      timestamp: u.ts || Date.now()
-    }));
+    return users
+      .filter((u): u is typeof users[number] & { id: string; name: string; role: 'agent' | 'supervisor' } =>
+        Boolean(u.id && u.name && u.role)
+      )
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        activity: u.activity ?? '',
+        timestamp: u.ts || Date.now(),
+      }));
   }
   
   private async updateDatabaseUsersIfChanged(workspaceId: string): Promise<void> {
     const users = await this.getWorkspaceUsers(workspaceId);
-    
+
     // Create a string representation of current users
     const usersString = users
       .map(u => `${u.name} (${u.role}): ${u.activity}`)

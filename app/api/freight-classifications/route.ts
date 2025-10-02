@@ -3,6 +3,7 @@ import { getEdgeDb, withEdgeRetry } from '@/lib/db/neon-edge';
 import { freightClassifications } from '@/lib/db/schema/freight';
 import { eq, like, or, and } from 'drizzle-orm';
 import { KVCache } from '@/lib/cache/kv-cache';
+import { stripUndefined, toDecimalString } from '@/lib/utils/db-helpers';
 
 // Enable Edge Runtime for performance
 export const runtime = 'edge';
@@ -36,21 +37,19 @@ export async function GET(request: NextRequest) {
     }
     
     const result = await withEdgeRetry(async () => {
-      let query = db.select().from(freightClassifications);
-      
       // Build where conditions
       const conditions = [];
-      
+
       if (hazmat === 'true') {
         conditions.push(eq(freightClassifications.isHazmat, true));
       } else if (hazmat === 'false') {
         conditions.push(eq(freightClassifications.isHazmat, false));
       }
-      
+
       if (freightClass && VALID_FREIGHT_CLASSES.includes(freightClass)) {
         conditions.push(eq(freightClassifications.freightClass, freightClass));
       }
-      
+
       if (search) {
         conditions.push(
           or(
@@ -60,16 +59,12 @@ export async function GET(request: NextRequest) {
           )
         );
       }
-      
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-      
-      const classificationList = await query
-        .limit(limit)
-        .offset(offset)
-        .execute();
-      
+
+      // Execute query with or without filters (avoid query reassignment)
+      const classificationList = conditions.length > 0
+        ? await db.select().from(freightClassifications).where(and(...conditions)).limit(limit).offset(offset)
+        : await db.select().from(freightClassifications).limit(limit).offset(offset);
+
       return classificationList;
     });
     
@@ -117,22 +112,23 @@ export async function POST(request: NextRequest) {
     }
     
     const result = await withEdgeRetry(async () => {
+      const values = {
+        description: body.description,
+        nmfcCode: body.nmfcCode,
+        freightClass: body.freightClass,
+        isHazmat: body.isHazmat || false,
+        hazmatClass: body.hazmatClass,
+        packingGroup: body.packingGroup,
+        packagingInstructions: body.packagingInstructions,
+        specialHandling: body.specialHandling,
+        minDensity: toDecimalString(body.minDensity),
+        maxDensity: toDecimalString(body.maxDensity),
+      };
       const [newClassification] = await db
         .insert(freightClassifications)
-        .values({
-          description: body.description,
-          nmfcCode: body.nmfcCode,
-          freightClass: body.freightClass,
-          isHazmat: body.isHazmat || false,
-          hazmatClass: body.hazmatClass,
-          packingGroup: body.packingGroup,
-          packagingInstructions: body.packagingInstructions,
-          specialHandling: body.specialHandling,
-          minDensity: body.minDensity ? parseFloat(body.minDensity) : null,
-          maxDensity: body.maxDensity ? parseFloat(body.maxDensity) : null,
-        })
+        .values(stripUndefined(values) as typeof values)
         .returning();
-      
+
       return newClassification;
     });
     
@@ -174,7 +170,7 @@ export async function PUT(request: NextRequest) {
     const result = await withEdgeRetry(async () => {
       const [updatedClassification] = await db
         .update(freightClassifications)
-        .set({
+        .set(stripUndefined({
           description: body.description,
           nmfcCode: body.nmfcCode,
           freightClass: body.freightClass,
@@ -183,13 +179,13 @@ export async function PUT(request: NextRequest) {
           packingGroup: body.packingGroup,
           packagingInstructions: body.packagingInstructions,
           specialHandling: body.specialHandling,
-          minDensity: body.minDensity ? parseFloat(body.minDensity) : null,
-          maxDensity: body.maxDensity ? parseFloat(body.maxDensity) : null,
+          minDensity: toDecimalString(body.minDensity),
+          maxDensity: toDecimalString(body.maxDensity),
           updatedAt: new Date(),
-        })
+        }))
         .where(eq(freightClassifications.id, body.id))
         .returning();
-      
+
       return updatedClassification;
     });
     

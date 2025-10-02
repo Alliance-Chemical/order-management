@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
-import { jsonStringifyWithBigInt } from '@/lib/utils/bigint';
 
 const workspaceService = new WorkspaceService();
 
@@ -18,10 +17,7 @@ export async function POST(request: NextRequest) {
 
     const workspace = await workspaceService.createWorkspace(orderId, orderNumber, userId);
 
-    return new NextResponse(jsonStringifyWithBigInt(workspace), {
-      status: 201,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json(workspace, { status: 201 });
   } catch (error) {
     console.error('Error creating workspace:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

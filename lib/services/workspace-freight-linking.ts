@@ -29,7 +29,12 @@ interface WorkspaceData {
   status?: string;
   workspaceUrl: string;
   shipstationData?: JsonMap;
-  activeModules?: JsonMap;
+  activeModules?: {
+    preMix: boolean;
+    warehouse: boolean;
+    documents: boolean;
+    freight?: boolean;
+  };
 }
 
 export class WorkspaceFreightLinkingService {
@@ -47,7 +52,7 @@ export class WorkspaceFreightLinkingService {
         const [freightOrder] = await this.db
           .insert(freightOrders)
           .values({
-            workspaceId,
+            // workspaceId removed - not in freight_orders schema
             orderId: freightData.orderId,
             orderNumber: freightData.orderNumber,
             carrierName: freightData.carrierName,
@@ -63,8 +68,6 @@ export class WorkspaceFreightLinkingService {
             sessionId: freightData.sessionId ? (freightData.sessionId.length === 36 ? freightData.sessionId : null) : null,
             telemetryData: freightData.telemetryData || {},
             specialInstructions: freightData.specialInstructions,
-            createdAt: new Date(),
-            updatedAt: new Date(),
           })
           .returning();
 
@@ -153,23 +156,28 @@ export class WorkspaceFreightLinkingService {
 
     try {
       const result = await withEdgeRetry(async () => {
-        // Get workspace with freight orders
         const workspace = await this.db.query.workspaces.findFirst({
           where: eq(workspaces.id, workspaceId),
+        });
+
+        if (!workspace) {
+          return null;
+        }
+
+        // Note: workspaceId was removed from freight_orders schema
+        // This query would need to be updated to use orderId instead
+        const orders = await this.db.query.freightOrders.findMany({
+          where: eq(freightOrders.orderId, workspace.orderId),
           with: {
-            freightOrders: {
-              with: {
-                quotes: true,
-                events: {
-                  orderBy: (events, { desc }) => [desc(events.performedAt)],
-                  limit: 10,
-                },
-              },
-            },
+            quotes: true,
+            events: true,
           },
         });
 
-        return workspace;
+        return {
+          ...workspace,
+          freightOrders: orders,
+        };
       });
 
       // Cache for 5 minutes

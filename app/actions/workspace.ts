@@ -679,7 +679,7 @@ export async function notifyWorkspace(
 export async function updateWorkspaceModuleState(
   orderId: string,
   module: string,
-  state: Record<string, any>
+  state: Record<string, unknown>
 ) {
   try {
     const db = getOptimizedDb()
@@ -854,5 +854,54 @@ export async function ensureWorkspaceExists(orderId: string) {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create workspace',
     };
+  }
+}
+
+/**
+ * Force sync ShipStation data for a workspace
+ * Useful when initial sync failed or data is stale
+ */
+export async function syncShipStationData(orderId: string) {
+  try {
+    const numericOrderId = toNumericOrderId(orderId)
+    if (numericOrderId === null) {
+      return {
+        success: false,
+        error: 'Invalid order ID'
+      }
+    }
+
+    const db = getOptimizedDb()
+
+    // Find workspace
+    const workspace = await db.query.workspaces.findFirst({
+      where: eq(workspaces.orderId, numericOrderId)
+    })
+
+    if (!workspace) {
+      return {
+        success: false,
+        error: 'Workspace not found'
+      }
+    }
+
+    // Force sync with ShipStation
+    console.log(`[syncShipStationData] Syncing ShipStation data for order ${orderId}`)
+    await workspaceService.syncWithShipStation(workspace.id, numericOrderId)
+
+    // Revalidate paths
+    revalidatePath(`/workspace/${numericOrderId}`)
+    revalidatePath('/')
+
+    return {
+      success: true,
+      message: 'ShipStation data synced successfully'
+    }
+  } catch (error) {
+    console.error('[syncShipStationData] Failed to sync ShipStation data:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to sync ShipStation data'
+    }
   }
 }

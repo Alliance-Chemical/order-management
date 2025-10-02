@@ -20,6 +20,7 @@ interface LidPhoto {
 type InspectionChecklist = Record<string, boolean>;
 
 interface PreMixInspectionState {
+  [key: string]: unknown;
   datePerformed: string;
   invoiceNumber: string;
   inspector: string;

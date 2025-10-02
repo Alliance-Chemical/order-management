@@ -5,25 +5,20 @@ import { KVCache } from "@/lib/cache/kv-cache"
 import { revalidatePath } from "next/cache"
 import { getEdgeSql, withEdgeRetry } from "@/lib/db/neon-edge"
 import { openaiEmbedding } from '@/lib/services/ai/openai-service'
+import type {
+  PalletData,
+  PalletItem,
+  WeightDetails,
+  DimensionDetails,
+} from '@/types/freight-booking'
 
 type Address = {
   address?: string
   city?: string
   state?: string
   zipCode?: string
+  zip?: string
   locationType?: string
-}
-
-type WeightDetails = {
-  value?: number
-  units?: string
-}
-
-type DimensionDetails = {
-  length?: number
-  width?: number
-  height?: number
-  units?: string
 }
 
 type PackageDetails = {
@@ -31,19 +26,6 @@ type PackageDetails = {
   dimensions?: DimensionDetails
   packageCount?: number
   description?: string
-}
-
-type PalletItem = {
-  name?: string
-  quantity?: number
-}
-
-type PalletData = {
-  type: string
-  items: PalletItem[]
-  weight: WeightDetails
-  dimensions: DimensionDetails
-  stackable?: boolean
 }
 
 type FreightBookingInput = {
@@ -66,12 +48,26 @@ type FreightBookingInput = {
   customerEmail?: string
 }
 
+type OrderItem = {
+  sku?: string
+  id?: string
+  quantity?: number
+  description?: string
+  name?: string
+}
+
+type CustomerInfo = {
+  id?: string
+  name?: string
+  email?: string
+}
+
 type FreightOrderContext = {
   orderId: string
   destination?: Address
   origin?: Address
-  items?: Array<Record<string, unknown>>
-  customer?: Record<string, unknown>
+  items?: OrderItem[]
+  customer?: CustomerInfo
 }
 
 type HazmatItem = {
@@ -145,12 +141,12 @@ function createShipStationDataFromFreight(bookingData: FreightBookingInput): Rec
     },
     
     // Convert package details to items format - use pallet data if available
-    items: bookingData.palletData?.length > 0 ? 
+    items: (bookingData.palletData?.length ?? 0) > 0 && bookingData.palletData ?
       bookingData.palletData.map((pallet, index) => ({
         sku: `PALLET-${index + 1}`,
         name: `${pallet.type} Pallet - ${pallet.items.length} items`,
         quantity: 1,
-        unitPrice: (bookingData.estimatedCost || 0) / bookingData.palletData.length,
+        unitPrice: (bookingData.estimatedCost || 0) / (bookingData.palletData?.length ?? 1),
         weight: {
           value: pallet.weight?.value || 0,
           units: pallet.weight?.units || 'lbs',
@@ -236,23 +232,24 @@ export async function completeFreightBooking(bookingData: FreightBookingInput) {
     }
 
     // Check if workspace already exists for this order
-    let workspace
+    const orderIdNum = Number(bookingData.orderId)
+    let workspace: { id: string; orderId: number; orderNumber: string; workspaceUrl: string; status: string | null } | null = null
     try {
       // Try to get existing workspace by order ID (if it exists)
       const cacheKey = `workspace-freight:order:${bookingData.orderId}`
       workspace = await KVCache.get(cacheKey)
-      
+
       if (!workspace) {
         // Create workspace URL from order number
         const workspaceUrl = workspaceFreightLinker.generateWorkspaceUrl(bookingData.orderNumber)
-        
+
         // Convert freight data to ShipStation-compatible format
         const shipstationData = createShipStationDataFromFreight(bookingData)
-        
+
         // Create workspace with freight booking in one transaction
         const result = await workspaceFreightLinker.createWorkspaceWithFreight(
           {
-            orderId: bookingData.orderId,
+            orderId: orderIdNum,
             orderNumber: bookingData.orderNumber,
             workspaceUrl,
             status: 'active',
@@ -265,7 +262,7 @@ export async function completeFreightBooking(bookingData: FreightBookingInput) {
             },
           },
           {
-            orderId: bookingData.orderId,
+            orderId: orderIdNum,
             orderNumber: bookingData.orderNumber,
             carrierName: bookingData.carrierName,
             serviceType: bookingData.serviceType,
@@ -313,7 +310,7 @@ export async function completeFreightBooking(bookingData: FreightBookingInput) {
         const freightOrder = await workspaceFreightLinker.linkFreightToWorkspace(
           workspace.id,
           {
-            orderId: bookingData.orderId,
+            orderId: orderIdNum,
             orderNumber: bookingData.orderNumber,
             carrierName: bookingData.carrierName,
             serviceType: bookingData.serviceType,
@@ -390,8 +387,9 @@ export async function checkFreightBookingStatus(orderId: string) {
     }
 
     // Check if freight booking exists and workspace is created
-    const freightOrder = await workspaceFreightLinker.getFreightOrderByOrderId(parseInt(orderId))
-    
+    const freightOrder = await workspaceFreightLinker.getFreightOrderByOrderId(parseInt(orderId)) as
+      { workspace?: { id: string } | null; bookingStatus?: string | null } | null
+
     return {
       hasFreightBooking: !!freightOrder,
       hasWorkspace: !!(freightOrder?.workspace),
@@ -484,8 +482,34 @@ export async function suggestFreight(orderContext: FreightOrderContext) {
       // Initialize the RAG decision engine with Edge-optimized DB
       const decisionEngine = new FreightDecisionEngineV2()
 
+      // Transform orderContext to match FreightDecisionContext type
+      const decisionContext = {
+        orderId: orderContext.orderId,
+        items: (orderContext.items || []).map((item) => ({
+          sku: item.sku || item.id || 'UNKNOWN',
+          quantity: item.quantity || 1,
+          description: item.description || item.name || ''
+        })),
+        customer: {
+          id: orderContext.customer?.id || orderContext.orderId,
+          name: orderContext.customer?.name || 'Unknown',
+          email: orderContext.customer?.email || ''
+        },
+        destination: {
+          address: orderContext.destination?.address || '',
+          city: orderContext.destination?.city || '',
+          state: orderContext.destination?.state || '',
+          zip: orderContext.destination?.zipCode || ''
+        },
+        origin: {
+          city: orderContext.origin?.city || '',
+          state: orderContext.origin?.state || '',
+          zip: orderContext.origin?.zipCode || ''
+        }
+      }
+
       // Get AI recommendations based on similar historical shipments
-      decision = await decisionEngine.makeDecision(orderContext)
+      decision = await decisionEngine.makeDecision(decisionContext)
       
       // Cache the decision for 1 hour
       await freightCache.setAISuggestion(cacheKey, decision)
@@ -576,13 +600,11 @@ export async function suggestHazmatFreight(orderContext: {
     // Return the hazmat-focused AI suggestion
     return {
       success: true,
-      suggestion: decision.recommendation,
+      suggestion: decision.suggestion,
       confidence: decision.confidence,
       complianceScore: decision.complianceScore,
       riskAssessment: decision.riskAssessment,
-      historicalIncidents: decision.historicalIncidents || [],
       reasoning: decision.reasoning || "Based on chemical compatibility and regulatory requirements",
-      similarShipments: decision.similarShipments || [],
       timestamp: new Date().toISOString(),
     }
   } catch (error) {
@@ -837,6 +859,49 @@ export async function captureFreightOrder(orderData: CapturedFreightOrder) {
   }
 }
 
+export interface LinkedFreightClassification {
+  nmfcCode: string
+  nmfcSub?: string
+  freightClass: string
+  description?: string
+  isHazmat: boolean
+  hazmatClass?: string
+  packingGroup?: string
+  properShippingName?: string
+  unNumber?: string
+}
+
+export interface LinkedProductMeta {
+  unNumber?: string
+}
+
+export type LinkProductToFreightSuccess = {
+  success: true
+  message: string
+  metadata: {
+    nmfcCode?: string
+    nmfcSub?: string
+    description?: string
+    approve?: boolean
+    hazmatData?: {
+      unNumber?: string
+      hazardClass?: string
+      packingGroup?: string
+      properShippingName?: string
+      isHazmat: boolean
+    }
+  }
+  classification: LinkedFreightClassification
+  product: LinkedProductMeta
+}
+
+export type LinkProductToFreightError = {
+  success: false
+  error: string
+}
+
+export type LinkProductToFreightResult = LinkProductToFreightSuccess | LinkProductToFreightError
+
 export async function linkProductToFreight(data: {
   sku: string
   freightClass: string
@@ -845,10 +910,55 @@ export async function linkProductToFreight(data: {
   description?: string
   approve?: boolean
   hazmatData?: Record<string, unknown>
-}) {
+}): Promise<LinkProductToFreightResult> {
   try {
     const { sku, freightClass, nmfcCode, nmfcSub, description, approve, hazmatData } = data
-    
+
+    const rawHazmat = (hazmatData ?? {}) as Partial<{
+      unNumber: string | null
+      hazardClass: string | null
+      packingGroup: string | null
+      properShippingName: string | null
+      isHazmat: boolean
+    }>
+
+    const toStringOrUndefined = (value: unknown): string | undefined =>
+      typeof value === 'string' && value.length > 0 ? value : undefined
+
+    const unNumber = toStringOrUndefined(rawHazmat.unNumber)
+    const hazardClass = toStringOrUndefined(rawHazmat.hazardClass)
+    const packingGroup = toStringOrUndefined(rawHazmat.packingGroup)
+    const properShippingName = toStringOrUndefined(rawHazmat.properShippingName) ?? (description || undefined)
+    const isHazmat = typeof rawHazmat.isHazmat === 'boolean'
+      ? rawHazmat.isHazmat
+      : Boolean(unNumber || hazardClass)
+
+    const classification: LinkedFreightClassification = {
+      nmfcCode: nmfcCode ?? '',
+      nmfcSub: nmfcSub || undefined,
+      freightClass,
+      description: description || undefined,
+      isHazmat,
+      hazmatClass: hazardClass,
+      packingGroup,
+      properShippingName,
+      unNumber,
+    }
+
+    const product: LinkedProductMeta = {
+      unNumber,
+    }
+
+    const sanitizedHazmat = hazmatData
+      ? {
+          unNumber,
+          hazardClass,
+          packingGroup,
+          properShippingName,
+          isHazmat,
+        }
+      : undefined
+
     // TODO: Implement product-freight linking logic
     // This would typically:
     // 1. Find or create the product
@@ -865,8 +975,10 @@ export async function linkProductToFreight(data: {
         nmfcSub,
         description,
         approve,
-        hazmatData,
-      }
+        hazmatData: sanitizedHazmat,
+      },
+      classification,
+      product,
     }
   } catch (error) {
     console.error('Error linking product to freight:', error)

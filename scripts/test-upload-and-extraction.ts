@@ -27,6 +27,28 @@ const log = {
   debug: (msg: string) => console.log(`${colors.gray}  ${msg}${colors.reset}`)
 };
 
+// Type definitions for API responses
+interface ServiceStatus {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  latency?: number;
+  error?: string;
+}
+
+interface HealthCheckResponse {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  services?: {
+    s3?: ServiceStatus;
+    openai?: ServiceStatus;
+    'image-processing'?: ServiceStatus;
+  };
+}
+
+interface LotExtractionResult {
+  fromCache?: boolean;
+  confidence?: number;
+  lotNumbers?: string[];
+}
+
 async function testS3Configuration() {
   console.log('\n📦 Testing S3 Configuration...\n');
 
@@ -132,7 +154,7 @@ async function testHealthEndpoint() {
       return false;
     }
 
-    const health = await response.json();
+    const health = await response.json() as HealthCheckResponse;
 
     // Check S3 service
     if (health.services?.s3) {
@@ -214,7 +236,7 @@ async function testLotExtraction() {
       return false;
     }
 
-    const result = await response.json();
+    const result = await response.json() as LotExtractionResult;
     log.success('Lot extraction endpoint is working');
 
     if (result.fromCache) {

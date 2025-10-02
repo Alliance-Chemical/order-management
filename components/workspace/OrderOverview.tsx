@@ -3,47 +3,17 @@
 import { useState } from 'react';
 import { useFreightOrder } from '@/lib/swr/hooks';
 import { generateQR } from '@/app/actions/qr';
+import { syncShipStationData } from '@/app/actions/workspace';
 // import { toast } from 'sonner';
 import Image from 'next/image';
 import { ImageViewer } from '@/components/ui/image-viewer';
 import type { OrderWorkspace } from '@/lib/types/workspace';
-
-type ShipStationAddress = {
-  name?: string;
-  street1?: string;
-  street2?: string;
-  city?: string;
-  state?: string;
-  postalCode?: string;
-  country?: string;
-  phone?: string;
-};
-
-type ShipStationItemOption = {
-  name?: string;
-  value?: string;
-};
-
-type ShipStationItem = {
-  name?: string;
-  sku?: string;
-  quantity?: number;
-  unitPrice?: number;
-  imageUrl?: string;
-  options?: ShipStationItemOption[];
-};
-
-type ShipStationData = {
-  shipTo?: ShipStationAddress;
-  items?: ShipStationItem[];
-  customerEmail?: string;
-  customerNotes?: string;
-  internalNotes?: string;
-  tagIds?: number[];
-};
+import type { SSAddress, SSItem, SSOrder, SSOption } from '@/types/shipstation';
 
 type WorkspaceWithShipStation = OrderWorkspace & {
-  shipstationData?: ShipStationData;
+  shipstationData?: SSOrder;
+  syncStatus?: 'synced' | 'pending' | 'failed';
+  lastShipstationSync?: Date | string | null;
 };
 
 type FreightOrderSummary = {
@@ -67,9 +37,10 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
   const [isGeneratingQR, setIsGeneratingQR] = useState(false);
   const [isPrintingPackingSlip, setIsPrintingPackingSlip] = useState(false);
   const [showPackingSlipMenu, setShowPackingSlipMenu] = useState(false);
-  const order = workspace.shipstationData as any || {};
-  const shipTo = order.shipTo || {};
-  const items = order.items || [];
+  const [isSyncing, setIsSyncing] = useState(false);
+  const order = (workspace.shipstationData ?? {}) as SSOrder;
+  const shipTo = (order.shipTo ?? {}) as SSAddress;
+  const items: SSItem[] = Array.isArray(order.items) ? order.items : [];
   
   // Fetch freight order data
   const { order: freightOrder, isLoading: isLoadingFreight } = useFreightOrder(orderId) as {
@@ -90,7 +61,7 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
       const result = await generateQR({
         orderId: orderId,
         orderNumber: workspace.orderNumber,
-        type: 'master'
+        type: 'order_master'
       });
 
       if (result.success) {
@@ -140,6 +111,26 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
     }
   };
 
+  const handleSyncShipStation = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await syncShipStationData(orderId);
+
+      if (result.success) {
+        console.log('ShipStation data synced successfully');
+        window.location.reload();
+      } else {
+        console.error('Failed to sync ShipStation data:', result.error);
+        alert(`Failed to sync: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error syncing ShipStation data:', error);
+      alert('Failed to sync ShipStation data. Please try again.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Action Bar */}
@@ -152,6 +143,20 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
             <span data-testid="order-number" className="text-sm text-gray-600">
               Order #{workspace.orderNumber}
             </span>
+            {/* ShipStation Sync Status */}
+            {workspace.syncStatus === 'pending' && (
+              <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1" title="ShipStation data sync pending">
+                <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Sync Pending
+              </span>
+            )}
+            {workspace.syncStatus === 'failed' && (
+              <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium" title="ShipStation sync failed - click Sync button to retry">
+                ⚠️ Sync Failed
+              </span>
+            )}
           </div>
           <div className="flex gap-2">
             <div className="relative">
@@ -200,9 +205,12 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
             </button>
             <button
               data-testid="sync-shipstation-btn"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              onClick={handleSyncShipStation}
+              disabled={isSyncing}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Force sync ShipStation data"
             >
-              Sync to ShipStation
+              {isSyncing ? 'Syncing...' : 'Sync ShipStation'}
             </button>
           </div>
         </div>
@@ -349,7 +357,7 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {items.map((item: any, index: number) => (
+              {items.map((item: SSItem, index: number) => (
                 <tr key={index} className="hover:bg-slate-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
@@ -373,7 +381,7 @@ export default function OrderOverview({ orderId, workspace }: OrderOverviewProps
                         <p className="text-sm font-medium text-slate-900">{item.name}</p>
                         {item.options && item.options.length > 0 && (
                           <p className="text-xs text-slate-500">
-                            {item.options.map((opt: any) => `${opt.name}: ${opt.value}`).join(', ')}
+                            {item.options.map((opt: SSOption) => `${opt.name}: ${opt.value}`).join(', ')}
                           </p>
                         )}
                       </div>

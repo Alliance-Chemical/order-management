@@ -29,7 +29,7 @@ const CHECK_TYPE_LABELS = {
 const RESULT_CONFIG = {
   'pass': { label: 'Pass', icon: CheckCircle, color: 'text-green-600', variant: 'default' as const },
   'fail': { label: 'Fail', icon: XCircle, color: 'text-red-600', variant: 'destructive' as const },
-  'conditional': { label: 'Conditional', icon: AlertCircle, color: 'text-yellow-600', variant: 'warning' as const },
+  'conditional': { label: 'Conditional', icon: AlertCircle, color: 'text-yellow-600', variant: 'secondary' as const },
 };
 
 export default function QualityDashboard({ workspaceId }: QualityDashboardProps) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
 import { ShipStationClient } from '@/lib/services/shipstation/client';
 
 type ModuleStateEntry = {
@@ -25,13 +25,13 @@ export async function POST(
 ) {
   try {
     const { orderId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     const body = await request.json();
     
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -56,7 +56,7 @@ export async function POST(
     
     // Add lot assignments
     const lots = workspace.shipstationData?.lots || [];
-    if (lots.length > 0) {
+    if (Array.isArray(lots) && lots.length > 0) {
       notes.push('\nLot Assignments:');
       (lots as LotAssignment[]).forEach((lot) => {
         notes.push(`  - ${lot.lotNumber ?? 'Unknown lot'}`);
@@ -71,7 +71,7 @@ export async function POST(
     const consolidatedNotes = notes.join('\n');
     
     // Push to ShipStation
-    let syncResult = { success: false, error: null };
+    let syncResult: { success: boolean; error: string | null; response?: any } = { success: false, error: null };
     
     try {
       // Update order notes in ShipStation
@@ -89,7 +89,7 @@ export async function POST(
           lastShipstationSync: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(workspaces.orderId, orderIdBigInt));
+        .where(eq(workspaces.orderId, orderIdNum));
         
     } catch (error) {
       console.error('ShipStation sync error:', error);
@@ -99,12 +99,10 @@ export async function POST(
       };
     }
     
-    return new NextResponse(jsonStringifyWithBigInt({
+    return NextResponse.json({
       orderId: orderId.toString(),
       notes: consolidatedNotes,
       syncResult
-    }), {
-      headers: { 'Content-Type': 'application/json' }
     });
     
   } catch (error) {

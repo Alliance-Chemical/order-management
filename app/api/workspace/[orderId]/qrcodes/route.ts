@@ -6,6 +6,21 @@ import { eq } from 'drizzle-orm';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { detectContainer } from '@/lib/services/qr/container-detect';
 
+type ShipStationItem = { sku?: string; name?: string; quantity?: number; orderItemId?: string };
+type ShipStationOrder = { orderNumber?: string; items?: ShipStationItem[] };
+type Freight = {
+  bookingStatus?: string;
+  carrierName?: string;
+  serviceType?: string;
+  trackingNumber?: string;
+  estimatedCost?: number;
+  bookedAt?: string;
+  deliveredAt?: string | null;
+  originAddress?: unknown;
+  destinationAddress?: unknown;
+  specialInstructions?: string;
+} | null;
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ orderId: string }> }
@@ -36,7 +51,7 @@ export async function GET(
       console.warn(`[QR] Workspace not found for orderId=${orderId}. Creating on-demand with ShipStation data...`);
       
       // Fetch order data from ShipStation FIRST
-      let shipstationData = null;
+      let shipstationData: ShipStationOrder | null = null;
       let orderNumber = String(orderId);
       
       try {
@@ -173,21 +188,22 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     .where(eq(workspaces.id, workspaceId))
     .limit(1);
   const orderNumber = ws[0]?.orderNumber || String(orderId);
-  const shipstationData = ws[0]?.shipstationData as any;
+  const shipstationData = ws[0]?.shipstationData as ShipStationOrder | undefined;
   
   // Fetch freight order information for enhanced QR context (optional)
-  let freightData: any = null;
+  let freightData: Freight = null;
   try {
     const freightOrder = await db
       .select()
       .from(freightOrders)
       .where(eq(freightOrders.workspaceId, workspaceId))
       .limit(1);
-    freightData = freightOrder[0] || null;
-  } catch (e: any) {
+    freightData = (freightOrder[0] as unknown as Freight) || null;
+  } catch (e: unknown) {
     // If freight tables haven't been migrated yet, skip enrichment gracefully
-    const code = e?.code || e?.cause?.code;
-    if (code === '42P01' || /relation \"?freight_orders\"? does not exist/i.test(String(e?.message || ''))) {
+    const err = e as { code?: string; cause?: { code?: string }; message?: string };
+    const code = err?.code || err?.cause?.code;
+    if (code === '42P01' || /relation \"?freight_orders\"? does not exist/i.test(String(err?.message || ''))) {
       console.warn('[QR] Freight tables not present yet; continuing without freight enrichment');
     } else {
       console.warn('[QR] Freight lookup failed; continuing', e);
@@ -208,14 +224,14 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
   const records: Array<typeof qrCodes.$inferInsert> = [];
 
   // Process container QRs based on ShipStation data or fetch fresh data
-  let items: any[] = [];
+  let items: ShipStationItem[] = [];
   
   // First, try to use data from workspace
   if (shipstationData?.items && Array.isArray(shipstationData.items)) {
     console.log(`[QR] Found ${shipstationData.items.length} total items in workspace shipstationData`);
     
     // Log ALL items before filtering for debugging
-    shipstationData.items.forEach((item: any, index: number) => {
+    shipstationData.items.forEach((item: ShipStationItem, index: number) => {
       console.log(`[QR] Item ${index + 1}: SKU="${item.sku || 'N/A'}", Name="${item.name}", Price=${item.unitPrice}, Qty=${item.quantity}`);
     });
     
@@ -226,7 +242,7 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
     // ADDITIONAL DEBUG: Log what was filtered out
     if (shipstationData.items.length > items.length) {
       console.log(`[QR] FILTERED OUT ITEMS:`);
-      shipstationData.items.filter((item: any) => !items.includes(item)).forEach((filteredItem: any, index: number) => {
+      shipstationData.items.filter((item: ShipStationItem) => !items.includes(item)).forEach((filteredItem: ShipStationItem, index: number) => {
         console.log(`[QR] Filtered Item ${index + 1}: SKU="${filteredItem.sku || 'N/A'}", Name="${filteredItem.name}", Price=${filteredItem.unitPrice}, Qty=${filteredItem.quantity}`);
       });
     }
@@ -251,13 +267,13 @@ async function generateQRCodesForWorkspace(workspaceId: string, orderId: number)
         console.log(`[QR] ShipStation returned ${orderData.items?.length || 0} total items`);
         
         // Log ALL items before filtering
-        (orderData.items || []).forEach((item: any, index: number) => {
+        (orderData.items || []).forEach((item: ShipStationItem, index: number) => {
           console.log(`[QR] Item ${index + 1}: SKU="${item.sku || 'N/A'}", Name="${item.name}", Price=${item.unitPrice}, Qty=${item.quantity}`);
         });
         
         // Filter out discount items (centralized)
-        items = filterOutDiscounts(orderData.items || []);
-        console.log(`[QR] Result: ${items.length} physical items from API (after filtering ${orderData.items.length - items.length} discounts)`);
+        items = filterOutDiscounts(orderData.items || []) as ShipStationItem[];
+        console.log(`[QR] Result: ${items.length} physical items from API (after filtering ${(orderData.items?.length || 0) - items.length} discounts)`);
         
         // Update workspace with the fetched data
         await db

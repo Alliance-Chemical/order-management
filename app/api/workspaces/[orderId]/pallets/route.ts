@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
-import { asBigInt, jsonStringifyWithBigInt } from '@/lib/utils/bigint';
+import { normalizeOrderId } from '@/lib/utils/bigint';
 
 export async function GET(
   request: NextRequest,
@@ -10,12 +10,12 @@ export async function GET(
 ) {
   try {
     const { orderId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
-    
+    const orderIdNum = normalizeOrderId(orderId);
+
     const workspace = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace.length) {
@@ -25,9 +25,7 @@ export async function GET(
     // Get pallets from workspace data or return empty array
     const pallets = workspace[0].shipstationData?.pallets || [];
     
-    return new NextResponse(jsonStringifyWithBigInt({ pallets }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json({ pallets });
   } catch (error) {
     console.error('Error fetching pallets:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -40,13 +38,13 @@ export async function POST(
 ) {
   try {
     const { orderId } = await params;
-    const orderIdBigInt = asBigInt(orderId);
+    const orderIdNum = normalizeOrderId(orderId);
     const body = await request.json();
-    
+
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.orderId, orderIdBigInt))
+      .where(eq(workspaces.orderId, orderIdNum))
       .limit(1);
     
     if (!workspace) {
@@ -71,12 +69,9 @@ export async function POST(
         shipstationData: { ...currentData, pallets },
         updatedAt: new Date()
       })
-      .where(eq(workspaces.orderId, orderIdBigInt));
+      .where(eq(workspaces.orderId, orderIdNum));
     
-    return new NextResponse(jsonStringifyWithBigInt(newPallet), {
-      status: 201,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json(newPallet, { status: 201 });
   } catch (error) {
     console.error('Error creating pallet:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

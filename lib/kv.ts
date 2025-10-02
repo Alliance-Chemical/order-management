@@ -8,6 +8,7 @@ interface SortedSetEntry {
 }
 
 type KVValue = unknown;
+type HashValue = Record<string, KVValue>;
 
 type ScoreBoundaryInput = number | '-inf' | '+inf' | `(${number}` | `[${number}`;
 type NormalizedScoreBoundary = number | '-inf' | '+inf' | `(${number}`;
@@ -160,6 +161,43 @@ class InMemoryKV {
     return list.length;
   }
 
+  async hset(key: string, values: HashValue) {
+    const current = this.store.get(key);
+    const next: HashValue = {
+      ...(typeof current === 'object' && current !== null ? current as HashValue : {}),
+      ...values,
+    };
+    this.store.set(key, next);
+    return Object.keys(values).length;
+  }
+
+  async hmset(key: string, values: HashValue) {
+    await this.hset(key, values);
+    return 'OK';
+  }
+
+  async hgetall<T = HashValue>(key: string) {
+    const value = this.store.get(key);
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+    return value as T;
+  }
+
+  async scan(cursor: number | string, options?: { match?: string; count?: number }) {
+    this.cleanExpired();
+    const keys = Array.from(this.store.keys()).filter((key) => {
+      if (!options?.match) return true;
+      if (!GLOB_WILDCARD_REGEX.test(options.match)) {
+        return key === options.match;
+      }
+      return globToRegExp(options.match).test(key);
+    });
+
+    const count = options?.count ?? keys.length;
+    return ['0', keys.slice(0, count)] as [string, string[]];
+  }
+
   async zadd(key: string, ...items: SortedSetEntry[]) {
     const zset = (this.store.get(key) as SortedSetEntry[] | undefined) ?? [];
     items.forEach((item) => {
@@ -245,7 +283,17 @@ interface PipelineApi {
   exec: () => Promise<unknown[]>;
 }
 
-type KVClient = {
+const GLOB_WILDCARD_REGEX = /[?*\[\]]/;
+
+function globToRegExp(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+^${}()|\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  return new RegExp(`^${escaped}$`);
+}
+
+export type KVClient = {
   get: (key: string) => Promise<KVValue>;
   set: (key: string, value: KVValue, options?: { nx?: boolean; ex?: number }) => Promise<string | null>;
   del: (key: string) => Promise<number>;
@@ -259,6 +307,10 @@ type KVClient = {
   zrangebyscore: (key: string, min: ScoreBoundaryInput, max: ScoreBoundaryInput, options?: { limit?: [number, number] }) => Promise<string[]>;
   zrem: (key: string, ...members: string[]) => Promise<number>;
   zcard: (key: string) => Promise<number>;
+  hset: (key: string, values: HashValue) => Promise<number>;
+  hmset: (key: string, values: HashValue) => Promise<'OK'>;
+  hgetall: <T = HashValue>(key: string) => Promise<T | null>;
+  scan: (cursor: number | string, options?: { match?: string; count?: number }) => Promise<[string, string[]]>;
   pipeline: () => PipelineApi;
 };
 
@@ -308,6 +360,41 @@ class VercelKVWrapper {
   
   async llen(key: string) {
     return this.client.llen(key);
+  }
+
+  async hset(key: string, values: HashValue) {
+    const client = this.client as typeof this.client & { hset?: (key: string, values: HashValue) => Promise<number> };
+    if (typeof client.hset === 'function') {
+      return client.hset(key, values);
+    }
+    await this.set(key, values);
+    return Object.keys(values).length;
+  }
+
+  async hmset(key: string, values: HashValue) {
+    await this.hset(key, values);
+    return 'OK';
+  }
+
+  async hgetall<T = HashValue>(key: string) {
+    const client = this.client as typeof this.client & { hgetall?: (key: string) => Promise<Record<string, KVValue> | null> };
+    if (typeof client.hgetall === 'function') {
+      const result = await client.hgetall(key);
+      return (result ?? null) as T | null;
+    }
+    const raw = await this.get(key);
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+    return raw as T;
+  }
+
+  async scan(cursor: number | string, options?: { match?: string; count?: number }) {
+    const client = this.client as typeof this.client & { scan?: (cursor: number | string, options?: { match?: string; count?: number }) => Promise<[string, string[]]> };
+    if (typeof client.scan === 'function') {
+      return client.scan(cursor, options);
+    }
+    return ['0', []] as [string, string[]];
   }
   
   async zadd(key: string, ...items: SortedSetEntry[]) {
@@ -362,9 +449,9 @@ class VercelKVWrapper {
   }
 }
 
-export const kv: KVClient = useInMemory 
-  ? new InMemoryKV() as KVClient
-  : new VercelKVWrapper() as KVClient;
+export const kv: KVClient = useInMemory
+  ? (new InMemoryKV() as KVClient)
+  : (new VercelKVWrapper() as KVClient);
 
 if (useInMemory) {
   console.log('⚠️  Using in-memory KV store (no KV_REST_API_URL/TOKEN configured)');

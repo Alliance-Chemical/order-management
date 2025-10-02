@@ -5,6 +5,10 @@ import { ShipStationClient } from '@/lib/services/shipstation/client';
 const repo = new WorkspaceRepository();
 const ss = new ShipStationClient();
 
+type Dimensions = { length: number; width: number; height: number; units: string };
+type Weight = { value: number; units: string };
+type Pallet = { id?: string; weight: Weight; dimensions?: Dimensions; [k: string]: unknown };
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
@@ -42,18 +46,18 @@ export async function POST(
 
     const finalMeasurements = {
       ...(mode === 'pallets' ? {
-        pallets,
+        pallets: (pallets as Pallet[]),
         mode: 'pallets',
-        palletCount: palletCount || pallets.length,
-        totalWeight: totalWeight || pallets.reduce((sum: number, p: any) => sum + p.weight.value, 0),
+        palletCount: palletCount || (Array.isArray(pallets) ? pallets.length : 0),
+        totalWeight: totalWeight || (Array.isArray(pallets) ? pallets.reduce((sum: number, p: Pallet) => sum + (p.weight?.value ?? 0), 0) : 0),
       } : {
-        weight,
-        dimensions,
+        weight: weight as Weight,
+        dimensions: dimensions as Dimensions,
         mode: 'single',
       }),
       measuredBy: measuredBy || userId,
       measuredAt: measuredAt || new Date().toISOString(),
-    } as any;
+    };
 
     await repo.update(workspace.id, {
       finalMeasurements,
@@ -86,4 +90,3 @@ export async function POST(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

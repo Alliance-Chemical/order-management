@@ -14,6 +14,19 @@ export function jsonStringifyWithBigInt(obj: unknown): string {
   return JSON.stringify(obj, bigIntReplacer);
 }
 
-export function normalizeOrderId(orderId: number | string | bigint): bigint {
-  return asBigInt(orderId);
+/**
+ * Normalize order ID to number (for Drizzle schema with mode: 'number')
+ * Use this for database queries with workspaces.orderId
+ */
+export function normalizeOrderId(orderId: number | string | bigint): number {
+  if (typeof orderId === 'number') return orderId;
+  if (typeof orderId === 'string') return parseInt(orderId, 10);
+  return Number(orderId);
+}
+
+/**
+ * @deprecated Use normalizeOrderId instead for database queries
+ */
+export function asOrderIdBigInt(v: number | string | bigint): bigint {
+  return asBigInt(v);
 }

@@ -56,9 +56,9 @@ export async function POST(request: NextRequest) {
     const sql = getEdgeSql();
     
     try {
-      // Check if product already has a classification  
-      const result = await sql<ExistingClassificationRow[]>`
-        SELECT 
+      // Check if product already has a classification
+      const result = await sql`
+        SELECT
            p.sku, p.name, p.is_hazardous, p.un_number,
            fc.description as classification_description,
            fc.nmfc_code, fc.freight_class, fc.is_hazmat,

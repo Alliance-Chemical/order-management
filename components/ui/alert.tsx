@@ -21,19 +21,52 @@ const alertVariants = cva(
 
 const Alert = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof alertVariants>
->(({ className, variant, ...props }, ref) => (
-  <div
-    ref={ref}
-    role="alert"
-    className={cn(alertVariants({ variant }), className)}
-    {...props}
-  />
-))
+  React.HTMLAttributes<HTMLDivElement> &
+    VariantProps<typeof alertVariants> & {
+      color?: 'info' | 'warning' | 'success' | 'danger'
+      icon?: React.ReactNode
+      additionalContent?: React.ReactNode
+    }
+>((
+  { className, variant, color, icon, additionalContent, children, ...props },
+  ref
+) => {
+  const colorClass = (() => {
+    switch (color) {
+      case 'info':
+        return 'border-sky-200 bg-sky-50 text-sky-900'
+      case 'warning':
+        return 'border-amber-300 bg-amber-50 text-amber-900'
+      case 'success':
+        return 'border-emerald-300 bg-emerald-50 text-emerald-900'
+      case 'danger':
+        return 'border-rose-300 bg-rose-50 text-rose-900'
+      default:
+        return undefined
+    }
+  })()
+
+  return (
+    <div
+      ref={ref}
+      role="alert"
+      className={cn(alertVariants({ variant }), colorClass, className)}
+      {...props}
+    >
+      <div className="flex gap-3">
+        {icon ? <span className="mt-0.5 text-current">{icon}</span> : null}
+        <div className="flex-1">
+          {children}
+          {additionalContent}
+        </div>
+      </div>
+    </div>
+  )
+})
 Alert.displayName = "Alert"
 
 const AlertTitle = React.forwardRef<
-  HTMLParagraphElement,
+  HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
   <h5

@@ -33,7 +33,7 @@ export function useInspectionState({
 }: UseInspectionStateOptions) {
   const storageKey = `inspection_${orderId}_${workflowPhase}`;
   const [isRestored, setIsRestored] = useState(false);
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Initialize state with restored values or defaults
   const createDefaultState = (): InspectionState => ({

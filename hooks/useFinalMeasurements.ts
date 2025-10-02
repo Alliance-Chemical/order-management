@@ -31,7 +31,7 @@ export interface FinalMeasurementsData {
   palletCount?: number;
   entries?: Array<{
     id?: string;
-    weight?: string | number;
+    weight?: string | number | { value?: number; units?: string };
     weightUnit?: string;
     length?: string | number;
     width?: string | number;
@@ -40,6 +40,12 @@ export interface FinalMeasurementsData {
     containerCode?: string | null;
     scannedContainer?: string | null;
     measuredAt?: string;
+    dimensions?: {
+      length?: string | number;
+      width?: string | number;
+      height?: string | number;
+      units?: string;
+    } | null;
   }>;
   pallets?: Pallet[];
 }
@@ -109,41 +115,42 @@ function isEntryComplete(entry: MeasurementEntry) {
 export function useFinalMeasurements({ initialData, onSave }: UseFinalMeasurementsProps) {
   const initialEntries = useMemo<MeasurementEntry[]>(() => {
     if (Array.isArray(initialData?.entries) && initialData.entries.length > 0) {
-      return initialData.entries.map((entry) =>
-        createEntry({
+      return initialData.entries.map((entry) => {
+        const rawWeight = entry?.weight;
+        const weightValue = (() => {
+          if (rawWeight === undefined || rawWeight === null) return '';
+          if (typeof rawWeight === 'object') {
+            return rawWeight.value !== undefined ? String(rawWeight.value) : '';
+          }
+          return String(rawWeight);
+        })();
+        const weightUnit = (() => {
+          if (entry?.weightUnit) return entry.weightUnit;
+          if (rawWeight && typeof rawWeight === 'object' && rawWeight.units) {
+            return rawWeight.units;
+          }
+          return DEFAULT_WEIGHT_UNIT;
+        })();
+
+        const lengthValue = entry?.length ?? entry?.dimensions?.length;
+        const widthValue = entry?.width ?? entry?.dimensions?.width;
+        const heightValue = entry?.height ?? entry?.dimensions?.height;
+        const dimensionUnit = entry?.dimensionUnit
+          ?? (entry?.dimensions && 'units' in entry.dimensions ? entry.dimensions.units : undefined)
+          ?? DEFAULT_DIMENSION_UNIT;
+
+        return createEntry({
           id: entry?.id,
-          weight:
-            entry?.weight !== undefined
-              ? String(entry.weight)
-              : entry?.weightValue !== undefined
-              ? String(entry.weightValue)
-              : entry?.weight?.value !== undefined
-              ? String(entry.weight.value)
-              : '',
-          weightUnit: entry?.weightUnit ?? entry?.weight?.units ?? DEFAULT_WEIGHT_UNIT,
-          length:
-            entry?.length !== undefined
-              ? String(entry.length)
-              : entry?.dimensions?.length !== undefined
-              ? String(entry.dimensions.length)
-              : '',
-          width:
-            entry?.width !== undefined
-              ? String(entry.width)
-              : entry?.dimensions?.width !== undefined
-              ? String(entry.dimensions.width)
-              : '',
-          height:
-            entry?.height !== undefined
-              ? String(entry.height)
-              : entry?.dimensions?.height !== undefined
-              ? String(entry.dimensions.height)
-              : '',
-          dimensionUnit: entry?.dimensionUnit ?? entry?.dimensions?.units ?? DEFAULT_DIMENSION_UNIT,
+          weight: weightValue,
+          weightUnit,
+          length: lengthValue !== undefined && lengthValue !== null ? String(lengthValue) : '',
+          width: widthValue !== undefined && widthValue !== null ? String(widthValue) : '',
+          height: heightValue !== undefined && heightValue !== null ? String(heightValue) : '',
+          dimensionUnit,
           containerCode: entry?.containerCode ?? entry?.scannedContainer ?? null,
           measuredAt: entry?.measuredAt,
-        })
-      );
+        });
+      });
     }
 
     if (initialData?.weight?.value && initialData?.dimensions) {

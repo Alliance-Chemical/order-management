@@ -1,18 +1,12 @@
 import { withTimeout } from '@/lib/utils/timeout';
+import type { SSOrder, SSItem } from '@/types/shipstation';
 
-export interface ShipStationOrderItem extends Record<string, unknown> {
+export interface ShipStationOrderItem extends SSItem {
   lineItemKey?: string;
-  sku?: string;
-  quantity?: number;
 }
 
-export interface ShipStationOrder extends Record<string, unknown> {
-  orderId: number;
+export interface ShipStationOrder extends SSOrder {
   orderKey?: string;
-  orderNumber?: string;
-  items?: ShipStationOrderItem[];
-  tagIds?: number[];
-  internalNotes?: string;
 }
 
 interface ShipStationOrderSearchResponse {
@@ -125,21 +119,41 @@ export class ShipStationClient {
 
   async addOrderTag(orderId: number, tagId: number): Promise<ShipStationOrder> {
     const order = await this.getOrder(orderId);
-    const currentTags = Array.isArray(order.tagIds) ? order.tagIds : [];
+    if (!order) {
+      throw new Error(`ShipStation order ${orderId} not found`);
+    }
+
+    const safeOrder: ShipStationOrder = order;
+    const currentTags = Array.isArray(safeOrder.tagIds) ? safeOrder.tagIds : [];
     if (!currentTags.includes(tagId)) {
       return this.updateOrderTags(orderId, [...currentTags, tagId]);
     }
-    return order;
+    return safeOrder;
   }
 
   async removeOrderTag(orderId: number, tagId: number): Promise<ShipStationOrder> {
     const order = await this.getOrder(orderId);
-    const currentTags = Array.isArray(order.tagIds) ? order.tagIds : [];
+    if (!order) {
+      throw new Error(`ShipStation order ${orderId} not found`);
+    }
+
+    const safeOrder: ShipStationOrder = order;
+    const currentTags = Array.isArray(safeOrder.tagIds) ? safeOrder.tagIds : [];
     const newTags = currentTags.filter((t) => t !== tagId);
     if (newTags.length !== currentTags.length) {
       return this.updateOrderTags(orderId, newTags);
     }
-    return order;
+    return safeOrder;
+  }
+
+  /**
+   * Update order with partial data (notes, status, etc.)
+   */
+  async updateOrder(orderId: number, updates: Partial<ShipStationOrder>): Promise<ShipStationOrder> {
+    return this.makeRequest<ShipStationOrder>(`/orders/${orderId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ orderId, ...updates }),
+    });
   }
 
   /**
@@ -147,8 +161,12 @@ export class ShipStationClient {
    */
   async appendInternalNotes(orderId: number, note: string): Promise<ShipStationOrder> {
     const order = await this.getOrder(orderId);
+    if (!order) {
+      throw new Error(`ShipStation order ${orderId} not found`);
+    }
     const ts = new Date().toISOString();
-    const existing = typeof order.internalNotes === 'string' ? order.internalNotes : '';
+    const safeOrder: ShipStationOrder = order;
+    const existing = typeof safeOrder.internalNotes === 'string' ? safeOrder.internalNotes : '';
     const separator = existing ? '\n' : '';
     const newNotes = `${existing}${separator}[${ts}] ${note}`.slice(0, 4000); // ShipStation limits
 

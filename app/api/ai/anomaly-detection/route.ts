@@ -47,20 +47,20 @@ export async function POST(request: NextRequest) {
     const historicalData = await db
       .select({
         orderId: workspaces.orderId,
-        customer: workspaces.customerName,
-        product: sql<string>`COALESCE(${workspaces.metadata}->>'product', 'Unknown')`,
+        customer: sql<string>`COALESCE((${workspaces.shipstationData}->'shipTo'->>'name'), 'Unknown')`,
+        product: sql<string>`COALESCE((${workspaces.shipstationData}->'items'->0->>'name'), 'Unknown')`,
         status: workspaces.status,
         createdAt: workspaces.createdAt,
         failureCount: sql<number>`
-          (SELECT COUNT(*) FROM ${activityLog} 
-           WHERE ${activityLog.orderId} = ${workspaces.orderId}
-           AND ${activityLog.type} = 'inspection_issue')
+          (SELECT COUNT(*) FROM ${activityLog}
+           WHERE ${activityLog.workspaceId} = ${workspaces.id}
+           AND ${activityLog.activityType} = 'inspection_issue')
         `,
         failureTypes: sql<string[]>`
-          ARRAY(SELECT DISTINCT ${activityLog.metadata}->>'issueType' 
+          ARRAY(SELECT DISTINCT ${activityLog.metadata}->>'issueType'
                 FROM ${activityLog}
-                WHERE ${activityLog.orderId} = ${workspaces.orderId}
-                AND ${activityLog.type} = 'inspection_issue')
+                WHERE ${activityLog.workspaceId} = ${workspaces.id}
+                AND ${activityLog.activityType} = 'inspection_issue')
         `
       })
       .from(workspaces)
@@ -133,16 +133,17 @@ export async function POST(request: NextRequest) {
 
     // Store analysis results
     await db.insert(activityLog).values({
-      orderId: 'SYSTEM',
-      type: 'anomaly_analysis',
-      message: `AI anomaly detection completed for ${days} days of data`,
+      activityType: 'anomaly_analysis',
+      activityDescription: `AI anomaly detection completed for ${days} days of data`,
+      performedBy: 'system',
+      performedAt: new Date(),
+      module: 'ai',
       metadata: {
         patterns_found: anomalyReport.risk_patterns.length,
         high_risk_combinations: anomalyReport.high_risk_combinations.length,
         alerts_generated: alerts.length,
         analysis_period: `${days} days`
       },
-      createdAt: new Date()
     });
 
     return NextResponse.json({
@@ -158,7 +159,7 @@ export async function POST(request: NextRequest) {
       alerts,
       recommendations: anomalyReport.risk_patterns
         .filter((p: RiskPattern) => p.risk_score > 70)
-        .map((p) => p.recommendation)
+        .map((p: RiskPattern) => p.recommendation)
     });
 
   } catch (error) {

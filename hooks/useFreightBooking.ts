@@ -14,7 +14,8 @@ import type {
   NmfcSuggestion,
   ManualClassificationInput,
   ValidationErrors,
-  ClassifiedItem
+  ClassifiedItem,
+  PalletData
 } from '@/types/freight-booking';
 
 export function useFreightBooking() {
@@ -39,7 +40,7 @@ export function useFreightBooking() {
   const [booking, setBooking] = useState(false);
   const [success, setSuccess] = useState(false);
   const [workspaceLink, setWorkspaceLink] = useState<string>('');
-  const [palletData, setPalletData] = useState<any[] | null>(null);
+  const [palletData, setPalletData] = useState<PalletData[] | undefined>(undefined);
   
   // Per-SKU state
   const [hazmatBySku, setHazmatBySku] = useState<Record<string, HazmatOverride>>({});
@@ -272,8 +273,34 @@ export function useFreightBooking() {
       const response = await fetch(`/api/workspace/${order.orderId}`);
       if (response.ok) {
         const workspace = await response.json();
-        if (workspace.finalMeasurements?.pallets) {
-          setPalletData(workspace.finalMeasurements.pallets);
+        const pallets = workspace.finalMeasurements?.pallets;
+        if (Array.isArray(pallets)) {
+          const normalizedPallets: PalletData[] = pallets.map((pallet: any) => ({
+            id: pallet.id ?? undefined,
+            type: pallet.type ?? 'custom',
+            items: Array.isArray(pallet.items)
+              ? pallet.items.map((item: any) => ({
+                  sku: item.sku ?? undefined,
+                  name: item.name ?? undefined,
+                  quantity: item.quantity ?? undefined,
+                  position: item.position ?? undefined,
+                }))
+              : [],
+            weight: pallet.weight ? {
+              value: pallet.weight.value ?? undefined,
+              units: pallet.weight.units ?? undefined,
+            } : undefined,
+            dimensions: pallet.dimensions ? {
+              length: pallet.dimensions.length ?? undefined,
+              width: pallet.dimensions.width ?? undefined,
+              height: pallet.dimensions.height ?? undefined,
+              units: pallet.dimensions.units ?? undefined,
+            } : undefined,
+            stackable: pallet.stackable ?? undefined,
+            notes: pallet.notes ?? undefined,
+          }));
+
+          setPalletData(normalizedPallets);
         }
       }
     } catch (error) {
@@ -380,7 +407,7 @@ export function useFreightBooking() {
           packageCount: bookingData.selectedOrder.items?.length || 1,
           description: 'Freight shipment'
         },
-        palletData: palletData,
+        palletData,
         specialInstructions: bookingData.specialInstructions
       });
       

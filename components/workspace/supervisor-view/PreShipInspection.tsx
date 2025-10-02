@@ -26,6 +26,7 @@ interface InspectionPhoto {
 type FinalMeasurementsState = FinalMeasurementsData | null;
 
 interface PreShipInspectionState {
+  [key: string]: unknown;
   checklist: ShippingChecklist;
   bolNumber: string;
   carrierName: string;
@@ -318,12 +319,12 @@ export default function PreShipInspection({ orderId, initialState, onStateChange
 
       {/* Final Measurements Section */}
       <FinalMeasurements
-        initialData={state.finalMeasurements}
+        initialData={state.finalMeasurements || undefined}
         onSave={handleMeasurementsSave}
       />
 
       {/* Inspection Photos */}
-      <PhotoGallery orderId={orderId} moduleState={initialState} />
+      <PhotoGallery orderId={orderId} moduleState={initialState as any} />
 
       {/* Notes */}
       <div className="bg-white rounded-lg shadow p-6">
@@ -362,7 +363,7 @@ export default function PreShipInspection({ orderId, initialState, onStateChange
             <div>
               <p className="text-sm font-medium text-green-900">Order Shipped</p>
               <p className="text-sm text-green-700">
-                By {state.shippedBy} on {new Date(state.shippedAt).toLocaleString()}
+                By {state.shippedBy} on {state.shippedAt ? new Date(state.shippedAt).toLocaleString() : 'Unknown date'}
               </p>
               <p className="text-sm text-green-700 mt-1">
                 BOL: {state.bolNumber} | Carrier: {state.carrierName}

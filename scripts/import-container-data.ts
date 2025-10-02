@@ -87,7 +87,7 @@ function matchProductToExcelData(productTitle: string, variantTitle: string, exc
     row.chemical.toLowerCase().includes(variantTitle.toLowerCase())
   );
   
-  return match;
+  return match ?? null;
 }
 
 function determineContainerTypeFromVariant(variantTitle: string, option1?: string): 'drum' | 'pail' | 'unknown' {

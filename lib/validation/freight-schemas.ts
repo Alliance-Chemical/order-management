@@ -195,7 +195,7 @@ export function validateFreight<T extends z.ZodType>(
     return { success: true, data: validated };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errors = error.errors.map(e => {
+      const errors = error.issues.map(e => {
         const path = e.path.join('.');
         return path ? `${path}: ${e.message}` : e.message;
       });

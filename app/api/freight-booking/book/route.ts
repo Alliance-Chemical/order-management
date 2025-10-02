@@ -6,6 +6,7 @@ import { freightOrders } from '@/lib/db/schema/freight';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { tagSyncService } from '@/lib/services/shipstation/ensure-phase';
 import { eq } from 'drizzle-orm';
+import { stripUndefined } from '@/lib/utils/db-helpers';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -186,13 +187,18 @@ export async function POST(request: NextRequest) {
       console.log(`Using existing workspace ${existingWorkspace.id} for order ${shipstationOrder.orderNumber}`);
       
       // Ensure freight module is enabled in existing workspace
-      const currentModules = existingWorkspace.activeModules || {};
+      const currentModules = (existingWorkspace.activeModules as { preMix?: boolean; warehouse?: boolean; documents?: boolean; freight?: boolean }) || {};
       if (!currentModules.freight) {
         await db.update(workspaces)
-          .set({
-            activeModules: { ...currentModules, freight: true },
+          .set(stripUndefined({
+            activeModules: {
+              preMix: currentModules.preMix ?? true,
+              warehouse: currentModules.warehouse ?? true,
+              documents: currentModules.documents ?? true,
+              freight: true
+            },
             updatedAt: new Date()
-          })
+          }))
           .where(eq(workspaces.id, existingWorkspace.id));
       }
       
@@ -204,18 +210,18 @@ export async function POST(request: NextRequest) {
           orderNumber: shipstationOrder.orderNumber,
           carrierName: carrierSelection.carrier,
           serviceType: carrierSelection.service || 'Standard',
-          estimatedCost: estimatedCost || null,
+          estimatedCost: estimatedCost ?? undefined,
           originAddress: {
-            address: shipstationOrder.billTo?.street1,
-            city: shipstationOrder.billTo?.city,
-            state: shipstationOrder.billTo?.state,
-            zipCode: shipstationOrder.billTo?.postalCode,
+            address: shipstationOrder.billTo?.street1 ?? '',
+            city: shipstationOrder.billTo?.city ?? '',
+            state: shipstationOrder.billTo?.state ?? '',
+            zipCode: shipstationOrder.billTo?.postalCode ?? '',
           },
           destinationAddress: {
-            address: shipstationOrder.shipTo?.street1,
-            city: shipstationOrder.shipTo?.city,
-            state: shipstationOrder.shipTo?.state,
-            zipCode: shipstationOrder.shipTo?.postalCode,
+            address: shipstationOrder.shipTo?.street1 ?? '',
+            city: shipstationOrder.shipTo?.city ?? '',
+            state: shipstationOrder.shipTo?.state ?? '',
+            zipCode: shipstationOrder.shipTo?.postalCode ?? '',
           },
           packageDetails: {
             weight: {
@@ -232,7 +238,7 @@ export async function POST(request: NextRequest) {
           specialInstructions: userOverrides?.instructions || '',
           aiSuggestions: [],
           confidenceScore: 1.0,
-          sessionId: null,
+          sessionId: undefined,
           telemetryData: {},
         }
       );
@@ -253,18 +259,18 @@ export async function POST(request: NextRequest) {
           orderNumber: shipstationOrder.orderNumber,
           carrierName: carrierSelection.carrier,
           serviceType: carrierSelection.service || 'Standard',
-          estimatedCost: estimatedCost || null,
+          estimatedCost: estimatedCost ?? undefined,
           originAddress: {
-            address: shipstationOrder.billTo?.street1,
-            city: shipstationOrder.billTo?.city,
-            state: shipstationOrder.billTo?.state,
-            zipCode: shipstationOrder.billTo?.postalCode,
+            address: shipstationOrder.billTo?.street1 ?? '',
+            city: shipstationOrder.billTo?.city ?? '',
+            state: shipstationOrder.billTo?.state ?? '',
+            zipCode: shipstationOrder.billTo?.postalCode ?? '',
           },
           destinationAddress: {
-            address: shipstationOrder.shipTo?.street1,
-            city: shipstationOrder.shipTo?.city,
-            state: shipstationOrder.shipTo?.state,
-            zipCode: shipstationOrder.shipTo?.postalCode,
+            address: shipstationOrder.shipTo?.street1 ?? '',
+            city: shipstationOrder.shipTo?.city ?? '',
+            state: shipstationOrder.shipTo?.state ?? '',
+            zipCode: shipstationOrder.shipTo?.postalCode ?? '',
           },
           packageDetails: {
             weight: {
@@ -281,7 +287,7 @@ export async function POST(request: NextRequest) {
           specialInstructions: userOverrides?.instructions || '',
           aiSuggestions: [],
           confidenceScore: 1.0,
-          sessionId: null,
+          sessionId: undefined,
           telemetryData: {},
         }
       );
@@ -291,15 +297,15 @@ export async function POST(request: NextRequest) {
 
     // Update freight order row with MyCarrier details
     await db.update(freightOrders)
-      .set({
-        myCarrierOrderId: mcOrderId || undefined,
-        trackingNumber: tracking || undefined,
+      .set(stripUndefined({
+        myCarrierOrderId: mcOrderId ?? undefined,
+        trackingNumber: tracking ?? undefined,
         bookingStatus: 'booked',
-        actualCost: actualCost?.toString() || undefined,
+        actualCost: actualCost?.toString(),
         bookedAt: new Date(),
         updatedAt: new Date(),
         updatedBy: 'api/freight-booking/book',
-      })
+      }))
       .where(eq(freightOrders.id, freightOrder.id));
 
     // Update ShipStation tags to mark freight as booked/staged

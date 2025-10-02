@@ -46,7 +46,7 @@ type UploadedPhoto = {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
     const { checkedItems, photos, completedAt, failureNotes } = await request.json() as {
@@ -56,7 +56,7 @@ export async function POST(
       failureNotes?: string;
     };
 
-    const orderId = params.orderId;
+    const { orderId } = await params;
     
     // Get the current workspace
     const [workspace] = await db

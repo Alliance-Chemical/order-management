@@ -1,7 +1,6 @@
 import { WorkspaceRepository } from './repository';
 import { ShipStationClient, type ShipStationOrder } from '../shipstation/client';
 import { QRGenerator } from '../qr/generator';
-import { getS3BucketName, createOrderFolderPath } from '@/lib/aws/s3-client';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { markFreightBooked, markFreightReady } from '../shipstation/tags';
 
@@ -29,17 +28,11 @@ export class WorkspaceService {
 
     // Create workspace with whatever data we have
     const workspaceUrl = `/workspace/${orderId}`;
-    const s3BucketName = getS3BucketName();
-    const s3FolderPath = createOrderFolderPath(orderNumber);
-
     const creationResult = await this.repository.createOrGet({
       orderId,
       orderNumber,
       workspaceUrl,
-      s3BucketName,
-      s3FolderPath,
       workflowType,
-      shipstationOrderId: shipstationOrder?.orderId,
       shipstationData: shipstationOrder || undefined, // Convert null to undefined
       lastShipstationSync: shipstationOrder ? new Date() : undefined, // Only set if we got data
       syncStatus: shipstationOrder ? 'synced' : 'pending', // Mark as pending sync if no data
@@ -72,7 +65,6 @@ export class WorkspaceService {
 
       if (shipstationOrder) {
         updatePayload.shipstationData = shipstationOrder;
-        updatePayload.shipstationOrderId = shipstationOrder.orderId;
         updatePayload.syncStatus = 'synced';
       }
 
@@ -265,6 +257,28 @@ export class WorkspaceService {
       activityType: type,
       performedBy: userId,
       metadata,
+    });
+  }
+
+  // Compatibility helpers used by some API routes
+  public async updateWorkspace(orderIdStr: string, patch: Record<string, unknown>) {
+    const orderId = parseInt(orderIdStr, 10);
+    const ws = await this.repository.findByOrderId(orderId);
+    if (!ws) throw new Error('Workspace not found');
+    await this.repository.update(ws.id, patch as Partial<typeof workspaces.$inferInsert>);
+    return this.repository.findByOrderId(orderId);
+  }
+
+  public async addActivity(orderIdStr: string, payload: { type: string; message?: string; metadata?: Record<string, unknown>; severity?: string }) {
+    const orderId = parseInt(orderIdStr, 10);
+    const ws = await this.repository.findByOrderId(orderId);
+    if (!ws) throw new Error('Workspace not found');
+    await this.repository.logActivity({
+      workspaceId: ws.id,
+      activityType: payload.type,
+      activityDescription: payload.message,
+      performedBy: 'system',
+      metadata: { severity: payload.severity, ...(payload.metadata || {}) },
     });
   }
 }

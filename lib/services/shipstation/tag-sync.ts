@@ -72,6 +72,10 @@ export class ShipStationTagSyncService {
     try {
       // Get current tags from ShipStation
       const order = await this.shipstation.getOrder(orderId);
+      if (!order) {
+        console.warn(`ShipStation order ${orderId} not found; skipping tag sync`);
+        return;
+      }
       const tagIds = this.extractTagIds(order);
       if (!tagIds.length) {
         console.log(`No tags found for order ${orderId}`);
@@ -268,7 +272,8 @@ export class ShipStationTagSyncService {
     }
   }
 
-  private extractTagIds(order: ShipStationOrder): number[] {
+  private extractTagIds(order: ShipStationOrder | null): number[] {
+    if (!order) return [];
     const { tagIds } = order;
     if (!Array.isArray(tagIds)) return [];
     return tagIds

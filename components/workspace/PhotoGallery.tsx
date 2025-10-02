@@ -16,9 +16,26 @@ interface Photo {
   documentId?: string;
 }
 
+type ModulePhoto = {
+  id?: string;
+  documentId?: string;
+  documentName?: string;
+  fileName?: string;
+  s3Url?: string;
+  s3Key?: string;
+  lotNumbers?: string[];
+  capturedAt?: string;
+  uploadedAt?: string;
+};
+
+type ModuleState = Partial<{
+  preShip: { photos?: ModulePhoto[] };
+  pre_mix: { photos?: ModulePhoto[] };
+}>;
+
 interface PhotoGalleryProps {
   orderId: string;
-  moduleState?: any;
+  moduleState?: ModuleState;
 }
 
 export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps) {
@@ -42,7 +59,7 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
         ? moduleState.preShip.photos
         : [];
 
-      const mappedModulePhotos = modulePhotos.map((photo: any) => ({
+      const mappedModulePhotos = modulePhotos.map((photo) => ({
         id: String(
           photo.id ??
           photo.documentId ??
@@ -72,8 +89,19 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
       }
       
       // Filter for pre_ship_photo type
-      const preShipPhotos = result.documents?.filter(
-        (doc: any) => doc.documentType === 'pre_ship_photo'
+      type DocSummary = {
+        id: string | number;
+        documentType?: string;
+        fileName?: string | null;
+        documentName?: string | null;
+        documentUrl?: string | null;
+        s3Key?: string | null;
+        s3Url?: string | null;
+        createdAt?: string | null;
+        metadata?: Record<string, unknown> | null;
+      };
+      const preShipPhotos = (result.documents as DocSummary[] | undefined)?.filter(
+        (doc) => doc.documentType === 'pre_ship_photo'
       ) || [];
       
       const modulePhotoMap = new Map<string, Photo>();
@@ -84,18 +112,18 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
         modulePhotoMap.set(photo.id, photo);
       });
 
-      const mergedPhotos: Photo[] = preShipPhotos.map((doc: any) => {
+      const mergedPhotos: Photo[] = preShipPhotos.map((doc) => {
         const docId = String(doc.id);
         const modulePhoto = modulePhotoMap.get(docId);
 
         return {
           id: docId,
           documentName: doc.fileName ?? doc.documentName ?? modulePhoto?.documentName ?? 'Inspection Photo',
-          s3Url: doc.documentUrl,
-          s3Key: doc.s3Key,
-          lotNumbers: modulePhoto?.lotNumbers || doc.metadata?.lotNumbers || doc.lotNumbers,
-          capturedAt: modulePhoto?.capturedAt || doc.metadata?.capturedAt || doc.capturedAt,
-          uploadedAt: doc.createdAt || modulePhoto?.uploadedAt,
+          s3Url: (doc.documentUrl ?? undefined) || (doc.s3Url ?? undefined),
+          s3Key: doc.s3Key ?? undefined,
+          lotNumbers: modulePhoto?.lotNumbers || (doc.metadata?.lotNumbers as string[] | undefined),
+          capturedAt: modulePhoto?.capturedAt || (doc.metadata?.capturedAt as string | undefined),
+          uploadedAt: (doc.createdAt ?? undefined) || modulePhoto?.uploadedAt,
           documentId: docId
         };
       });
@@ -107,10 +135,11 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
       });
 
       setPhotos([...mergedPhotos, ...unmatchedModulePhotos]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading photos:', err);
       if (!hadModulePhotos) {
-        setError(err.message || 'Failed to load photos');
+        const msg = err instanceof Error ? err.message : 'Failed to load photos';
+        setError(msg);
       }
     } finally {
       setLoading(false);
@@ -118,6 +147,11 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
   };
 
   const downloadPhoto = async (photo: Photo) => {
+    if (!photo.s3Url) {
+      console.error('No URL available for photo');
+      return;
+    }
+
     try {
       const response = await fetch(photo.s3Url);
       const blob = await response.blob();

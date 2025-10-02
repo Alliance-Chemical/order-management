@@ -90,20 +90,20 @@ async function searchDatabaseRAG(query: string, limit: number = 5): Promise<RagD
     
     try {
       // Search for UN number in metadata
-      const result = await sql<RagDocumentRow[]>`
-        SELECT 
+      const result = await sql`
+        SELECT
           id,
           source,
           text,
           metadata,
           1.0 as score
         FROM rag.documents
-        WHERE 
+        WHERE
           metadata->>'unNumber' = ${unNumber} OR
           text ILIKE ${'%' + unNumber + '%'} OR
           text ILIKE ${'%' + unMatch[1] + '%'}
-        ORDER BY 
-          CASE 
+        ORDER BY
+          CASE
             WHEN metadata->>'unNumber' = ${unNumber} THEN 0
             WHEN text ILIKE ${'%' + unNumber + '%'} THEN 1
             ELSE 2
@@ -126,15 +126,15 @@ async function searchDatabaseRAG(query: string, limit: number = 5): Promise<RagD
     
     if (!apiKey) {
       // Fallback to text search if no API key
-      const result = await sql<RagDocumentRow[]>`
-        SELECT 
+      const result = await sql`
+        SELECT
           id,
           source,
           text,
           metadata,
           1.0 as score
         FROM rag.documents
-        WHERE 
+        WHERE
           text ILIKE ${'%' + query + '%'} OR
           search_vector @@ plainto_tsquery('english', ${query})
         ORDER BY 
@@ -170,10 +170,10 @@ async function searchDatabaseRAG(query: string, limit: number = 5): Promise<RagD
       data: Array<{ embedding: number[] }>;
     };
     const embedding = embeddingData.data[0]?.embedding ?? [];
-    
+
     // Search using vector similarity
-    const result = await sql<RagDocumentRow[]>`
-      SELECT 
+    const result = await sql`
+      SELECT
         id,
         source,
         text,
@@ -190,17 +190,17 @@ async function searchDatabaseRAG(query: string, limit: number = 5): Promise<RagD
     
   } catch (error) {
     console.error('Database RAG search error:', error);
-    
+
     // Fallback to text search
-    const result = await sql<RagDocumentRow[]>`
-      SELECT 
+    const result = await sql`
+      SELECT
         id,
         source,
         text,
         metadata,
         1.0 as score
       FROM rag.documents
-      WHERE 
+      WHERE
         text ILIKE ${'%' + query + '%'} OR
         search_vector @@ plainto_tsquery('english', ${query})
       ORDER BY 
@@ -484,7 +484,7 @@ export async function GET() {
     const hasApiKey = !!process.env.OPENAI_API_KEY;
     const configuredModel = process.env.LLM_MODEL || 'gpt-5-nano-2025-08-07';
     
-    const countResult = await sql<{ count: string }[]>`
+    const countResult = await sql`
       SELECT COUNT(*) as count FROM rag.documents
     `;
     const countRows = extractRows<{ count: string }>(countResult);

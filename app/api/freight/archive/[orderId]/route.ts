@@ -11,9 +11,10 @@ interface ArchiveRequestBody {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  props: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const params = await props.params;
     const orderId = parseInt(params.orderId, 10);
 
     if (!orderId || isNaN(orderId)) {

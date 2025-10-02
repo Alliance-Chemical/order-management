@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
+import { renderPDF } from '@/lib/pdf';
 
 const repository = new WorkspaceRepository();
 
@@ -8,8 +9,6 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
-  let browser = null;
-
   try {
     const { orderId } = await params;
     const { searchParams } = new URL(request.url);
@@ -47,52 +46,7 @@ export async function GET(
       size,
     });
 
-    console.log('[PACKING SLIP API] HTML generated, launching browser...');
-
-    // Check if we're running on Vercel
-    const isVercel = process.env.VERCEL === '1';
-
-    if (isVercel) {
-      console.log('[PACKING SLIP API] Running on Vercel - using puppeteer-core with chromium');
-
-      // Dynamic imports for Vercel environment
-      const puppeteer = await import('puppeteer-core');
-      const chromium = await import('@sparticuz/chromium');
-
-      browser = await puppeteer.default.launch({
-        args: chromium.default.args,
-        defaultViewport: (chromium.default as any).defaultViewport,
-        executablePath: await chromium.default.executablePath(),
-        headless: (chromium.default as any).headless,
-      });
-    } else {
-      console.log('[PACKING SLIP API] Running locally - using playwright');
-
-      // Dynamic import for local development
-      const { chromium } = await import('playwright');
-
-      browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      });
-    }
-
-    const page = await browser.newPage();
-
-    // Emulate print media for proper CSS page handling
-    if ('emulateMedia' in page) {
-      await (page as any).emulateMedia({ media: 'print' });
-    } else if ('emulateMediaType' in page) {
-      // Fallback for older versions
-      await (page as any).emulateMediaType('print');
-    }
-
-    // Set content
-    await page.setContent(html, {
-      waitUntil: isVercel ? ('domcontentloaded' as any) : ('networkidle' as any),
-    });
-
-    console.log('[PACKING SLIP API] Generating PDF from HTML...');
+    console.log('[PACKING SLIP API] HTML generated, generating PDF...');
 
     // Generate PDF with appropriate size
     const pdfOptions: any = {
@@ -120,7 +74,7 @@ export async function GET(
       };
     }
 
-    const pdfBuffer = await page.pdf(pdfOptions);
+    const pdfBuffer = await renderPDF(html, pdfOptions);
 
     console.log(`[PACKING SLIP API] PDF generated successfully. Size: ${pdfBuffer.length} bytes`);
 
@@ -140,10 +94,6 @@ export async function GET(
       { error: 'Failed to generate packing slip' },
       { status: 500 }
     );
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
 

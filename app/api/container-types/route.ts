@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { containerTypes } from '@/lib/db/schema/qr-workspace';
 import { eq, and, or, ilike } from 'drizzle-orm';
+import { stripUndefined } from '@/lib/utils/db-helpers';
 
 export const runtime = 'edge';
 
@@ -14,11 +15,9 @@ export async function GET(request: NextRequest) {
     const containerType = searchParams.get('containerType');
     const active = searchParams.get('active');
     
-    let query = db.select().from(containerTypes);
-    
-    // Apply filters
+    // Build filters
     const filters = [];
-    
+
     if (search) {
       filters.push(
         or(
@@ -28,24 +27,23 @@ export async function GET(request: NextRequest) {
         )
       );
     }
-    
+
     if (material) {
       filters.push(eq(containerTypes.containerMaterial, material));
     }
-    
+
     if (containerType) {
       filters.push(eq(containerTypes.containerType, containerType));
     }
-    
+
     if (active !== null) {
       filters.push(eq(containerTypes.isActive, active === 'true'));
     }
-    
-    if (filters.length > 0) {
-      query = query.where(and(...filters));
-    }
-    
-    const results = await query;
+
+    // Execute query with or without filters (avoiding query reassignment)
+    const results = filters.length > 0
+      ? await db.select().from(containerTypes).where(and(...filters))
+      : await db.select().from(containerTypes);
     
     return NextResponse.json({
       success: true,
@@ -87,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Create new container type
-    const newContainerType = await db.insert(containerTypes).values({
+    const values = {
       shopifyProductId: body.shopifyProductId,
       shopifyVariantId: body.shopifyVariantId,
       shopifyTitle: body.shopifyTitle,
@@ -95,13 +93,13 @@ export async function POST(request: NextRequest) {
       shopifySku: body.shopifySku,
       containerMaterial: body.containerMaterial || 'poly',
       containerType: body.containerType,
-      capacity: body.capacity ? body.capacity.toString() : null,
+      capacity: body.capacity ? body.capacity.toString() : undefined,
       capacityUnit: body.capacityUnit || 'gallons',
-      length: body.length ? body.length.toString() : null,
-      width: body.width ? body.width.toString() : null,
-      height: body.height ? body.height.toString() : null,
-      emptyWeight: body.emptyWeight ? body.emptyWeight.toString() : null,
-      maxGrossWeight: body.maxGrossWeight ? body.maxGrossWeight.toString() : null,
+      length: body.length ? body.length.toString() : undefined,
+      width: body.width ? body.width.toString() : undefined,
+      height: body.height ? body.height.toString() : undefined,
+      emptyWeight: body.emptyWeight ? body.emptyWeight.toString() : undefined,
+      maxGrossWeight: body.maxGrossWeight ? body.maxGrossWeight.toString() : undefined,
       freightClass: body.freightClass,
       nmfcCode: body.nmfcCode,
       unRating: body.unRating,
@@ -114,7 +112,8 @@ export async function POST(request: NextRequest) {
       isActive: body.isActive !== false,
       createdBy: body.createdBy || 'system',
       updatedBy: body.updatedBy || 'system',
-    }).returning();
+    };
+    const newContainerType = await db.insert(containerTypes).values(stripUndefined(values) as typeof values).returning();
     
     return NextResponse.json({
       success: true,
@@ -142,8 +141,8 @@ export async function PATCH(request: NextRequest) {
       );
     }
     
-    let updateData = { updatedAt: new Date() };
-    
+    let updateData: Record<string, unknown> = { updatedAt: new Date() };
+
     switch (action) {
       case 'toggleMaterial':
         // Toggle between metal and poly
@@ -156,11 +155,11 @@ export async function PATCH(request: NextRequest) {
           );
         }
         break;
-        
+
       case 'updateFields':
         // Update specific fields
         if (data) {
-          Object.keys(data).forEach(key => {
+          (Object.keys(data) as Array<string>).forEach(key => {
             if (key in containerTypes && key !== 'id' && key !== 'createdAt') {
               updateData[key] = data[key];
             }

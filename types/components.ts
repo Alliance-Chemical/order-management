@@ -66,6 +66,7 @@ export interface EstimatedTransitDays {
 }
 
 export interface FreightSuggestion {
+  [key: string]: unknown;
   carrier: FreightCarrier;
   service: FreightService;
   accessorials: FreightAccessorial[];
@@ -147,6 +148,7 @@ export type ButtonVariant =
 
 export type ButtonSize =
   | 'default'
+  | 'xs'
   | 'sm'
   | 'lg'
   | 'icon'

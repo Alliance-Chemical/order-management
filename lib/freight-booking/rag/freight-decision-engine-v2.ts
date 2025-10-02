@@ -266,7 +266,7 @@ export class FreightDecisionEngineV2 {
     limit: number = 10,
   ): Promise<HistoricalShipment[]> {
     // Check if database is available
-    if (!db || !process.env.ANDRE_DATABASE_URL) {
+    if (!process.env.ANDRE_DATABASE_URL) {
       console.warn("Database not available, returning mock data for build");
       return [];
     }

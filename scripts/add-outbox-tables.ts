@@ -10,7 +10,7 @@
  * Run with: npx tsx scripts/add-outbox-tables.ts
  */
 
-import { getDb } from '@/src/data/db/client';
+import { getDb } from '@/lib/db';
 import { sql } from 'drizzle-orm';
 
 async function addOutboxTables() {

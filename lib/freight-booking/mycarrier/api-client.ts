@@ -186,7 +186,7 @@ export class MyCarrierAPIClient {
     
     // Cache health check results for 5 minutes
     const cached = await KVCache.get(cacheKey);
-    if (cached !== null) {
+    if (typeof cached === 'boolean') {
       return cached;
     }
 

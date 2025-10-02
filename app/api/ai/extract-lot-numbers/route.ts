@@ -17,7 +17,12 @@ const MAX_RETRIES = 5;
 
 // Simple in-memory cache for development
 // In production, use Redis or similar
-const extractionCache = new Map<string, { result: any; timestamp: number }>();
+type ExtractionResult = {
+  lotNumbers: string[];
+  confidence: number;
+  processedAt: string;
+};
+const extractionCache = new Map<string, { result: ExtractionResult; timestamp: number }>();
 
 // Rate limiter function
 function checkRateLimit(): { allowed: boolean; waitTime?: number } {
@@ -41,7 +46,7 @@ function checkRateLimit(): { allowed: boolean; waitTime?: number } {
 
 // Exponential backoff retry function
 async function callOpenAIWithRetry(
-  body: any,
+  body: Record<string, unknown>,
   apiKey: string,
   retryCount = 0
 ): Promise<Response> {
@@ -93,9 +98,10 @@ async function callOpenAIWithRetry(
   }
 }
 
+type PostBody = { image: string; orderId?: string | number };
 export async function POST(request: NextRequest) {
   try {
-    const { image, orderId } = await request.json();
+    const { image, orderId }: PostBody = await request.json();
 
     if (!image) {
       return NextResponse.json(
@@ -225,8 +231,8 @@ export async function POST(request: NextRequest) {
       throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const payload = await response.json();
-    const text = payload.choices?.[0]?.message?.content || '[]';
+    const payload: { choices?: Array<{ message?: { content?: string } }> } = await response.json();
+    const text = payload.choices?.[0]?.message?.content ?? '[]';
     
     // Parse the response to extract lot numbers
     let lotNumbers: string[] = [];
@@ -267,7 +273,7 @@ export async function POST(request: NextRequest) {
     console.log(`Extracted lot numbers for order ${orderId}:`, lotNumbers);
 
     // Cache the result
-    const result = {
+    const result: ExtractionResult = {
       lotNumbers,
       confidence: lotNumbers.length > 0 ? 0.85 : 0.0, // Basic confidence score
       processedAt: new Date().toISOString()

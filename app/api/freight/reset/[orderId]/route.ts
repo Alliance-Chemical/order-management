@@ -11,10 +11,11 @@ type PhaseCompletedAt = Record<string, string>;
 
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const orderId = parseInt(params.orderId, 10);
+    const { orderId: orderIdStr } = await params;
+    const orderId = parseInt(orderIdStr, 10);
 
     if (!orderId || isNaN(orderId)) {
       return NextResponse.json(
@@ -84,7 +85,7 @@ export async function POST(
 
     // Best-effort tag sync (don't fail if ShipStation errors)
     try {
-      await tagSyncService.ensurePhase(orderId, 'in_progress', 'supervisor');
+      await tagSyncService.ensurePhase(orderId, 'planning', 'supervisor');
     } catch (tagError) {
       console.warn('Tag sync failed (non-fatal):', tagError);
     }

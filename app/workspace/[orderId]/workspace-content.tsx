@@ -21,10 +21,16 @@ import Link from 'next/link';
 
 type WorkerStep = 'entry' | 'inspection' | 'complete';
 
+interface OrderItem {
+  name?: string;
+}
+
+type ModuleState = Record<string, unknown>;
+
 interface WorkspaceContentProps {
   workspace: WorkspaceData;
   orderId: string;
-  onModuleStateChange: (module: string, state: Record<string, any>) => Promise<void>;
+  onModuleStateChange: (module: string, state: ModuleState) => Promise<void>;
 }
 
 function classNames(...classes: string[]) {
@@ -54,13 +60,13 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
   const [viewMode, setViewMode] = useState<ViewMode>('worker');
   const [workerStep, setWorkerStep] = useState<WorkerStep>('entry');
   const [activeTab, setActiveTab] = useState('overview');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
   const [qrScanned, setQrScanned] = useState<boolean>(false);
 
   const handleWorkerInspectionComplete = async (results: InspectionResults) => {
     const workflowModule = resolveWorkerInspectionPhase(workspace.workflowPhase);
-    await onModuleStateChange(workflowModule, results as unknown as Record<string, any>);
+    await onModuleStateChange(workflowModule, results as unknown as ModuleState);
     setWorkerStep('complete');
     setRedirectCountdown(3);
   };
@@ -127,7 +133,7 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
               orderItems={workspace.shipstationData?.items || []}
               workflowPhase={workerInspectionPhase}
               workflowType={workspace.workflowType}
-              items={buildInspectionItems(workerWorkspace as any, selectedItem)}
+              items={buildInspectionItems(workerWorkspace, selectedItem)}
               qrScanned={qrScanned}
               onComplete={(results) => {
                 handleWorkerInspectionComplete(results);
@@ -364,9 +370,9 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
             <ActiveComponent
               orderId={orderId}
               workspace={workspace}
-              initialState={activeTab === 'inspection_runs' ? workspace.moduleStates?.inspection : workspace.moduleStates?.[activeTab] || {}}
-              onStateChange={(state: Record<string, any>) => onModuleStateChange(activeTab, state)}
-              onStateChangeAction={(state: Record<string, any>) => onModuleStateChange(activeTab, state)}
+              initialState={(activeTab === 'inspection_runs' ? workspace.moduleStates?.inspection : workspace.moduleStates?.[activeTab] || {}) as any}
+              onStateChange={(state: any) => onModuleStateChange(activeTab, state as ModuleState)}
+              onStateChangeAction={(state: any) => onModuleStateChange(activeTab, state as ModuleState)}
             />
           )}
         </main>

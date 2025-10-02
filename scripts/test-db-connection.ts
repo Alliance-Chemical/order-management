@@ -4,7 +4,7 @@ dotenv.config({ path: '.env.local' });
 console.log('After dotenv.config:');
 console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
 
-import { getDb } from '../src/data/db/client';
+import { getDb, extractRows } from '@/lib/db/client';
 
 async function testConnection() {
   try {
@@ -12,11 +12,12 @@ async function testConnection() {
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
     console.log('DATABASE_URL:', process.env.DATABASE_URL?.split('@')[1]); // Show only host/db part
     console.log('ANDRE_DATABASE_URL:', process.env.ANDRE_DATABASE_URL?.split('@')[1]);
-    
+
     const db = getDb();
-    
+
     // Test basic connection
-    const result = await db.execute('SELECT current_database(), current_user');
+    const resultRaw = await db.execute('SELECT current_database(), current_user');
+    const result = extractRows(resultRaw);
     console.log('Connected to:', result[0]);
     
     // Check for existing schemas

@@ -22,7 +22,7 @@ if (!DATABASE_URL) {
 async function setupRagDatabase() {
   console.log('🚀 Setting up RAG database with pgvector...\n');
 
-  const db = neon(DATABASE_URL);
+  const db = neon(DATABASE_URL!);
 
   try {
     // Step 1: Enable pgvector extension

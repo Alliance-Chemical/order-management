@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     
     const result = await withEdgeRetry(async () => {
       // Build the query with joins to get full details
-      let query = db
+      const baseQuery = db
         .select({
           linkId: productFreightLinks.id,
           productId: productFreightLinks.productId,
@@ -46,14 +46,14 @@ export async function GET(request: NextRequest) {
           createdAt: productFreightLinks.createdAt,
           createdBy: productFreightLinks.createdBy,
           updatedAt: productFreightLinks.updatedAt,
-          
+
           // Product details
           productSku: products.sku,
           productName: products.name,
           productIsHazardous: products.isHazardous,
           productCasNumber: products.casNumber,
           productUnNumber: products.unNumber,
-          
+
           // Classification details
           classificationDescription: freightClassifications.description,
           freightClass: freightClassifications.freightClass,
@@ -64,35 +64,35 @@ export async function GET(request: NextRequest) {
         })
         .from(productFreightLinks)
         .leftJoin(products, eq(productFreightLinks.productId, products.id))
-        .leftJoin(freightClassifications, eq(productFreightLinks.classificationId, freightClassifications.id));
-      
+        .leftJoin(freightClassifications, eq(productFreightLinks.classificationId, freightClassifications.id))
+        .$dynamic();
+
       // Apply filters
       const conditions = [];
-      
+
       if (productId) {
         conditions.push(eq(productFreightLinks.productId, productId));
       }
-      
+
       if (classificationId) {
         conditions.push(eq(productFreightLinks.classificationId, classificationId));
       }
-      
+
       if (approved === 'true') {
         conditions.push(eq(productFreightLinks.isApproved, true));
       } else if (approved === 'false') {
         conditions.push(eq(productFreightLinks.isApproved, false));
       }
-      
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-      
-      const linksList = await query
+
+      const linksList = await (conditions.length > 0
+        ? baseQuery.where(and(...conditions))
+        : baseQuery
+      )
         .orderBy(desc(productFreightLinks.createdAt))
         .limit(limit)
         .offset(offset)
         .execute();
-      
+
       return linksList;
     });
     
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
           classificationId: body.classificationId,
           overrideFreightClass: body.overrideFreightClass,
           overridePackaging: body.overridePackaging,
-          confidenceScore: body.confidenceScore ? parseFloat(body.confidenceScore) : null,
+          confidenceScore: body.confidenceScore ? String(body.confidenceScore) : null,
           linkSource: body.linkSource || 'manual',
           isApproved: body.isApproved || false, // Default to unapproved for safety
           createdBy: body.createdBy,

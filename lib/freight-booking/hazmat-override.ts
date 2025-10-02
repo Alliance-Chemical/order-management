@@ -18,13 +18,13 @@ type HazmatOverrideRow = {
 
 export async function getHazmatOverrideBySku(sku: string): Promise<HazmatOverride | null> {
   const sql = getEdgeSql();
-  const rows = await sql<HazmatOverrideRow[]>`
+  const rows = await sql`
     SELECT pho.is_hazmat, pho.un_number, pho.hazard_class, pho.packing_group, pho.proper_shipping_name
     FROM products p
     JOIN product_hazmat_overrides pho ON pho.product_id = p.id
     WHERE p.sku = ${sku} AND pho.is_approved = true
     LIMIT 1
-  `;
+  ` as HazmatOverrideRow[];
   if (!rows.length) return null;
   const r = rows[0];
   return {

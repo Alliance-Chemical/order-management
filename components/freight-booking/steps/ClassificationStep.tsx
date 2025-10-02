@@ -6,6 +6,10 @@ import HazmatCallout from '@/components/ui/HazmatCallout';
 import { HazmatRAGPanel, type RAGSuggestion } from '@/components/freight-booking/HazmatRAGPanel';
 import type { ShipStationOrder, ClassifiedItem, ManualClassificationInput, FreightBookingData } from '@/types/freight-booking';
 import { linkProductToFreight } from '@/app/actions/freight';
+import type { LinkProductToFreightSuccess } from '@/app/actions/freight';
+
+const normalizeOptionalString = (value: string | null | undefined): string | undefined =>
+  value == null || value === '' ? undefined : value;
 
 interface WarehouseFeedback {
   success: () => void;
@@ -63,23 +67,41 @@ export default function ClassificationStep({
         throw new Error(data.error || 'Failed to save classification');
       }
 
+      const successData: LinkProductToFreightSuccess = data;
+      const manualHazmat = inputs.hazmatData;
+
       // Update local state
       setBookingData((prev) => ({
         ...prev,
-        classifiedItems: prev.classifiedItems.map((ci) =>
-          ci.sku === item.sku ? {
+        classifiedItems: prev.classifiedItems.map((ci) => {
+          if (ci.sku !== item.sku) return ci;
+
+          return {
             ...ci,
             classification: {
-              nmfcCode: data.classification.nmfcCode,
-              freightClass: data.classification.freightClass,
-              isHazmat: data.classification.isHazmat || inputs.hazmatData?.isHazmat || false,
-              hazmatClass: data.classification.hazmatClass || inputs.hazmatData?.hazardClass,
-              unNumber: data.product?.unNumber || inputs.hazmatData?.unNumber,
-              packingGroup: data.classification.packingGroup || inputs.hazmatData?.packingGroup,
-              properShippingName: data.classification.description || inputs.hazmatData?.properShippingName,
+              nmfcCode: successData.classification.nmfcCode,
+              nmfcSub: successData.classification.nmfcSub,
+              freightClass: successData.classification.freightClass,
+              description:
+                successData.classification.description
+                ?? normalizeOptionalString(inputs.description),
+              isHazmat: successData.classification.isHazmat || manualHazmat?.isHazmat || false,
+              hazmatClass:
+                successData.classification.hazmatClass
+                ?? normalizeOptionalString(manualHazmat?.hazardClass),
+              unNumber:
+                successData.classification.unNumber
+                ?? normalizeOptionalString(manualHazmat?.unNumber),
+              packingGroup:
+                successData.classification.packingGroup
+                ?? normalizeOptionalString(manualHazmat?.packingGroup),
+              properShippingName:
+                successData.classification.properShippingName
+                ?? normalizeOptionalString(manualHazmat?.properShippingName)
+                ?? normalizeOptionalString(inputs.description),
             }
-          } : ci
-        )
+          };
+        })
       }));
 
       warehouseFeedback.success();
@@ -134,25 +156,41 @@ export default function ClassificationStep({
         throw new Error(data.error || 'Failed to save classification');
       }
 
+      const successData: LinkProductToFreightSuccess = data;
+      const suggestionHazmat = classificationData.hazmatData;
+
       // Update local state
       setBookingData((prev) => ({
         ...prev,
-        classifiedItems: prev.classifiedItems.map((ci) =>
-          ci.sku === sku ? {
+        classifiedItems: prev.classifiedItems.map((ci) => {
+          if (ci.sku !== sku) return ci;
+
+          return {
             ...ci,
             classification: {
-              nmfcCode: data.classification.nmfcCode,
-              nmfcSub: data.classification.nmfcSub,
-              freightClass: data.classification.freightClass,
-              description: data.classification.description,
-              isHazmat: data.classification.isHazmat || classificationData.hazmatData?.isHazmat || false,
-              hazmatClass: data.classification.hazmatClass || classificationData.hazmatData?.hazardClass,
-              unNumber: data.product?.unNumber || classificationData.hazmatData?.unNumber,
-              packingGroup: data.classification.packingGroup || classificationData.hazmatData?.packingGroup,
-              properShippingName: data.classification.description || classificationData.hazmatData?.properShippingName,
+              nmfcCode: successData.classification.nmfcCode,
+              nmfcSub: successData.classification.nmfcSub,
+              freightClass: successData.classification.freightClass,
+              description:
+                successData.classification.description
+                ?? normalizeOptionalString(classificationData.description),
+              isHazmat: successData.classification.isHazmat || suggestionHazmat?.isHazmat || false,
+              hazmatClass:
+                successData.classification.hazmatClass
+                ?? normalizeOptionalString(suggestionHazmat?.hazardClass),
+              unNumber:
+                successData.classification.unNumber
+                ?? normalizeOptionalString(suggestionHazmat?.unNumber),
+              packingGroup:
+                successData.classification.packingGroup
+                ?? normalizeOptionalString(suggestionHazmat?.packingGroup),
+              properShippingName:
+                successData.classification.properShippingName
+                ?? normalizeOptionalString(suggestionHazmat?.properShippingName)
+                ?? normalizeOptionalString(classificationData.description),
             }
-          } : ci
-        )
+          };
+        })
       }));
 
       warehouseFeedback.success();
@@ -200,6 +238,7 @@ export default function ClassificationStep({
           {selectedOrder.items.map((item) => {
             const classification = classifiedItems.find(c => c.sku === item.sku);
             const hasClassification = classification?.classification;
+            const manualHazmat = manualInputs[item.sku]?.hazmatData;
             
             return (
               <div key={item.sku} className="border-2 border-gray-300 rounded-warehouse p-6 shadow-warehouse">
@@ -230,20 +269,20 @@ export default function ClassificationStep({
                       <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 max-w-2xl">
                         <div className="font-bold text-gray-800 mb-4 text-base">
                           Manual Classification
-                          {manualInputs[item.sku]?.hazmatData?.isHazmat && (
+                          {manualHazmat?.isHazmat && (
                             <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
                               ⚠️ HAZMAT DATA LOADED
                             </span>
                           )}
                         </div>
                         
-                        {manualInputs[item.sku]?.hazmatData && manualInputs[item.sku]?.hazmatData?.unNumber && (
+                        {manualHazmat?.unNumber && (
                           <HazmatCallout
                             level="warning"
-                            unNumber={manualInputs[item.sku]?.hazmatData?.unNumber}
-                            hazardClass={manualInputs[item.sku]?.hazmatData?.hazardClass}
-                            packingGroup={manualInputs[item.sku]?.hazmatData?.packingGroup}
-                            properShippingName={manualInputs[item.sku]?.hazmatData?.properShippingName}
+                            unNumber={normalizeOptionalString(manualHazmat?.unNumber)}
+                            hazardClass={normalizeOptionalString(manualHazmat?.hazardClass)}
+                            packingGroup={normalizeOptionalString(manualHazmat?.packingGroup)}
+                            properShippingName={normalizeOptionalString(manualHazmat?.properShippingName)}
                             className="mb-4"
                           >
                             This product requires special handling and documentation

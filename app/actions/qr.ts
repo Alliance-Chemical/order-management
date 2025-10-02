@@ -1,6 +1,6 @@
 'use server'
 
-import { QRGenerator } from '@/src/services/qr/qrGenerator'
+import { QRGenerator } from '@/lib/services/qr/generator'
 import { WorkspaceRepository } from '@/lib/services/workspace/repository'
 import { getOptimizedDb } from '@/lib/db/neon'
 import { qrCodes, workspaces } from '@/lib/db/schema/qr-workspace'
@@ -14,21 +14,17 @@ const repository = new WorkspaceRepository()
 type QrRecord = typeof qrCodes.$inferSelect
 type WorkspaceRecord = typeof workspaces.$inferSelect
 type QrWithWorkspace = QrRecord & { workspace: WorkspaceRecord }
-type ScanHistoryEntry = {
-  scannedAt: string
-  scannedBy: string
-  location: string
-}
 
 export async function generateQR(data: {
   orderId: string
   orderNumber: string
-  type?: string
+  type?: 'order_master' | 'source' | 'destination' | 'batch' | 'container'
   containerNumber?: number
   chemicalName?: string
 }) {
   try {
-    const { orderId, orderNumber, type = 'master', containerNumber, chemicalName } = data
+    const { orderId: orderIdStr, orderNumber, type = 'order_master', containerNumber, chemicalName } = data
+    const orderId = Number(orderIdStr)
 
     if (!orderId || !orderNumber) {
       return {
@@ -62,7 +58,7 @@ export async function generateQR(data: {
       orderNumber,
       containerNumber,
       chemicalName,
-      encodedData: qrData,
+      encodedData: qrData as unknown as Record<string, unknown>,
       qrUrl,
     })
 
@@ -90,10 +86,11 @@ export async function generateQR(data: {
 export async function regenerateQRCodes(orderId: string, items: Array<{ name: string; sku?: string; labelCount?: number }>) {
   try {
     const db = getOptimizedDb()
-    
+    const orderIdNum = Number(orderId)
+
     // Find workspace
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId))
+      where: eq(workspaces.orderId, orderIdNum)
     })
 
     if (!workspace) {
@@ -110,22 +107,22 @@ export async function regenerateQRCodes(orderId: string, items: Array<{ name: st
 
     // Generate new QR codes
     const generatedQRs: Array<{ id: string; qrCode: string; shortCode: string; url: string; itemName: string; sku?: string }> = []
-    
+
     for (const item of items) {
       const labelCount = item.labelCount || 1
-      
+
       for (let i = 0; i < labelCount; i++) {
         const containerNumber = items.indexOf(item) + i + 1
         const qrData = qrGenerator.createQRData(
-          orderId,
+          orderIdNum,
           workspace.orderNumber,
           'container',
           containerNumber,
           item.name
         )
-        
+
         const qrCode = await qrGenerator.generateQRCode(qrData)
-        const shortCode = qrGenerator.generateShortCode(orderId, containerNumber)
+        const shortCode = qrGenerator.generateShortCode(orderIdNum, containerNumber)
         const qrUrl = qrGenerator.createShortCodeUrl(shortCode)
 
         // Save to database
@@ -133,10 +130,15 @@ export async function regenerateQRCodes(orderId: string, items: Array<{ name: st
           .insert(qrCodes)
           .values({
             workspaceId: workspace.id,
+            orderId: orderIdNum,
+            orderNumber: workspace.orderNumber,
+            containerNumber,
+            chemicalName: item.name,
             qrType: 'container',
             qrCode: shortCode,
             shortCode,
-            encodedData: qrData,
+            qrUrl,
+            encodedData: qrData as unknown as Record<string, unknown>,
             scanCount: 0
           })
           .returning()
@@ -176,7 +178,7 @@ export async function addQRCodes(orderId: string, items: Array<{ name: string; s
 
     // Find workspace
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId))
+      where: eq(workspaces.orderId, Number(orderId))
     })
 
     if (!workspace) {
@@ -212,11 +214,11 @@ export async function addQRCodes(orderId: string, items: Array<{ name: string; s
             qrType: 'container',
             qrCode: shortCode,
             shortCode,
-            orderId: BigInt(orderId),
+            orderId: Number(orderId),
             orderNumber: workspace.orderNumber,
             containerNumber,
             chemicalName: item.name,
-            encodedData: qrData,
+            encodedData: qrData as unknown as Record<string, unknown>,
             qrUrl,
           })
           .returning()
@@ -323,8 +325,8 @@ export async function validateQR(qrCode: string) {
     } else if (orderId) {
       // Try to find by orderId + containerNumber (legacy payload path)
       const whereClause = typeof containerNumber === 'number'
-        ? and(eq(qrCodes.orderId, BigInt(orderId)), eq(qrCodes.containerNumber, containerNumber))
-        : eq(qrCodes.orderId, BigInt(orderId));
+        ? and(eq(qrCodes.orderId, Number(orderId)), eq(qrCodes.containerNumber, containerNumber))
+        : eq(qrCodes.orderId, Number(orderId));
       qr = await db.query.qrCodes.findFirst({
         where: whereClause,
         with: { workspace: true }
@@ -373,7 +375,7 @@ export async function validateQR(qrCode: string) {
   }
 }
 
-export async function scanQR(qrCode: string, scannedBy?: string, location?: string) {
+export async function scanQR(qrCode: string, scannedBy?: string, _location?: string) {
   try {
     const db = getOptimizedDb()
     const { shortCode, orderId, containerNumber } = extractShortCodeOrLookupParams(qrCode);
@@ -387,8 +389,8 @@ export async function scanQR(qrCode: string, scannedBy?: string, location?: stri
       }) as QrWithWorkspace | null;
     } else if (orderId) {
       const whereClause = typeof containerNumber === 'number'
-        ? and(eq(qrCodes.orderId, BigInt(orderId)), eq(qrCodes.containerNumber, containerNumber))
-        : eq(qrCodes.orderId, BigInt(orderId));
+        ? and(eq(qrCodes.orderId, Number(orderId)), eq(qrCodes.containerNumber, containerNumber))
+        : eq(qrCodes.orderId, Number(orderId));
       qr = await db.query.qrCodes.findFirst({
         where: whereClause,
         with: { workspace: true }
@@ -403,23 +405,12 @@ export async function scanQR(qrCode: string, scannedBy?: string, location?: stri
     }
 
     // Update scan count and log scan event
-    const previousHistory = Array.isArray(qr.scanHistory)
-      ? (qr.scanHistory as ScanHistoryEntry[])
-      : []
-
     await db
       .update(qrCodes)
       .set({
         scanCount: (qr.scanCount || 0) + 1,
         lastScannedAt: new Date(),
-        scanHistory: [
-          ...previousHistory,
-          {
-            scannedAt: new Date().toISOString(),
-            scannedBy: scannedBy || 'unknown',
-            location: location || 'unknown'
-          }
-        ]
+        lastScannedBy: scannedBy || 'unknown'
       })
       .where(eq(qrCodes.id, qr.id))
 
@@ -451,7 +442,7 @@ export async function getQRCodesForWorkspace(orderId: string) {
 
     // Find workspace
     const workspace = await db.query.workspaces.findFirst({
-      where: eq(workspaces.orderId, BigInt(orderId)),
+      where: eq(workspaces.orderId, Number(orderId)),
       with: {
         qrCodes: true
       }

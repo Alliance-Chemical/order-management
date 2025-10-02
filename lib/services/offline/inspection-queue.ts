@@ -5,9 +5,11 @@
 
 type OperationPayload = Record<string, unknown> & { phase?: string };
 
+type OperationType = 'inspection_result' | 'qr_scan' | 'activity_log' | 'container_qr_scan' | 'qr_skip';
+
 interface QueuedOperation {
   id: string;
-  type: 'inspection_result' | 'qr_scan' | 'activity_log';
+  type: OperationType;
   orderId: string;
   phase?: string; // Added for inspection operations
   data: OperationPayload;
@@ -155,7 +157,10 @@ class InspectionQueue {
         const phase = operation.phase || operation.data?.phase || 'warehouse';
         return `/api/workspaces/${operation.orderId}/inspection/${phase}`;
       case 'qr_scan':
+      case 'container_qr_scan':
         return `/api/qr/scan`;
+      case 'qr_skip':
+        return `/api/workspace/${operation.orderId}/activity`;
       case 'activity_log':
         return `/api/workspace/${operation.orderId}/activity`;
       default:

@@ -37,6 +37,7 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-10 px-4 py-2",
+        xs: "h-8 rounded px-2 text-xs",
         sm: "h-9 rounded-md px-3",
         lg: "h-11 rounded-md px-8",
         icon: "h-10 w-10",
@@ -68,6 +69,7 @@ export interface ButtonProps
   fullWidth?: boolean
   icon?: React.ReactNode
   haptic?: 'light' | 'success' | 'warning' | 'error'
+  color?: 'primary' | 'success' | 'failure' | 'gray' | 'blue' | 'info'
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -81,6 +83,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       fullWidth,
       icon,
       haptic,
+      color,
       ...props
     },
     ref
@@ -89,6 +92,30 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     // Separate children and onClick so we can wrap behavior and avoid double-render
     const { children, onClick, ...rest } = props
+
+    const sizeAliasMap: Record<string, ButtonProps['size']> = {
+      xs: 'sm',
+      base: 'default',
+      small: 'sm',
+      medium: 'md',
+      large: 'lg',
+    }
+
+    if (!variant && color) {
+      const colorMap: Record<NonNullable<ButtonProps['color']>, ButtonProps['variant']> = {
+        primary: 'primary',
+        blue: 'primary',
+        success: 'go',
+        failure: 'stop',
+        gray: 'secondary',
+        info: 'info',
+      }
+      variant = colorMap[color] ?? variant
+    }
+
+    if (size && typeof size === 'string' && sizeAliasMap[size]) {
+      size = sizeAliasMap[size]
+    }
 
     // Handle loading prop properly for DOM and strip custom props
     const domProps = loading !== undefined ? { ...rest, 'data-loading': loading } : rest
@@ -103,7 +130,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             warning: [30, 40, 30],
             error: [40, 60, 40],
           }
-          // @ts-expect-error - vibrate may not exist in some TS lib targets
           navigator.vibrate?.(patterns[haptic] ?? 10)
         } catch {}
       }

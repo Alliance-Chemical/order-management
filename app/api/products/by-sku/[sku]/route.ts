@@ -4,13 +4,40 @@ import { getEdgeSql } from '@/lib/db/neon-edge';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
+type ProductRow = {
+  id: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  weight: string | null;
+  length: string | null;
+  width: string | null;
+  height: string | null;
+  packaging_type: string | null;
+  units_per_package: number | null;
+  unit_container_type: string | null;
+  is_hazardous: boolean;
+  un_number: string | null;
+  cas_number: string | null;
+  nmfc_code: string | null;
+  freight_class: string | null;
+  classification_description: string | null;
+  is_hazmat: boolean | null;
+  hazmat_class: string | null;
+  packing_group: string | null;
+  min_density: string | null;
+  max_density: string | null;
+  confidence_score: string | null;
+  link_source: string | null;
+};
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sku: string } }
+  { params }: { params: Promise<{ sku: string }> }
 ) {
   try {
     const sql = getEdgeSql();
-    const { sku } = params;
+    const { sku } = await params;
     
     if (!sku) {
       return NextResponse.json({ 
@@ -51,15 +78,15 @@ export async function GET(
       WHERE p.sku = ${sku}
       LIMIT 1
     `;
-    
-    if (result.length === 0) {
-      return NextResponse.json({ 
+
+    if (!Array.isArray(result) || result.length === 0) {
+      return NextResponse.json({
         error: 'Product not found',
         sku: sku
       }, { status: 404 });
     }
-    
-    const product = result[0];
+
+    const product = result[0] as ProductRow;
     
     // Format the response
     const response = {
@@ -119,67 +146,55 @@ export async function GET(
 // Optional: Support updating product dimensions
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { sku: string } }
+  { params }: { params: Promise<{ sku: string }> }
 ) {
   try {
     const sql = getEdgeSql();
-    const { sku } = params;
+    const { sku } = await params;
     const body = await request.json();
-    
-    // Update only dimension fields if provided
-    const updates = [];
-    const values = [];
-    let paramCount = 1;
-    
-    if (body.weight !== undefined) {
-      updates.push(`weight = $${paramCount++}`);
-      values.push(body.weight);
-    }
-    if (body.length !== undefined) {
-      updates.push(`length = $${paramCount++}`);
-      values.push(body.length);
-    }
-    if (body.width !== undefined) {
-      updates.push(`width = $${paramCount++}`);
-      values.push(body.width);
-    }
-    if (body.height !== undefined) {
-      updates.push(`height = $${paramCount++}`);
-      values.push(body.height);
-    }
-    
+
+    // Build update clauses - only update provided fields
+    const updates: string[] = [];
+
+    if (body.weight !== undefined) updates.push('weight');
+    if (body.length !== undefined) updates.push('length');
+    if (body.width !== undefined) updates.push('width');
+    if (body.height !== undefined) updates.push('height');
+
     if (updates.length === 0) {
-      return NextResponse.json({ 
-        error: 'No valid fields to update' 
+      return NextResponse.json({
+        error: 'No valid fields to update'
       }, { status: 400 });
     }
-    
-    // Add SKU as last parameter
-    values.push(sku);
-    
-    const updateQuery = `
-      UPDATE products 
-      SET ${updates.join(', ')}, updated_at = NOW()
-      WHERE sku = $${paramCount}
+
+    // For simplicity with Neon serverless, update all provided fields individually
+    // This is safer than dynamic SQL construction
+    const result = await sql`
+      UPDATE products
+      SET
+        weight = COALESCE(${body.weight !== undefined ? body.weight : null}, weight),
+        length = COALESCE(${body.length !== undefined ? body.length : null}, length),
+        width = COALESCE(${body.width !== undefined ? body.width : null}, width),
+        height = COALESCE(${body.height !== undefined ? body.height : null}, height),
+        updated_at = NOW()
+      WHERE sku = ${sku}
       RETURNING id, sku, weight, length, width, height
     `;
-    
-    const result = await sql.unsafe(updateQuery, values);
-    
-    if (result.length === 0) {
-      return NextResponse.json({ 
-        error: 'Product not found' 
+
+    if (!Array.isArray(result) || result.length === 0) {
+      return NextResponse.json({
+        error: 'Product not found'
       }, { status: 404 });
     }
-    
+
     return NextResponse.json({
       success: true,
       product: result[0]
     });
-    
+
   } catch (error) {
     console.error('Error updating product dimensions:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Failed to update product',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });

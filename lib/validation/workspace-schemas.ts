@@ -17,7 +17,7 @@ export const createWorkspaceSchema = z.object({
   ]),
   orderNumber: z.string().min(1, 'Order number is required'),
   userId: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
@@ -27,7 +27,7 @@ export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
  */
 export const updateModuleStateSchema = z.object({
   module: z.enum(['pre_mix', 'warehouse', 'documents', 'freight']),
-  state: z.record(z.unknown()),
+  state: z.record(z.string(), z.unknown()),
 });
 
 export type UpdateModuleStateInput = z.infer<typeof updateModuleStateSchema>;
@@ -110,7 +110,7 @@ export const uploadDocumentSchema = z.object({
   documentType: z.enum(['bol', 'coa', 'sds', 'invoice', 'packing_slip', 'other']),
   s3Url: z.string().url('Invalid S3 URL'),
   uploadedBy: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type UploadDocumentInput = z.infer<typeof uploadDocumentSchema>;
@@ -186,7 +186,7 @@ export function validateRequest<T extends z.ZodType>(
     return { success: true, data: validated };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const messages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      const messages = error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
       return { success: false, error: messages };
     }
     return { success: false, error: 'Validation failed' };

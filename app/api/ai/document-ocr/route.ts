@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { openaiService } from '@/lib/services/ai/openai-service';
 import { workspaceService } from '@/lib/services/workspace/service';
-import { s3Client } from '@/lib/aws/s3-client';
+import { s3Client, getS3BucketName } from '@/lib/aws/s3-client';
+import { uploadToS3WithRetry, generateS3Key } from '@/lib/utils/upload-helpers';
 import sharp from 'sharp';
 
 export async function POST(request: NextRequest) {
@@ -40,15 +41,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract data using OpenAI
+    type ExtractedData = {
+      extracted_data: Record<string, unknown>;
+      confidence_scores: Record<string, number>;
+      validation_errors: string[];
+    };
+    type COAData = { certificate_number?: string; batch_number?: string; [key: string]: unknown };
+
     const extractedData = await openaiService.extractDocumentData(
       documentBase64,
       documentType
-    );
+    ) as ExtractedData;
 
     // Validate extraction quality
-    const confidenceValues = Object.values(extractedData.confidence_scores);
+    const confidenceValues = Object.values(extractedData.confidence_scores || {}) as number[];
     const avgConfidence = confidenceValues.length > 0
-      ? confidenceValues.reduce((sum, score) => sum + score, 0) / confidenceValues.length
+      ? confidenceValues.reduce((sum: number, score: number) => sum + score, 0) / confidenceValues.length
       : 0;
 
     if (avgConfidence < 70) {
@@ -61,16 +69,36 @@ export async function POST(request: NextRequest) {
     const updateData: Record<string, unknown> = {};
     
     if (documentType === 'COA') {
-      updateData.coa_number = extractedData.extracted_data.certificate_number;
-      updateData.batch_number = extractedData.extracted_data.batch_number;
+      const coa = extractedData.extracted_data as COAData;
+      updateData.coa_number = coa.certificate_number;
+      updateData.batch_number = coa.batch_number;
       updateData.coa_metadata = extractedData.extracted_data;
     }
 
     await workspaceService.updateWorkspace(orderId, updateData);
 
     // Upload original document to S3
-    const s3Key = `documents/${orderId}/${documentType}-${Date.now()}.${documentFile.name.split('.').pop()}`;
-    await s3Client.uploadDocument(s3Key, Buffer.from(buffer), documentFile.type);
+    const s3BucketName = getS3BucketName();
+    const s3Key = generateS3Key(orderId, documentType, documentFile.name);
+
+    if (s3Client && s3BucketName) {
+      const uploadResult = await uploadToS3WithRetry(s3Client, {
+        bucket: s3BucketName,
+        key: s3Key,
+        body: Buffer.from(buffer),
+        contentType: documentFile.type,
+        metadata: {
+          orderId: orderId,
+          documentType: documentType,
+          originalName: documentFile.name,
+          uploadedAt: new Date().toISOString()
+        }
+      });
+
+      if (!uploadResult.success) {
+        console.error('S3 upload failed:', uploadResult.error);
+      }
+    }
 
     // Log activity
     await workspaceService.addActivity(orderId, {

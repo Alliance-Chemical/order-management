@@ -21,6 +21,15 @@ interface QRCode {
   metadata?: any;
 }
 
+const normalizeQrCode = (qr: Partial<QRCode> & { id: string; qrCode?: string; shortCode?: string; code?: string }): QRCode => ({
+  id: qr.id,
+  code: qr.code ?? qr.shortCode ?? qr.qrCode ?? '',
+  shortCode: qr.shortCode ?? qr.code ?? undefined,
+  qrType: qr.qrType,
+  encodedData: qr.encodedData,
+  metadata: qr.metadata,
+});
+
 interface UsePrintPreparationProps {
   order: FreightOrder;
   onPrintComplete: () => void;
@@ -46,7 +55,8 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
     try {
       const result = await getQRCodesForWorkspace(order.orderId.toString());
       if (result.success && result.qrCodes) {
-        setQrCodes(result.qrCodes);
+        const normalized = result.qrCodes.map(normalizeQrCode);
+        setQrCodes(normalized);
         
         // Initialize quantities based on existing QR codes
         const quantities: Record<string, number> = {};
@@ -94,7 +104,7 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
       
       if (result.success && result.qrCodes) {
         // Store in ref first to avoid async issues
-        regeneratedQRsRef.current[itemName] = result.qrCodes;
+        regeneratedQRsRef.current[itemName] = result.qrCodes.map(normalizeQrCode);
         
         // Update state with new QR codes
         setQrCodes(prev => {
@@ -147,7 +157,8 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
           const { addQRCodes } = await import('@/app/actions/qr');
           const result = await addQRCodes(order.orderId.toString(), additions);
           if (result.success && result.qrCodes) {
-            setQrCodes(prev => [...prev, ...result.qrCodes]);
+            const normalized = result.qrCodes.map(normalizeQrCode);
+            setQrCodes(prev => [...prev, ...normalized]);
           } else {
             throw new Error(result.error || 'Failed to add labels');
           }

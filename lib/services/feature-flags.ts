@@ -16,7 +16,7 @@
  *   return oldLogic();
  */
 
-import { getDb } from '@/src/data/db/client';
+import { getDb } from '@/lib/db';
 import { featureFlags as featureFlagsTable } from '@/lib/db/schema/outbox';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
