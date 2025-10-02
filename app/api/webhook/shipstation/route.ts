@@ -74,22 +74,30 @@ export async function POST(request: NextRequest) {
         
         if (!workspace) {
           // Create workspace for this freight order
-          workspace = await workspaceService.createWorkspace(
+          const newWorkspace = await workspaceService.createWorkspace(
             orderData.orderId,
-            orderData.orderNumber,
+            orderData.orderNumber || String(orderData.orderId),
             'shipstation-webhook',
             'pump_and_fill' // Freight orders are pump_and_fill
           );
-          
+
+          // Refetch with relations
+          workspace = await workspaceService.repository.findByOrderId(orderData.orderId);
+          if (!workspace) {
+            throw new Error('Failed to create workspace');
+          }
+
           // Queue QR generation based on order items
           await queueQRGeneration(workspace.id, orderData);
         }
         
         // Sync tags to update workflow phase
-        await tagSyncService.handleTagUpdate({
-          order_id: orderData.orderId,
-          tag_ids: orderData.tagIds || []
-        });
+        if (orderData.tagIds) {
+          await tagSyncService.handleTagUpdate({
+            order_id: orderData.orderId,
+            tag_ids: orderData.tagIds
+          });
+        }
         
         // Log notification (removed AWS SNS dependency)
         await workspaceService.repository.logActivity({
@@ -140,10 +148,12 @@ export async function POST(request: NextRequest) {
       }
       
       // Sync tags to workflow
-      await tagSyncService.handleTagUpdate({
-        order_id: orderData.orderId,
-        tag_ids: orderData.tagIds || []
-      });
+      if (orderData.tagIds) {
+        await tagSyncService.handleTagUpdate({
+          order_id: orderData.orderId,
+          tag_ids: orderData.tagIds
+        });
+      }
       
       return NextResponse.json({ 
         success: true, 

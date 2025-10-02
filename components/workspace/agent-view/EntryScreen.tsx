@@ -7,7 +7,7 @@ import { Button } from '../../ui/button';
 import { UnifiedQRScanner } from '@/components/qr/UnifiedQRScanner';
 import type { ValidatedQRData } from '@/hooks/useQRScanner';
 
-interface OrderItem {
+interface OrderItem extends Record<string, unknown> {
   lineItemKey?: string;
   sku?: string;
   name?: string;
@@ -80,7 +80,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
       setQrError(null);
 
       // Validate QR data matches the current workspace
-      if (_data.workspace && _data.workspace.orderId !== workspace.orderId) {
+      if (_data.workspace && String(_data.workspace.orderId) !== String(workspace.orderId)) {
         setQrError(`QR code is for order ${_data.workspace.orderNumber}, but you're viewing order ${workspace.orderNumber}`);
         setIsValidatingQR(false);
         return;
@@ -95,9 +95,10 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
       // Now proceed with the inspection
       if (pendingItem && onSelectItem) {
         // Mark item as in progress
+        const itemKey = pendingItem.lineItemKey || pendingItem.sku || pendingItem.name || 'unknown';
         setItemStatuses(prev => ({
           ...prev,
-          [pendingItem.lineItemKey || pendingItem.sku || pendingItem.name]: 'in_progress'
+          [itemKey]: 'in_progress'
         }));
         onSelectItem(pendingItem);
       } else {
@@ -297,7 +298,8 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
             <div className="space-y-4">
               {filteredItems.map((item, idx) => {
                 const workflowType = getItemWorkflowType();
-                const status = itemStatuses[item.lineItemKey || item.sku || item.name] || 'pending';
+                const itemKey = item.lineItemKey || item.sku || item.name || 'unknown';
+                const status = itemStatuses[itemKey] || 'pending';
 
                 return (
                   <TaskListItem
@@ -361,7 +363,7 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
                 type: 'workspace',
                 workspace: {
                   id: workspace.id,
-                  orderId: workspace.orderId,
+                  orderId: String(workspace.orderId),
                   orderNumber: workspace.orderNumber,
                   status: workspace.status,
                 }

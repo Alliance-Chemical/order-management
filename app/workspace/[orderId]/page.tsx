@@ -68,7 +68,7 @@ export default function WorkspacePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const orderId = params.orderId as string;
+  const orderId = params?.orderId as string;
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
   const viewQuery = searchParams?.get('view');
@@ -120,7 +120,7 @@ export default function WorkspacePage() {
       }
 
       const queryString = params.toString();
-      router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+      router.replace(queryString ? `${pathname || '/'}?${queryString}` : (pathname || '/'), { scroll: false });
     },
     [pathname, router, searchParams]
   );
@@ -175,7 +175,17 @@ export default function WorkspacePage() {
       const result = await getWorkspace(orderId);
 
       if (result.success && result.workspace) {
-        setWorkspace(result.workspace);
+        setWorkspace({
+          ...result.workspace,
+          status: (result.workspace.status as any) || 'pending',
+          workflowType: (result.workspace.workflowType as any) || 'pump_and_fill',
+          workflowPhase: (result.workspace.workflowPhase as any) || 'pending',
+          shipstationData: (result.workspace.shipstationData || {}) as any,
+          moduleStates: (result.workspace.moduleStates || {}) as any,
+          finalMeasurements: (result.workspace.finalMeasurements || {}) as any,
+          documents: result.workspace.documents || [],
+          createdAt: result.workspace.createdAt?.toISOString() ?? new Date().toISOString()
+        } as any);
         setLoading(false);
         return;
       }
@@ -188,7 +198,17 @@ export default function WorkspacePage() {
 
       if (ensureResult.success && ensureResult.workspace) {
         console.log(`[WorkspacePage] Workspace ${orderId} created successfully`);
-        setWorkspace(ensureResult.workspace);
+        setWorkspace({
+          ...ensureResult.workspace,
+          status: (ensureResult.workspace.status as any) || 'pending',
+          workflowType: (ensureResult.workspace.workflowType as any) || 'pump_and_fill',
+          workflowPhase: (ensureResult.workspace.workflowPhase as any) || 'pending',
+          shipstationData: (ensureResult.workspace.shipstationData || {}) as any,
+          moduleStates: (ensureResult.workspace.moduleStates || {}) as any,
+          finalMeasurements: (ensureResult.workspace.finalMeasurements || {}) as any,
+          documents: (ensureResult.workspace as any).documents || [],
+          createdAt: ensureResult.workspace.createdAt?.toISOString() ?? new Date().toISOString()
+        } as any);
         setLoading(false);
         return;
       }
@@ -286,7 +306,7 @@ export default function WorkspacePage() {
     const params = new URLSearchParams(searchParams ? searchParams.toString() : '');
     params.delete('mode');
     const queryString = params.toString();
-    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+    router.replace(queryString ? `${pathname || '/'}?${queryString}` : (pathname || '/'), { scroll: false });
   }, [pathname, router, searchParams]);
 
   const reviewInspection = useCallback(() => {
@@ -295,7 +315,7 @@ export default function WorkspacePage() {
     params.delete('view');
     params.set('mode', 'inspection-review');
     const queryString = params.toString();
-    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+    router.replace(queryString ? `${pathname || '/'}?${queryString}` : (pathname || '/'), { scroll: false });
   }, [applyReviewMode, pathname, router, searchParams]);
 
   useEffect(() => {
@@ -405,10 +425,10 @@ export default function WorkspacePage() {
           <ResilientInspectionScreen
             orderId={orderId}
             orderNumber={workspace.orderNumber}
-            customerName={workspace.shipstationData?.shipTo?.name}
+            customerName={workspace.shipstationData?.shipTo?.name || ''}
             orderItems={itemsToInspect}
             workflowPhase={workerInspectionPhase}
-            workflowType={workspace.workflowType}
+            workflowType={workspace.workflowType || 'pump_and_fill'}
             items={inspectionItems}
             workspace={workerWorkspace}
             onComplete={(results) => {
@@ -590,7 +610,7 @@ export default function WorkspacePage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <ActiveComponent
           orderId={orderId}
-          workspace={workspace}
+          workspace={workspace as any}
           initialState={(() => {
             const aliases = MODULE_STATE_ALIASES[activeTab];
             if (aliases) {

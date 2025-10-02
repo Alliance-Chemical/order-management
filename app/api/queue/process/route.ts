@@ -184,8 +184,8 @@ export async function POST(_request: NextRequest) {
     }
     
     // Only log if something actually happened
-    if (result.processed > 0 || result.failed > 0) {
-      console.log(`Queue processed: ${result.processed} successful, ${result.failed} failed, ${result.flushed} flushed`);
+    if (result.processed > 0 || (result.failed && result.failed > 0)) {
+      console.log(`Queue processed: ${result.processed} successful, ${result.failed || 0} failed, ${result.flushed} flushed`);
     }
     
     return NextResponse.json(result);

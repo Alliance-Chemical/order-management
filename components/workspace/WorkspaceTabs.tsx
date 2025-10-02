@@ -56,7 +56,14 @@ export function WorkspaceTabs() {
     
     switch(tabId) {
       case 'documents':
-        const docCount = workspace.documents?.length || 0;
+        let docCount = 0;
+        if (workspace.documents && typeof workspace.documents === 'object' && !Array.isArray(workspace.documents)) {
+          // WorkspaceDocuments type
+          docCount = (workspace.documents.coa?.length || 0) + (workspace.documents.sds?.length || 0) + (workspace.documents.other?.length || 0);
+        } else if (Array.isArray(workspace.documents)) {
+          // Legacy array type
+          docCount = workspace.documents.length;
+        }
         if (docCount > 0) {
           return (
             <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
@@ -66,7 +73,8 @@ export function WorkspaceTabs() {
         }
         break;
       case 'activity':
-        const recentActivity = workspace.activityLog?.filter((a: { performedAt: string | number | Date }) => {
+        // activityLog might not exist in the workspace type
+        const recentActivity = (workspace as any).activityLog?.filter((a: { performedAt: string | number | Date }) => {
           const activityTime = new Date(a.performedAt);
           const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
           return activityTime > hourAgo;

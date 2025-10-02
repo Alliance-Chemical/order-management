@@ -16,7 +16,7 @@ export async function GET(
     console.log(`[PACKING SLIP API] Generating packing slip for order: ${orderId} (size: ${size})`);
 
     // Fetch workspace data
-    const workspace = await repository.findByOrderId(orderId);
+    const workspace = await repository.findByOrderId(parseInt(orderId));
     if (!workspace) {
       console.error(`[PACKING SLIP API] Workspace not found for order: ${orderId}`);
       return NextResponse.json(

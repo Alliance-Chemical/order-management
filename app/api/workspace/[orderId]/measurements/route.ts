@@ -55,7 +55,7 @@ export async function POST(
       );
     }
 
-    const previousMeasurements = workspace.finalMeasurements;
+    const previousMeasurements = workspace.finalMeasurements as any;
 
     // Update the workspace with final measurements
     await db

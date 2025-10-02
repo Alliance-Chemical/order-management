@@ -129,10 +129,10 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
             <ResilientInspectionScreen
               orderId={orderId}
               orderNumber={workspace.orderNumber}
-              customerName={workspace.shipstationData?.shipTo?.name}
+              customerName={workspace.shipstationData?.shipTo?.name || ''}
               orderItems={workspace.shipstationData?.items || []}
               workflowPhase={workerInspectionPhase}
-              workflowType={workspace.workflowType}
+              workflowType={workspace.workflowType || 'pump_and_fill'}
               items={buildInspectionItems(workerWorkspace, selectedItem)}
               qrScanned={qrScanned}
               onComplete={(results) => {
@@ -369,7 +369,8 @@ export default function WorkspaceContent({ workspace, orderId, onModuleStateChan
           ) : (
             <ActiveComponent
               orderId={orderId}
-              workspace={workspace}
+              workspaceId={workspace.id}
+              workspace={workspace as any}
               initialState={(activeTab === 'inspection_runs' ? workspace.moduleStates?.inspection : workspace.moduleStates?.[activeTab] || {}) as any}
               onStateChange={(state: any) => onModuleStateChange(activeTab, state as ModuleState)}
               onStateChangeAction={(state: any) => onModuleStateChange(activeTab, state as ModuleState)}

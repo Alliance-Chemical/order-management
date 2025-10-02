@@ -35,12 +35,12 @@ export async function GET(
     }
 
     // Build query conditions
-    let whereCondition = eq(documents.workspaceId, workspace.id);
+    let whereCondition: ReturnType<typeof eq> | ReturnType<typeof and> = eq(documents.workspaceId, workspace.id);
     if (documentType) {
       whereCondition = and(
         eq(documents.workspaceId, workspace.id),
         eq(documents.documentType, documentType)
-      );
+      )!;
     }
 
     // Fetch documents

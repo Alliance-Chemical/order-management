@@ -125,14 +125,16 @@ export default function AIDocumentUpload({ orderId: _orderId, onUploadComplete }
             </h4>
             
             <div className="space-y-2 text-sm">
-              {extractedData.extractedData && typeof extractedData.extractedData === 'object' && Object.entries(extractedData.extractedData).map(([key, value]) => (
-                <div key={key} className="flex justify-between">
-                  <span className="text-gray-600 capitalize">
-                    {key.replace(/_/g, ' ')}:
-                  </span>
-                  <span className="font-medium">{String(value)}</span>
-                </div>
-              ))}
+              {extractedData.extractedData && typeof extractedData.extractedData === 'object' ? (
+                Object.entries(extractedData.extractedData).map(([key, value]) => (
+                  <div key={key} className="flex justify-between">
+                    <span className="text-gray-600 capitalize">
+                      {key.replace(/_/g, ' ')}:
+                    </span>
+                    <span className="font-medium">{value != null ? String(value) : 'N/A'}</span>
+                  </div>
+                ))
+              ) : null}
             </div>
 
             {Array.isArray(extractedData.validationErrors) && extractedData.validationErrors.length > 0 && (
@@ -146,7 +148,7 @@ export default function AIDocumentUpload({ orderId: _orderId, onUploadComplete }
               </div>
             )}
 
-            {extractedData.requiresManualReview && (
+            {!!extractedData.requiresManualReview && (
               <p className="mt-3 text-sm text-orange-600 font-medium">
                 ⚠️ Manual review recommended due to low confidence
               </p>

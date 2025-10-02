@@ -57,10 +57,10 @@ export async function POST(
       ...body,
       createdAt: new Date().toISOString()
     };
-    
+
     // Update workspace with new pallet
     const currentData = workspace.shipstationData || {};
-    const pallets = currentData.pallets || [];
+    const pallets = (currentData.pallets || []) as any[];
     pallets.push(newPallet);
     
     await db

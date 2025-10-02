@@ -53,13 +53,13 @@ export function WorkspaceHeader({ workspace }: WorkspaceHeaderProps) {
     }
   };
 
-  const formatLastSync = (date: Date | string | null) => {
+  const formatLastSync = (date: Date | string | null | undefined) => {
     if (!date) return 'Never';
     const syncDate = new Date(date);
     const now = new Date();
     const diffMs = now.getTime() - syncDate.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     const diffHours = Math.floor(diffMins / 60);

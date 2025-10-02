@@ -150,7 +150,7 @@ export default function FreightBookingPage() {
         {currentStep === 'confirmation' && bookingData.selectedOrder && (
           <ConfirmationStep
             bookingData={bookingData}
-            palletData={palletData}
+            palletData={palletData || null}
             booking={booking}
             setBookingData={setBookingData}
             onBack={() => {

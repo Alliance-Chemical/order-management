@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     console.log(`[PRINT API] Received request to print ${qrCodes?.length || 0} labels with size: ${labelSize}`);
     console.log(`[PRINT API] Fulfillment method: ${fulfillmentMethod}`);
     console.log(`[PRINT API] Order ID: ${orderId}`);
-    console.log(`[PRINT API] QR codes received:`, qrCodes?.map(qr => ({
+    console.log(`[PRINT API] QR codes received:`, qrCodes?.map((qr: any) => ({
       id: qr.id,
       shortCode: qr.shortCode,
       hasShortCode: !!qr.shortCode

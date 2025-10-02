@@ -74,7 +74,7 @@ export async function POST(
     
     // Update workspace with lot assignment
     const currentData = workspace.shipstationData || {};
-    const lots: LotAssignment[] = currentData.lots || [];
+    const lots: LotAssignment[] = (currentData.lots || []) as any[];
     lots.push(lotAssignment);
     
     await db
@@ -118,7 +118,7 @@ export async function DELETE(
     
     // Remove lot assignment
     const currentData = workspace.shipstationData || {};
-    const lots: LotAssignment[] = (currentData.lots || []).filter((lot: LotAssignment) => lot.id !== lotId);
+    const lots: LotAssignment[] = ((currentData.lots || []) as any[]).filter((lot: LotAssignment) => lot.id !== lotId);
     
     await db
       .update(workspaces)

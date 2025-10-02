@@ -176,6 +176,8 @@ async function oldSequentialPolling(orders: ShipStationOrder[]): Promise<{
 
   for (const order of orders) {
     // Query DB for EACH order (N queries)
+    if (!order.orderId) continue; // Skip if no orderId
+
     const [existingWorkspace] = await db
       .select()
       .from(workspaces)

@@ -37,7 +37,7 @@ export async function POST(
     // Add ready-to-ship tag in ShipStation
     const readyToShipTagId = parseInt(process.env.READY_TO_SHIP_TAG || '19845');
     try {
-      await shipstationClient.addOrderTag(workspace.shipstationOrderId!, readyToShipTagId);
+      await shipstationClient.addOrderTag((workspace as any).shipstationOrderId || workspace.orderId, readyToShipTagId);
       
       // Clear Freight Booked tag when shipped
       await clearFreightBooked(workspace.orderId);

@@ -45,7 +45,7 @@ export default function DocumentsHub({ orderId, workspace }: DocumentsHubProps) 
             name: result.document.fileName ?? result.document.documentName,
             type: result.document.documentType,
             url: result.document.url,
-            size: result.document.fileSize ?? file.size,
+            size: (result.document as any).fileSize ?? file.size,
             uploadedAt: new Date().toISOString(),
           },
         ]);
@@ -66,7 +66,7 @@ export default function DocumentsHub({ orderId, workspace }: DocumentsHubProps) 
     { id: 'other', label: 'Other Documents', icon: DocumentIcon },
   ];
 
-  const totalSize = workspace.totalDocumentSize ?? 0;
+  const totalSize = (workspace as any).totalDocumentSize ?? 0;
 
   return (
     <div className="space-y-6">

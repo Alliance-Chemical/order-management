@@ -80,7 +80,7 @@ export async function POST(
         internalNotes: `Updated from QR Workspace on ${new Date().toISOString()}`
       });
       
-      syncResult = { success: true, response };
+      syncResult = { success: true, error: null, response };
       
       // Update workspace with sync timestamp
       await db

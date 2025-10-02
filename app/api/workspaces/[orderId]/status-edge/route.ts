@@ -68,7 +68,7 @@ export async function GET(
       progress: workspace.progress || 0,
       activeStep: workspace.activeStep,
       workflowType: workspace.workflowType,
-      lastUpdated: workspace.updatedAt,
+      updatedAt: workspace.updatedAt,
       cachedAt: Date.now(),
     };
     

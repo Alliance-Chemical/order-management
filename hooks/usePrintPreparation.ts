@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { warehouseFeedback } from '@/lib/warehouse-ui-utils';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { getQRCodesForWorkspace, regenerateQRCodes, printQR } from '@/app/actions/qr';
+import { QRCode, QRType } from '@/lib/types/workspace';
 
 interface FreightOrder {
   orderId: number;
@@ -12,22 +13,18 @@ interface FreightOrder {
   items?: any[];
 }
 
-interface QRCode {
-  id: string;
-  code: string;
-  shortCode?: string;
-  qrType?: string;
-  encodedData?: any;
-  metadata?: any;
-}
-
-const normalizeQrCode = (qr: Partial<QRCode> & { id: string; qrCode?: string; shortCode?: string; code?: string }): QRCode => ({
+const normalizeQrCode = (qr: any): QRCode => ({
   id: qr.id,
+  type: (qr.qrType || qr.type || 'order_master') as QRType,
   code: qr.code ?? qr.shortCode ?? qr.qrCode ?? '',
   shortCode: qr.shortCode ?? qr.code ?? undefined,
-  qrType: qr.qrType,
-  encodedData: qr.encodedData,
-  metadata: qr.metadata,
+  orderId: qr.orderId,
+  orderNumber: qr.orderNumber,
+  containerNumber: qr.containerNumber,
+  chemicalName: qr.chemicalName,
+  url: qr.qrUrl || qr.url || '',
+  scanCount: qr.scanCount || 0,
+  isActive: qr.isActive ?? true,
 });
 
 interface UsePrintPreparationProps {
@@ -63,9 +60,9 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
         const filteredItems = filterOutDiscounts(order.items || []);
         
         filteredItems.forEach(item => {
-          const itemQRs = result.qrCodes.filter((qr: QRCode) => 
-            qr.encodedData?.itemName === item.name || 
-            qr.metadata?.itemName === item.name
+          const itemQRs = result.qrCodes.filter((qr: QRCode) =>
+            (qr as any).encodedData?.itemName === item.name ||
+            (qr as any).metadata?.itemName === item.name
           );
           quantities[item.name] = itemQRs.length || 1;
         });
@@ -109,9 +106,9 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
         // Update state with new QR codes
         setQrCodes(prev => {
           // Remove old QRs for this item
-          const filtered = prev.filter(qr => 
-            qr.encodedData?.itemName !== itemName && 
-            qr.metadata?.itemName !== itemName
+          const filtered = prev.filter(qr =>
+            (qr as any).encodedData?.itemName !== itemName &&
+            (qr as any).metadata?.itemName !== itemName
           );
           // Add new QRs from ref
           return [...filtered, ...(regeneratedQRsRef.current[itemName] || [])];
@@ -138,7 +135,7 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
         // Compute additional counts needed per item: desired - existing
         const byItem = new Map<string, QRCode[]>();
         qrCodes.forEach(qr => {
-          const name = qr.encodedData?.itemName || qr.metadata?.itemName || 'UNKNOWN_ITEM';
+          const name = (qr as any).encodedData?.itemName || (qr as any).metadata?.itemName || 'UNKNOWN_ITEM';
           if (!byItem.has(name)) byItem.set(name, []);
           byItem.get(name)!.push(qr);
         });
@@ -175,14 +172,14 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
       console.log('[PRINT HOOK] Sending QR codes for printing:', validQRs.map(qr => ({
         id: qr.id,
         shortCode: qr.shortCode,
-        qrType: qr.qrType
+        qrType: qr.type
       })));
 
       // Build list to print matching requested quantities by item name.
       // In reprint mode, duplicates are reprinted; in generate mode, new labels should fill the gap now.
       const byItem = new Map<string, QRCode[]>();
       validQRs.forEach(qr => {
-        const name = qr.encodedData?.itemName || qr.metadata?.itemName || 'UNKNOWN_ITEM';
+        const name = (qr as any).encodedData?.itemName || (qr as any).metadata?.itemName || 'UNKNOWN_ITEM';
         if (!byItem.has(name)) byItem.set(name, []);
         byItem.get(name)!.push(qr);
       });

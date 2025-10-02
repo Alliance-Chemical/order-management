@@ -68,7 +68,7 @@ export class WorkspaceFreightLinkingService {
             sessionId: freightData.sessionId ? (freightData.sessionId.length === 36 ? freightData.sessionId : null) : null,
             telemetryData: freightData.telemetryData || {},
             specialInstructions: freightData.specialInstructions,
-          })
+          } as any)
           .returning();
 
         // Create initial freight event

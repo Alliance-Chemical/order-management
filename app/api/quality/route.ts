@@ -28,25 +28,21 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type') || 'quality-records';
 
     if (type === 'quality-records') {
-      let query = db.select().from(qualityRecords);
+      const query = db.select().from(qualityRecords);
 
-      if (workspaceId) {
-        query = query.where(eq(qualityRecords.workspaceId, workspaceId));
-      }
-
-      const records = await query.orderBy(desc(qualityRecords.checkedAt)).limit(50);
+      const records = workspaceId
+        ? await query.where(eq(qualityRecords.workspaceId, workspaceId)).orderBy(desc(qualityRecords.checkedAt)).limit(50)
+        : await query.orderBy(desc(qualityRecords.checkedAt)).limit(50);
 
       return NextResponse.json({ success: true, data: records });
     }
 
     if (type === 'non-conformances') {
-      let query = db.select().from(nonConformances);
+      const query = db.select().from(nonConformances);
 
-      if (workspaceId) {
-        query = query.where(eq(nonConformances.workspaceId, workspaceId));
-      }
-
-      const records = await query.orderBy(desc(nonConformances.discoveredAt)).limit(50);
+      const records = workspaceId
+        ? await query.where(eq(nonConformances.workspaceId, workspaceId)).orderBy(desc(nonConformances.discoveredAt)).limit(50)
+        : await query.orderBy(desc(nonConformances.discoveredAt)).limit(50);
 
       return NextResponse.json({ success: true, data: records });
     }
@@ -105,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ success: false, error: 'Validation error', details: error.errors }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Validation error', details: (error as any).errors }, { status: 400 });
     }
 
     console.error('Error creating quality record:', error);

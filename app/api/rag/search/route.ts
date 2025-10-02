@@ -173,7 +173,7 @@ const parseSearchContext = (input?: Partial<SearchContext & Record<string, unkno
   if (isSearchMode(input.mode)) {
     parsed.mode = input.mode;
   } else if (typeof input.mode === 'string') {
-    const normalised = input.mode.toLowerCase();
+    const normalised = (input.mode as string).toLowerCase();
     if (isSearchMode(normalised)) {
       parsed.mode = normalised;
     }
@@ -333,36 +333,36 @@ function generateSummary(searchResults: SearchExecution): SearchSummary {
     switch (result.source) {
       case 'cfr':
         summary.regulations.push({
-          section: result.metadata?.section,
-          subject: result.metadata?.subject,
+          section: result.metadata?.section as string | undefined,
+          subject: result.metadata?.subject as string | undefined,
           relevance: result.score
         });
         break;
-      
+
       case 'erg':
         summary.emergency.push({
-          type: result.metadata?.type,
-          guideNumber: result.metadata?.guideNumber,
-          unNumber: result.metadata?.unNumber,
+          type: result.metadata?.type as string | undefined,
+          guideNumber: result.metadata?.guideNumber as string | undefined,
+          unNumber: result.metadata?.unNumber as string | undefined,
           relevance: result.score
         });
         break;
-      
+
       case 'products':
         summary.products.push({
-          sku: result.metadata?.sku,
-          name: result.metadata?.name,
-          isHazardous: result.metadata?.isHazardous,
+          sku: result.metadata?.sku as string | undefined,
+          name: result.metadata?.name as string | undefined,
+          isHazardous: result.metadata?.isHazardous as boolean | undefined,
           relevance: result.score
         });
         break;
-      
+
       case 'hmt':
         summary.hazmat.push({
-          unNumber: result.metadata?.unNumber,
-          name: result.metadata?.name,
-          hazardClass: result.metadata?.hazardClass,
-          packingGroup: result.metadata?.packingGroup,
+          unNumber: result.metadata?.unNumber as string | undefined,
+          name: result.metadata?.name as string | undefined,
+          hazardClass: result.metadata?.hazardClass as string | undefined,
+          packingGroup: result.metadata?.packingGroup as string | undefined,
           relevance: result.score
         });
         break;

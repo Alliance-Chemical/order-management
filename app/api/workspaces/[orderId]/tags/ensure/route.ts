@@ -35,7 +35,7 @@ export async function POST(
       orderId: orderId.toString(),
       phase: result.finalPhase,
       tags: result.finalTags,
-      changes: result.changes
+      changes: (result as any).changes || []
     });
     
   } catch (error) {

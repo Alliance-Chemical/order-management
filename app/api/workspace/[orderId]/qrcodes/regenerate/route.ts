@@ -4,7 +4,7 @@ import { workspaces, qrCodes } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 
-interface WorkspaceItem {
+interface WorkspaceItem extends Record<string, unknown> {
   orderItemId?: string;
   sku?: string | null;
   name?: string | null;

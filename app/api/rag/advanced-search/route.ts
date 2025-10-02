@@ -351,8 +351,8 @@ function generateInsights(searchResult: SearchExecution): SearchInsights {
 
   // Entity-based insights
   if (query.entities.unNumbers.length > 0) {
-    const foundUN = results.some((r) => 
-      query.entities.unNumbers.includes(r.metadata?.unNumber)
+    const foundUN = results.some((r) =>
+      query.entities.unNumbers.includes(r.metadata?.unNumber as string)
     );
     if (foundUN) {
       insights.summary.push('Exact UN number match found');

@@ -27,7 +27,7 @@ export async function PATCH(
     
     // Update pallet
     const currentData = workspace.shipstationData || {};
-    const pallets: Pallet[] = currentData.pallets || [];
+    const pallets: Pallet[] = (currentData.pallets || []) as any[];
     const palletIndex = pallets.findIndex((p: Pallet) => p.id === palletId);
     
     if (palletIndex === -1) {
@@ -75,7 +75,7 @@ export async function DELETE(
     
     // Remove pallet
     const currentData = workspace.shipstationData || {};
-    const pallets = (currentData.pallets || []).filter((p: Pallet) => p.id !== palletId);
+    const pallets = ((currentData.pallets || []) as any[]).filter((p: Pallet) => p.id !== palletId);
     
     await db
       .update(workspaces)

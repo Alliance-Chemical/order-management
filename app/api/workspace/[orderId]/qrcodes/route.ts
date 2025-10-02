@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { filterOutDiscounts } from '@/lib/services/orders/normalize';
 import { detectContainer } from '@/lib/services/qr/container-detect';
 
-type ShipStationItem = { sku?: string; name?: string; quantity?: number; orderItemId?: string };
+type ShipStationItem = { sku?: string; name?: string; quantity?: number; orderItemId?: string; unitPrice?: number };
 type ShipStationOrder = { orderNumber?: string; items?: ShipStationItem[] };
 type Freight = {
   bookingStatus?: string;
@@ -69,8 +69,8 @@ export async function GET(
         
         if (response.ok) {
           shipstationData = await response.json();
-          orderNumber = shipstationData.orderNumber || String(orderId);
-          console.log(`[QR] Successfully fetched ShipStation order ${orderNumber} with ${shipstationData.items?.length || 0} items`);
+          orderNumber = shipstationData?.orderNumber || String(orderId);
+          console.log(`[QR] Successfully fetched ShipStation order ${orderNumber} with ${shipstationData?.items?.length || 0} items`);
         } else {
           console.error(`[QR] Failed to fetch from ShipStation: ${response.status} ${response.statusText}`);
         }
@@ -456,48 +456,70 @@ export async function POST(
 
     // Generate QR codes based on type
     if (type === 'source') {
+      const qrCode = `QR-${orderId}-SOURCE-${Date.now()}`;
+      const shortCode = `S${orderId}-${Date.now() % 100000}`;
       qrCodesToCreate.push({
         workspaceId,
-        code: `QR-${orderId}-SOURCE-${Date.now()}`,
-        type: 'master' as const,
-        label: `Source Container - Order ${orderId}`,
-        scanned: false,
-        metadata: { isSource: true },
+        orderId,
+        orderNumber: workspace[0].orderNumber,
+        qrType: 'master',
+        qrCode,
+        shortCode,
+        qrUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/workspace/${orderId}?qr=${shortCode}`,
+        encodedData: { isSource: true, type: 'master', orderId, shortCode },
         createdAt: new Date()
       });
     } else if (type === 'tote') {
       for (let i = 1; i <= (quantity || 1); i++) {
+        const qrCode = `QR-${orderId}-TOTE-${i}-${Date.now()}`;
+        const shortCode = `T${orderId}-${i}-${Date.now() % 100000}`;
         qrCodesToCreate.push({
           workspaceId,
-          code: `QR-${orderId}-TOTE-${i}-${Date.now()}`,
-          type: 'container' as const,
-          label: `Tote ${i} - Order ${orderId}`,
-          scanned: false,
-          metadata: { 
+          orderId,
+          orderNumber: workspace[0].orderNumber,
+          qrType: 'container',
+          qrCode,
+          shortCode,
+          qrUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/workspace/${orderId}?qr=${shortCode}`,
+          encodedData: {
             containerNumber: i,
-            containerType: 'tote'
+            containerType: 'tote',
+            type: 'container',
+            orderId,
+            shortCode
           },
+          containerNumber: i,
           createdAt: new Date()
         });
       }
     } else if (type === 'pallet') {
       for (let i = 1; i <= (quantity || 1); i++) {
+        const qrCode = `QR-${orderId}-PALLET-${i}-${Date.now()}`;
+        const shortCode = `P${orderId}-${i}-${Date.now() % 100000}`;
         qrCodesToCreate.push({
           workspaceId,
-          code: `QR-${orderId}-PALLET-${i}-${Date.now()}`,
-          type: 'pallet' as const,
-          label: `Pallet ${i} - Order ${orderId}`,
-          scanned: false,
-          metadata: { 
-            palletNumber: i
+          orderId,
+          orderNumber: workspace[0].orderNumber,
+          qrType: 'pallet',
+          qrCode,
+          shortCode,
+          qrUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/workspace/${orderId}?qr=${shortCode}`,
+          encodedData: {
+            palletNumber: i,
+            type: 'pallet',
+            orderId,
+            shortCode
           },
+          containerNumber: i,
           createdAt: new Date()
         });
       }
     }
 
     // Insert the new QR codes
-    await db.insert(qrCodes).values(qrCodesToCreate);
+    if (qrCodesToCreate.length > 0) {
+      await db.insert(qrCodes).values(qrCodesToCreate);
+    }
 
     // Fetch all QR codes for response
     const allQrCodes = await db

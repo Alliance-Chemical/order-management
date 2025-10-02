@@ -16,8 +16,8 @@ export async function GET() {
       db.select()
         .from(workspaces)
         .orderBy(desc(workspaces.createdAt))
-    )
-      .limit(100);
+        .limit(100)
+    );
 
     return NextResponse.json({ workspaces: allWorkspaces });
   } catch (error) {

@@ -17,19 +17,6 @@ export default function InspectionScreen(props: InspectionScreenProps) {
     onSwitchToSupervisor,
   } = props;
 
-  // Adapt the callback signature expected by the resilient screen
-  const handleComplete = (
-    results: Record<string, 'pass' | 'fail'>,
-    notes: Record<string, string>
-  ) => {
-    onComplete({
-      checklist: results,
-      notes: Object.entries(notes).map(([k, v]) => `${k}: ${v}`).join('\n'),
-      completedAt: new Date().toISOString(),
-      completedBy: 'worker',
-    });
-  };
-
   return (
     <ResilientInspectionScreen
       orderId={orderId}
@@ -39,7 +26,7 @@ export default function InspectionScreen(props: InspectionScreenProps) {
       workflowPhase={workflowPhase}
       workflowType={workflowType as any}
       items={items}
-      onComplete={handleComplete}
+      onComplete={onComplete}
       onSwitchToSupervisor={onSwitchToSupervisor}
     />
   );

@@ -94,7 +94,7 @@ export const POST = withErrorHandler(async (
   let ensureResult: EnsureResult = {
     success: true,
     finalTags: [],
-    finalPhase: workspace.workflowPhase,
+    finalPhase: workspace.workflowPhase || 'pre_mix',
   };
   
   if (result === 'pass') {

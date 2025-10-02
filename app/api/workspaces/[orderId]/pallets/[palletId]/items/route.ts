@@ -40,7 +40,7 @@ export async function POST(
     
     // Find pallet and add items
     const currentData = workspace.shipstationData || {};
-    const pallets: PalletEntry[] = currentData.pallets || [];
+    const pallets: PalletEntry[] = (currentData.pallets || []) as any[];
     const palletIndex = pallets.findIndex((p) => p.id === palletId);
     
     if (palletIndex === -1) {
