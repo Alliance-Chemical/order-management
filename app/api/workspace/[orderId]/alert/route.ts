@@ -63,15 +63,6 @@ export async function POST(
       },
     });
 
-    // Update alert config (cast to any - alertConfigs is part of workspace relations)
-    await repository.update(workspace.id, {
-      // alertConfigs: workspace.alertConfigs?.map(c =>
-      //   c.id === config.id
-      //     ? { ...c, lastTriggeredAt: new Date(), triggerCount: (c.triggerCount || 0) + 1 }
-      //     : c
-      // ),
-    } as any);
-
     return NextResponse.json({
       success: true,
       messageId: snsMessageId,

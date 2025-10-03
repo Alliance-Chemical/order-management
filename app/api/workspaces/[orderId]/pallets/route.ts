@@ -4,6 +4,20 @@ import { workspaces } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
 import { normalizeOrderId } from '@/lib/utils/bigint';
 
+interface Pallet extends Record<string, unknown> {
+  id: string;
+  createdAt: string;
+}
+
+const isPallet = (value: unknown): value is Pallet => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'createdAt' in value
+  );
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
@@ -52,7 +66,7 @@ export async function POST(
     }
     
     // Create new pallet
-    const newPallet = {
+    const newPallet: Pallet = {
       id: crypto.randomUUID(),
       ...body,
       createdAt: new Date().toISOString()
@@ -60,8 +74,11 @@ export async function POST(
 
     // Update workspace with new pallet
     const currentData = workspace.shipstationData || {};
-    const pallets = (currentData.pallets || []) as any[];
-    pallets.push(newPallet);
+    const maybePallets = (currentData as { pallets?: unknown }).pallets;
+    const existingPallets = Array.isArray(maybePallets)
+      ? maybePallets.filter(isPallet)
+      : [];
+    const pallets: Pallet[] = [...existingPallets, newPallet];
     
     await db
       .update(workspaces)

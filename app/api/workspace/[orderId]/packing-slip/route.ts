@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 import { renderPDF } from '@/lib/pdf';
@@ -80,13 +79,15 @@ export async function GET(
 
     const filename = `packing-slip-${orderNumber}.pdf`;
 
-    return new NextResponse(pdfBuffer as any, {
+    const response = new Response(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
+
+    return NextResponse.from(response);
   } catch (error) {
     console.error('[PACKING SLIP API] FATAL ERROR:', error);
     console.error('[PACKING SLIP API] Error stack:', (error as Error).stack);

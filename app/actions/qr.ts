@@ -457,12 +457,16 @@ export async function getQRCodesForWorkspace(orderId: string) {
 
     // If no QR codes exist, trigger generation
     if (!workspace.qrCodes || workspace.qrCodes.length === 0) {
-      console.log(`[QR] No QR codes found for order ${orderId}, triggering generation...`);
+      console.log(`[QR ACTION] No QR codes found for order ${orderId}, triggering generation...`);
+      console.log(`[QR ACTION] Workspace ID: ${workspace.id}, Order Number: ${workspace.orderNumber}`);
 
       try {
         // Call the QR generation endpoint to create codes
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
-        const response = await fetch(`${baseUrl}/api/workspace/${orderId}/qrcodes`, {
+        const url = `${baseUrl}/api/workspace/${orderId}/qrcodes`;
+        console.log(`[QR ACTION] Calling QR generation API: ${url}`);
+
+        const response = await fetch(url, {
           method: 'GET',
           headers: {
             'User-Agent': 'QRFetch/1.0'
@@ -471,17 +475,45 @@ export async function getQRCodesForWorkspace(orderId: string) {
 
         if (response.ok) {
           const result = await response.json();
-          console.log(`[QR] Generated ${result.qrCodes?.length || 0} QR codes for order ${orderId}`);
+          console.log(`[QR ACTION] ✓ Generated ${result.qrCodes?.length || 0} QR codes for order ${orderId}`);
+
+          // Log details about generated QR codes
+          if (result.qrCodes && result.qrCodes.length > 0) {
+            console.log('[QR ACTION] Generated QR code details:', result.qrCodes.map((qr: any) => ({
+              id: qr.id,
+              qrType: qr.qrType,
+              shortCode: qr.shortCode,
+              chemicalName: qr.chemicalName
+            })));
+          }
 
           return {
             success: true,
             qrCodes: result.qrCodes || []
           };
         } else {
-          console.warn(`[QR] Failed to generate QR codes: ${response.status}`);
+          const errorText = await response.text();
+          console.error(`[QR ACTION] ✗ Failed to generate QR codes: ${response.status}`);
+          console.error(`[QR ACTION] Error response:`, errorText);
+
+          return {
+            success: false,
+            error: `Failed to generate QR codes: ${response.status}`,
+            qrCodes: []
+          };
         }
       } catch (error) {
-        console.error('[QR] Error generating QR codes:', error);
+        console.error('[QR ACTION] ✗ Exception while generating QR codes:', error);
+        console.error('[QR ACTION] Error details:', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
+
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to generate QR codes',
+          qrCodes: []
+        };
       }
     }
 

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceRepository } from '@/lib/services/workspace/repository';
 import { renderPDF } from '@/lib/pdf';
@@ -168,7 +167,7 @@ export async function POST(request: NextRequest) {
 
     const filename = `labels-${fileOrderNumber || Date.now()}.pdf`;
 
-    return new NextResponse(pdfBuffer as any, {
+    return new Response(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

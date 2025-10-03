@@ -191,9 +191,51 @@ export default function WorkQueueDashboard() {
     });
   }, [orders, measurementExpanded]);
 
-  const handlePrepareAndPrint = (order: FreightOrder) => {
-    setSelectedOrder(order);
-    setShowPrintModal(true);
+  const handlePrepareAndPrint = async (order: FreightOrder) => {
+    console.log(`[DASHBOARD] Preparing to print labels for order ${order.orderNumber}`);
+
+    toast({
+      title: "Refreshing order data...",
+      description: "Syncing with ShipStation and regenerating QR codes"
+    });
+
+    try {
+      // Step 1: Force regenerate QR codes with fresh ShipStation data
+      console.log(`[DASHBOARD] Regenerating QR codes from fresh ShipStation data...`);
+      const regenerateResponse = await fetch(`/api/workspace/${order.orderId}/qrcodes/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ labelQuantities: {} }) // Empty = regenerate all with default quantities
+      });
+
+      if (!regenerateResponse.ok) {
+        console.error(`[DASHBOARD] Failed to regenerate QR codes: ${regenerateResponse.status}`);
+        toast({
+          title: "Error",
+          description: "Failed to refresh order data. Using cached data.",
+          variant: "destructive"
+        });
+        // Continue anyway with cached data
+      } else {
+        const result = await regenerateResponse.json();
+        console.log(`[DASHBOARD] ✓ Regenerated ${result.qrCodes?.length || 0} QR codes from fresh data`);
+        toast({
+          title: "Ready to print",
+          description: `${result.qrCodes?.length || 0} labels ready`
+        });
+      }
+
+      // Step 2: Open print modal
+      setSelectedOrder(order);
+      setShowPrintModal(true);
+    } catch (error) {
+      console.error('[DASHBOARD] Error preparing labels:', error);
+      toast({
+        title: "Error",
+        description: "Failed to prepare labels for printing.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handlePrintComplete = () => {

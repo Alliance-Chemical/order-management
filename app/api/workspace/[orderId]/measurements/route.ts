@@ -3,7 +3,11 @@ import { db } from '@/lib/db';
 import { workspaces, activityLog } from '@/lib/db/schema/qr-workspace';
 import { eq } from 'drizzle-orm';
 import { sendMeasurementNotificationEmail } from '@/lib/services/email/microsoft-graph';
-import { normalizeFinalMeasurementsPayload, buildMeasurementSummary } from '@/lib/measurements/normalize';
+import {
+  normalizeFinalMeasurementsPayload,
+  buildMeasurementSummary,
+} from '@/lib/measurements/normalize';
+import type { NormalizedFinalMeasurements } from '@/lib/measurements/normalize';
 
 export async function POST(
   request: NextRequest,
@@ -55,7 +59,10 @@ export async function POST(
       );
     }
 
-    const previousMeasurements = workspace.finalMeasurements as any;
+    const previousMeasurements = workspace.finalMeasurements as
+      | NormalizedFinalMeasurements
+      | Record<string, unknown>
+      | null;
 
     // Update the workspace with final measurements
     await db

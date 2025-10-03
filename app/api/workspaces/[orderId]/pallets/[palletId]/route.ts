@@ -6,6 +6,10 @@ import { normalizeOrderId } from '@/lib/utils/bigint';
 
 type Pallet = { id: string; [k: string]: unknown };
 
+const isPallet = (value: unknown): value is Pallet => {
+  return typeof value === 'object' && value !== null && 'id' in value;
+};
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string; palletId: string }> }
@@ -27,7 +31,10 @@ export async function PATCH(
     
     // Update pallet
     const currentData = workspace.shipstationData || {};
-    const pallets: Pallet[] = (currentData.pallets || []) as any[];
+    const maybePallets = (currentData as { pallets?: unknown }).pallets;
+    const pallets: Pallet[] = Array.isArray(maybePallets)
+      ? maybePallets.filter(isPallet)
+      : [];
     const palletIndex = pallets.findIndex((p: Pallet) => p.id === palletId);
     
     if (palletIndex === -1) {
@@ -75,7 +82,10 @@ export async function DELETE(
     
     // Remove pallet
     const currentData = workspace.shipstationData || {};
-    const pallets = ((currentData.pallets || []) as any[]).filter((p: Pallet) => p.id !== palletId);
+    const maybePallets = (currentData as { pallets?: unknown }).pallets;
+    const pallets = Array.isArray(maybePallets)
+      ? maybePallets.filter(isPallet).filter((pallet) => pallet.id !== palletId)
+      : [];
     
     await db
       .update(workspaces)

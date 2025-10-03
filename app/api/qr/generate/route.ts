@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       orderNumber,
       containerNumber,
       chemicalName,
-      encodedData: qrData as any,
+      encodedData: qrData as unknown as Record<string, unknown>,
       qrUrl,
     });
 

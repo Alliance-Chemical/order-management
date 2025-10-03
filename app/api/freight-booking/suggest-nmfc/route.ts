@@ -1,6 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEdgeSql } from '@/lib/db/neon-edge';
 
+interface ProductRow {
+  id: number;
+  sku: string | null;
+  name: string | null;
+  is_hazardous: boolean | null;
+  un_number: string | null;
+  weight: number | null;
+  length: number | null;
+  width: number | null;
+  height: number | null;
+}
+
+interface FreightClassificationRow {
+  nmfc_code: string | null;
+  freight_class: string | null;
+  description: string | null;
+  hazmat_class: string | null;
+  packing_group: string | null;
+  confidence_score: number | null;
+}
+
+interface HazmatLookupRow {
+  hazmat_class: string | null;
+}
+
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
@@ -110,7 +135,7 @@ export async function POST(request: NextRequest) {
       let finalHeight = height;
 
       if (Array.isArray(productData) && productData.length > 0) {
-        const product = productData[0] as Record<string, any>;
+        const product = productData[0] as ProductRow;
         finalWeight = weight || product.weight;
         finalLength = length || product.length;
         finalWidth = width || product.width;
@@ -133,7 +158,7 @@ export async function POST(request: NextRequest) {
         `;
 
         if (Array.isArray(existing) && existing.length > 0) {
-          const record = existing[0] as Record<string, any>;
+          const record = existing[0] as FreightClassificationRow;
           // Parse NMFC code and sub if combined (e.g., "43940-01")
           const nmfcParts = record.nmfc_code?.split('-') || [];
 
@@ -181,7 +206,7 @@ export async function POST(request: NextRequest) {
         `;
 
         if (Array.isArray(productLookup) && productLookup.length > 0) {
-          finalHazardClass = (productLookup[0] as Record<string, any>).hazmat_class;
+          finalHazardClass = (productLookup[0] as HazmatLookupRow).hazmat_class ?? finalHazardClass;
         }
       }
       

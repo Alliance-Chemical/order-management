@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { WorkspaceService } from '@/lib/services/workspace/service';
 import { getDb } from '@/lib/db';
 import { workspaces } from '@/lib/db/schema/qr-workspace';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 interface ShipStationAddress {
   name?: string | null;

@@ -49,26 +49,30 @@ export class WorkspaceFreightLinkingService {
     try {
       const result = await withEdgeRetry(async () => {
         // Create freight order linked to workspace
+        const freightOrderInsert: typeof freightOrders.$inferInsert = {
+          orderId: freightData.orderId,
+          orderNumber: freightData.orderNumber,
+          carrierName: freightData.carrierName,
+          serviceType: freightData.serviceType,
+          estimatedCost: freightData.estimatedCost?.toString(),
+          originAddress: freightData.originAddress ?? null,
+          destinationAddress: freightData.destinationAddress ?? null,
+          packageDetails: freightData.packageDetails ?? null,
+          bookingStatus: 'pending',
+          aiSuggestions: freightData.aiSuggestions ?? [],
+          confidenceScore: freightData.confidenceScore?.toString(),
+          decisionSource: 'ai',
+          sessionId:
+            freightData.sessionId && freightData.sessionId.length === 36
+              ? freightData.sessionId
+              : null,
+          telemetryData: freightData.telemetryData ?? {},
+          specialInstructions: freightData.specialInstructions,
+        };
+
         const [freightOrder] = await this.db
           .insert(freightOrders)
-          .values({
-            // workspaceId removed - not in freight_orders schema
-            orderId: freightData.orderId,
-            orderNumber: freightData.orderNumber,
-            carrierName: freightData.carrierName,
-            serviceType: freightData.serviceType,
-            estimatedCost: freightData.estimatedCost?.toString(),
-            originAddress: freightData.originAddress,
-            destinationAddress: freightData.destinationAddress,
-            packageDetails: freightData.packageDetails,
-            bookingStatus: 'pending',
-            aiSuggestions: freightData.aiSuggestions || [],
-            confidenceScore: freightData.confidenceScore?.toString(),
-            decisionSource: 'ai',
-            sessionId: freightData.sessionId ? (freightData.sessionId.length === 36 ? freightData.sessionId : null) : null,
-            telemetryData: freightData.telemetryData || {},
-            specialInstructions: freightData.specialInstructions,
-          } as any)
+          .values(freightOrderInsert)
           .returning();
 
         // Create initial freight event

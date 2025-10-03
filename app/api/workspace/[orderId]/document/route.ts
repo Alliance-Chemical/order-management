@@ -6,12 +6,6 @@ import { v4 as uuidv4 } from 'uuid';
 
 const repository = new WorkspaceRepository();
 
-type DocumentIdBucketMap = {
-  coa?: string[];
-  sds?: string[];
-  other?: string[];
-};
-
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ orderId: string }> }
@@ -64,26 +58,6 @@ export async function POST(
       mimeType: file.type,
       uploadedBy: userId,
     });
-
-    // Update workspace documents (cast to any for legacy field support)
-    const currentDocs: DocumentIdBucketMap = {
-      coa: [],
-      sds: [],
-      other: [],
-      ...((workspace as any).documents as DocumentIdBucketMap | undefined),
-    };
-
-    if (documentType in currentDocs) {
-      const key = documentType as keyof DocumentIdBucketMap;
-      const bucket = currentDocs[key] ?? [];
-      bucket.push(document.id);
-      currentDocs[key] = bucket;
-    }
-
-    await repository.update(workspace.id, {
-      // documents: currentDocs, // Removed - not in schema
-      // totalDocumentSize: ((workspace as any).totalDocumentSize || 0) + file.size, // Removed - not in schema
-    } as any);
 
     // Log activity
     await repository.logActivity({

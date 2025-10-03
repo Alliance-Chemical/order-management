@@ -19,6 +19,14 @@ type PalletEntry = {
   [key: string]: unknown;
 };
 
+const isPalletEntry = (value: unknown): value is PalletEntry => {
+  return typeof value === 'object' && value !== null && 'id' in value;
+};
+
+const isPalletItem = (value: unknown): value is PalletItem => {
+  return typeof value === 'object' && value !== null && 'id' in value;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string; palletId: string }> }
@@ -40,16 +48,14 @@ export async function POST(
     
     // Find pallet and add items
     const currentData = workspace.shipstationData || {};
-    const pallets: PalletEntry[] = (currentData.pallets || []) as any[];
-    const palletIndex = pallets.findIndex((p) => p.id === palletId);
+    const maybePallets = (currentData as { pallets?: unknown }).pallets;
+    const pallets: PalletEntry[] = Array.isArray(maybePallets)
+      ? maybePallets.filter(isPalletEntry)
+      : [];
+    const palletIndex = pallets.findIndex((pallet) => pallet.id === palletId);
     
     if (palletIndex === -1) {
       return NextResponse.json({ error: 'Pallet not found' }, { status: 404 });
-    }
-    
-    // Add items to pallet
-    if (!pallets[palletIndex].items) {
-      pallets[palletIndex].items = [];
     }
     
     const newItem: PalletItem = {
@@ -57,14 +63,24 @@ export async function POST(
       ...body,
       addedAt: new Date().toISOString()
     };
-    
-    pallets[palletIndex].items.push(newItem);
-    pallets[palletIndex].updatedAt = new Date().toISOString();
+
+    const existingItems = Array.isArray(pallets[palletIndex].items)
+      ? (pallets[palletIndex].items ?? []).filter(isPalletItem)
+      : [];
+
+    const updatedPallet: PalletEntry = {
+      ...pallets[palletIndex],
+      items: [...existingItems, newItem],
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updatedPallets = [...pallets];
+    updatedPallets[palletIndex] = updatedPallet;
     
     await db
       .update(workspaces)
       .set({
-        shipstationData: { ...currentData, pallets },
+        shipstationData: { ...currentData, pallets: updatedPallets },
         updatedAt: new Date()
       })
       .where(eq(workspaces.orderId, orderIdNum));

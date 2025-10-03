@@ -52,16 +52,53 @@ export async function POST(
     const workspaceRecord = workspace[0];
     const workspaceId = workspaceRecord.id;
     const orderNumber = workspaceRecord.orderNumber;
-    const shipstationData = (workspaceRecord.shipstationData ?? {}) as WorkspaceShipStationData;
 
-    // Delete existing QR codes for items that have custom quantities
-    const skusToRegenerate = Object.keys(labelQuantities);
-    if (skusToRegenerate.length > 0) {
-      // Delete existing QRs for these SKUs
-      await db
-        .delete(qrCodes)
-        .where(eq(qrCodes.workspaceId, workspaceId));
+    // IMPORTANT: Fetch fresh data from ShipStation before regenerating QR codes
+    console.log(`[QR] Fetching fresh order data from ShipStation for order ${orderId}...`);
+    let shipstationData: WorkspaceShipStationData = (workspaceRecord.shipstationData ?? {}) as WorkspaceShipStationData;
+
+    try {
+      const apiKey = process.env.SHIPSTATION_API_KEY?.trim() || '';
+      const apiSecret = process.env.SHIPSTATION_API_SECRET?.trim() || '';
+      const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+
+      const response = await fetch(`https://ssapi.shipstation.com/orders/${orderId}`, {
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const freshData = await response.json();
+        shipstationData = freshData;
+        console.log(`[QR] ✓ Fetched fresh order data: ${freshData.items?.length || 0} items`);
+
+        // Update workspace with fresh data
+        await db
+          .update(workspaces)
+          .set({
+            shipstationData: freshData,
+            lastShipstationSync: new Date()
+          })
+          .where(eq(workspaces.id, workspaceId));
+      } else {
+        console.warn(`[QR] Failed to fetch from ShipStation (${response.status}), using cached data`);
+      }
+    } catch (error) {
+      console.error('[QR] Error fetching from ShipStation:', error);
+      console.warn('[QR] Falling back to cached shipstationData');
     }
+
+    // ALWAYS delete existing QR codes when regenerating (don't accumulate old ones)
+    console.log(`[QR] Deleting all existing QR codes for workspace ${workspaceId}...`);
+    const deletedCount = await db
+      .delete(qrCodes)
+      .where(eq(qrCodes.workspaceId, workspaceId));
+    console.log(`[QR] ✓ Deleted ${deletedCount || 'all'} old QR codes`);
+
+    const skusToRegenerate = Object.keys(labelQuantities);
+    console.log(`[QR] Regenerating with ${skusToRegenerate.length > 0 ? `custom quantities for ${skusToRegenerate.length} SKUs` : 'default quantities (1 per item)'}`);
 
     // Generate new QR codes based on custom quantities
     const records: Array<typeof qrCodes.$inferInsert> = [];

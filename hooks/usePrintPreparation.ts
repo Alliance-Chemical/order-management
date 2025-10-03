@@ -162,11 +162,26 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
         }
       }
 
+      // Debug: Log ALL QR codes before filtering
+      console.log('[PRINT HOOK] Total QR codes available:', qrCodes.length);
+      console.log('[PRINT HOOK] QR codes breakdown:', qrCodes.map(qr => ({
+        id: qr.id,
+        type: qr.type,
+        shortCode: qr.shortCode,
+        hasShortCode: !!qr.shortCode,
+        encodedData: (qr as any).encodedData
+      })));
+
       // Filter out any QR codes that are missing shortCode
       const validQRs = qrCodes.filter(qr => qr.shortCode);
 
       if (validQRs.length === 0) {
-        throw new Error('No valid QR codes found. Please regenerate QR codes first.');
+        const qrsWithoutShortCode = qrCodes.filter(qr => !qr.shortCode).length;
+        console.error('[PRINT HOOK] No valid QR codes:', {
+          totalQRs: qrCodes.length,
+          qrsWithoutShortCode
+        });
+        throw new Error(`No valid QR codes found (${qrsWithoutShortCode}/${qrCodes.length} missing shortCode). Please regenerate QR codes first.`);
       }
 
       console.log('[PRINT HOOK] Sending QR codes for printing:', validQRs.map(qr => ({
@@ -184,6 +199,8 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
         byItem.get(name)!.push(qr);
       });
 
+      // SIMPLIFIED: Just print ALL valid QR codes we found
+      // The complex item-matching logic was breaking because names don't match exactly
       const toPrint: Array<{
         id: string;
         code: string;
@@ -191,37 +208,14 @@ export function usePrintPreparation({ order, onPrintComplete }: UsePrintPreparat
         sequenceNumber?: number;
         sequenceTotal?: number;
         itemName?: string;
-      }> = [];
-      const items = filterOutDiscounts(order.items || []);
-      if (items.length > 0) {
-        items.forEach(item => {
-          const pool = byItem.get(item.name) || [];
-          if (pool.length === 0) return;
-          const desired = Math.max(1, labelQuantities[item.name] ?? pool.length);
-          for (let i = 0; i < desired; i++) {
-            const pick = pool[i % pool.length];
-            toPrint.push({
-              id: pick.id,
-              code: pick.code,
-              shortCode: pick.shortCode,
-              sequenceNumber: i + 1,
-              sequenceTotal: desired,
-              itemName: item.name
-            });
-          }
-        });
-      } else {
-        // No items; print all existing once
-        validQRs.forEach((qr, index) =>
-          toPrint.push({
-            id: qr.id,
-            code: qr.code,
-            shortCode: qr.shortCode,
-            sequenceNumber: index + 1,
-            sequenceTotal: validQRs.length
-          })
-        );
-      }
+      }> = validQRs.map((qr, index) => ({
+        id: qr.id,
+        code: qr.code,
+        shortCode: qr.shortCode,
+        sequenceNumber: index + 1,
+        sequenceTotal: validQRs.length,
+        itemName: (qr as any).encodedData?.itemName || (qr as any).chemicalName || ''
+      }));
 
       // Call actual print API
       const response = await fetch(`/api/qr/print`, {

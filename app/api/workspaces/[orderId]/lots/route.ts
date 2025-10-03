@@ -12,6 +12,16 @@ type LotAssignment = {
   assignedBy: string;
 };
 
+const isLotAssignment = (value: unknown): value is LotAssignment => {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'assignedAt' in value &&
+    'assignedBy' in value
+  );
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
@@ -30,8 +40,8 @@ export async function GET(
       return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
     }
     
-    // Get lot assignments from workspace data
-    const lots = workspace.shipstationData?.lots || [];
+    const rawLots = (workspace.shipstationData as { lots?: unknown } | undefined)?.lots;
+    const lots = Array.isArray(rawLots) ? rawLots.filter(isLotAssignment) : [];
     
     return NextResponse.json({ lots });
   } catch (error) {
@@ -74,8 +84,10 @@ export async function POST(
     
     // Update workspace with lot assignment
     const currentData = workspace.shipstationData || {};
-    const lots: LotAssignment[] = (currentData.lots || []) as any[];
-    lots.push(lotAssignment);
+    const existingLots = Array.isArray((currentData as { lots?: unknown }).lots)
+      ? ((currentData as { lots: unknown[] }).lots.filter(isLotAssignment))
+      : [];
+    const lots: LotAssignment[] = [...existingLots, lotAssignment];
     
     await db
       .update(workspaces)
@@ -118,7 +130,10 @@ export async function DELETE(
     
     // Remove lot assignment
     const currentData = workspace.shipstationData || {};
-    const lots: LotAssignment[] = ((currentData.lots || []) as any[]).filter((lot: LotAssignment) => lot.id !== lotId);
+    const existingLots = Array.isArray((currentData as { lots?: unknown }).lots)
+      ? ((currentData as { lots: unknown[] }).lots.filter(isLotAssignment))
+      : [];
+    const lots = existingLots.filter((lot) => lot.id !== lotId);
     
     await db
       .update(workspaces)

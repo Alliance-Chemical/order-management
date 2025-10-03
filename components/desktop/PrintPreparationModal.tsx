@@ -179,13 +179,46 @@ export default function PrintPreparationModal({
         }
       }
 
-      // Only print container QRs - use the correct array
-      const containerQRs = qrCodesToPrint.filter(qr => qr.qrType === 'container');
+      // Debug: Log ALL QR codes before filtering to understand what we have
+      console.log(`[PrintModal] Total QR codes available: ${qrCodesToPrint.length}`);
+      console.log('[PrintModal] QR codes breakdown:', qrCodesToPrint.map(qr => ({
+        id: qr.id,
+        qrType: qr.qrType,
+        type: qr.type,
+        shortCode: qr.shortCode,
+        hasShortCode: !!qr.shortCode
+      })));
+
+      // Filter for printable QR codes (any QR with a valid shortCode)
+      // Check both 'type' and 'qrType' fields for compatibility (DB uses qrType, interface uses type)
+      const containerQRs = qrCodesToPrint.filter(qr => {
+        const hasShortCode = !!qr.shortCode;
+        const isContainer = qr.type === 'container' || qr.qrType === 'container';
+        console.log(`[PrintModal] QR ${qr.id}: type="${qr.type}", qrType="${qr.qrType}", hasShortCode=${hasShortCode}, isContainer=${isContainer}`);
+        return hasShortCode && isContainer;
+      });
+
+      console.log(`[PrintModal] Filtered to ${containerQRs.length} container QR codes with shortCode`);
 
       if (containerQRs.length === 0) {
+        // Better error message based on what we found
+        const totalQRs = qrCodesToPrint.length;
+        const qrsWithoutShortCode = qrCodesToPrint.filter(qr => !qr.shortCode).length;
+        const nonContainerQRs = qrCodesToPrint.filter(qr => qr.type !== 'container' && qr.qrType !== 'container').length;
+
+        let errorDescription = 'Generate container QR codes before printing.';
+        if (totalQRs === 0) {
+          errorDescription = 'No QR codes exist for this order. Generate QR codes first.';
+        } else if (qrsWithoutShortCode > 0) {
+          errorDescription = `${qrsWithoutShortCode} QR code(s) are missing shortCode values. Regenerate QR codes.`;
+        } else if (nonContainerQRs > 0) {
+          errorDescription = `Found ${nonContainerQRs} QR code(s) but none are container type. Expected qrType='container'.`;
+        }
+
+        console.error('[PrintModal] Cannot print:', { totalQRs, qrsWithoutShortCode, nonContainerQRs });
         toast({
           title: 'No container labels',
-          description: 'Generate container QR codes before printing.',
+          description: errorDescription,
           variant: 'destructive',
         })
         return;

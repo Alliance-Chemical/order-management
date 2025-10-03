@@ -7,7 +7,6 @@ import { getEdgeSql, withEdgeRetry } from "@/lib/db/neon-edge"
 import { openaiEmbedding } from '@/lib/services/ai/openai-service'
 import type {
   PalletData,
-  PalletItem,
   WeightDetails,
   DimensionDetails,
 } from '@/types/freight-booking'

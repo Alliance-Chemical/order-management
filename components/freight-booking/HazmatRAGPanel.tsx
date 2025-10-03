@@ -73,12 +73,6 @@ export function HazmatRAGPanel({ unclassifiedSKUs, items, onSuggestionAccepted }
     setIsLoading(false);
   };
 
-  const getConfidenceClass = (confidence: number) => {
-    if (confidence >= 0.8) return 'bg-emerald-500';
-    if (confidence >= 0.6) return 'bg-amber-500';
-    return 'bg-rose-500';
-  };
-
   if (unclassifiedSKUs.length === 0) {
     return null;
   }

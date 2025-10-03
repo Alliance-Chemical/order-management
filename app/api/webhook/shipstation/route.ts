@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         
         if (!workspace) {
           // Create workspace for this freight order
-          const newWorkspace = await workspaceService.createWorkspace(
+          await workspaceService.createWorkspace(
             orderData.orderId,
             orderData.orderNumber || String(orderData.orderId),
             'shipstation-webhook',

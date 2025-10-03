@@ -30,14 +30,26 @@ export const createVercelRenderer = (): PDFRenderer => ({
 
     const page = await browser.newPage();
 
-    // Emulate print media
-    if ('emulateMedia' in page) {
-      await (page as any).emulateMedia({ media: 'print' });
+    if (typeof page.emulateMedia === 'function') {
+      await page.emulateMedia({ media: 'print' });
     }
 
-    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' as any });
+    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
 
-    const pdfBuffer = await page.pdf(options as any);
+    const pdfOptions: Parameters<typeof page.pdf>[0] = {
+      ...(options?.format ? { format: options.format } : {}),
+      ...(options?.width ? { width: options.width } : {}),
+      ...(options?.height ? { height: options.height } : {}),
+      ...(options?.margin ? { margin: options.margin } : {}),
+      ...(typeof options?.printBackground !== 'undefined'
+        ? { printBackground: options.printBackground }
+        : {}),
+      ...(typeof options?.preferCSSPageSize !== 'undefined'
+        ? { preferCSSPageSize: options.preferCSSPageSize }
+        : {}),
+    };
+
+    const pdfBuffer = await page.pdf(pdfOptions);
     await browser.close();
 
     return pdfBuffer as Buffer;

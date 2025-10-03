@@ -21,11 +21,27 @@ export const POST = withErrorHandler(async (
   }
   
   // Update module state with locked planning
-  const moduleStates = workspace.moduleStates || {};
-  moduleStates.planning = { ...(moduleStates.planning as any), locked: true, plan: body.plan };
-  
+  const moduleStates = workspace.moduleStates ?? {};
+  const currentPlanningState =
+    moduleStates && typeof moduleStates === 'object' && 'planning' in moduleStates
+      ? (moduleStates as Record<string, unknown>).planning
+      : undefined;
+  const existingPlanningState =
+    currentPlanningState && typeof currentPlanningState === 'object'
+      ? (currentPlanningState as Record<string, unknown>)
+      : {};
+
+  const updatedModuleStates = {
+    ...moduleStates,
+    planning: {
+      ...existingPlanningState,
+      locked: true,
+      plan: body.plan,
+    },
+  };
+
   await workspaceService.repository.update(workspace.id, {
-    moduleStates,
+    moduleStates: updatedModuleStates,
     updatedBy: body.userId || 'system'
   });
   
