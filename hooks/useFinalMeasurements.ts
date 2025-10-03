@@ -253,6 +253,12 @@ export function useFinalMeasurements({ initialData, onSave }: UseFinalMeasuremen
     };
   }, [entries, measuredBy, mode, palletData]);
 
+  const onSaveRef = useRef(onSave);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
+
   const executeSave = useCallback(async () => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -262,7 +268,7 @@ export function useFinalMeasurements({ initialData, onSave }: UseFinalMeasuremen
     const payload = serializeForSave();
 
     try {
-      await onSave(payload);
+      await onSaveRef.current(payload);
       setAutoSaveState('idle');
       const now = new Date();
       setLastSaved(now);
@@ -274,7 +280,7 @@ export function useFinalMeasurements({ initialData, onSave }: UseFinalMeasuremen
       setAutoSaveState('error');
       setSaveError('Failed to auto-save measurements');
     }
-  }, [onSave, serializeForSave]);
+  }, [serializeForSave]);
 
   const scheduleAutoSave = useCallback(() => {
     if (isInitialRenderRef.current) {
