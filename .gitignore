@@ -76,3 +76,7 @@ set-vercel-env.sh
 .aws/
 .env*.local
 data/archived/
+
+
+# Next.js dev log
+dev.log

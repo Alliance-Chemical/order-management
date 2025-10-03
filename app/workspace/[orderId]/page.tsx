@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { WorkspaceData, ViewMode, AgentStep, InspectionResults } from '@/lib/types/agent-view';
 import { buildInspectionItems } from '@/lib/inspection/items';
 import type { SSItem } from '@/types/shipstation';
@@ -390,6 +391,7 @@ export default function WorkspacePage() {
     );
   }
 
+
   const workerInspectionPhase = resolveWorkerInspectionPhase(workspace.workflowPhase);
   const canShowWorkerView = WORKER_VIEW_PHASES.has(workspace.workflowPhase);
   const workerWorkspace: WorkspaceData = canShowWorkerView
@@ -402,10 +404,10 @@ export default function WorkspacePage() {
       if (workerStep === 'entry') {
         return (
           <>
-          <EntryScreen 
-            workspace={workerWorkspace}
-            onStart={() => startInspection()}
-            onSwitchToSupervisor={switchToSupervisor}
+            <EntryScreen 
+              workspace={workerWorkspace}
+              onStart={() => startInspection()}
+              onSwitchToSupervisor={switchToSupervisor}
             onSelectItem={(item) => {
               startInspection(item);
             }}
@@ -422,10 +424,10 @@ export default function WorkspacePage() {
         
         return (
           <>
-          <ResilientInspectionScreen
-            orderId={orderId}
-            orderNumber={workspace.orderNumber}
-            customerName={workspace.shipstationData?.shipTo?.name || ''}
+            <ResilientInspectionScreen
+              orderId={orderId}
+              orderNumber={workspace.orderNumber}
+              customerName={workspace.shipstationData?.shipTo?.name || ''}
             orderItems={itemsToInspect}
             workflowPhase={workerInspectionPhase}
             workflowType={workspace.workflowType || 'pump_and_fill'}
@@ -444,13 +446,14 @@ export default function WorkspacePage() {
       } else {
         // Complete state
         return (
-          <div className="min-h-screen bg-white flex items-center justify-center">
-            <div className="text-center">
-              <div className="mb-6">
-                <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
-                  <svg className="w-16 h-16 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+          <>
+            <div className="min-h-screen bg-white flex items-center justify-center">
+              <div className="text-center">
+                <div className="mb-6">
+                  <div className="mx-auto w-24 h-24 bg-green-100 rounded-full flex items-center justify-center">
+                    <svg className="w-16 h-16 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
                 </div>
               </div>
               <h1 className="text-4xl font-bold text-slate-900 mb-4">Inspection Complete!</h1>
@@ -481,7 +484,8 @@ export default function WorkspacePage() {
                 </p>
               </div>
             </div>
-          </div>
+            </div>
+          </>
         );
       }
     }
@@ -522,8 +526,16 @@ export default function WorkspacePage() {
     <div className="min-h-screen bg-slate-50">
       {/* View Mode Toggle */}
       <div className="bg-indigo-600 text-white px-4 py-2">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <span className="text-sm font-medium">Current View: Supervisor</span>
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="text-sm font-semibold text-white transition hover:text-white/80"
+            >
+              ← Back to Dashboard
+            </Link>
+            <span className="text-sm font-medium">Current View: Supervisor</span>
+          </div>
           <button
             onClick={switchToWorker}
             className="text-sm underline hover:no-underline"

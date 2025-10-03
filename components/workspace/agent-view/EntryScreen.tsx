@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
 import { Button } from '../../ui/button';
@@ -138,8 +139,14 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
     return (
       <div className="worker-screen">
         <div className="max-w-7xl mx-auto">
-          {/* Small supervisor mode toggle in corner */}
-          <div className="flex justify-end mb-4">
+          {/* Navigation controls */}
+          <div className="flex items-center justify-between mb-4">
+            <Link
+              href="/"
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+            >
+              ← Back to Dashboard
+            </Link>
             <button
               onClick={onSwitchToSupervisor}
               className="text-sm text-gray-500 hover:text-gray-700 underline"
@@ -264,16 +271,24 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
     <div className="worker-screen">
       <div className="max-w-4xl mx-auto">
         {/* Header with supervisor toggle */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
           <div className="inline-flex items-center px-6 py-3 bg-worker-blue text-white rounded-full">
             <span className="text-worker-xl font-bold">{getPhaseLabel()}</span>
           </div>
-          <button
-            onClick={onSwitchToSupervisor}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
-          >
-            Switch to Supervisor View
-          </button>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+            >
+              ← Back to Dashboard
+            </Link>
+            <button
+              onClick={onSwitchToSupervisor}
+              className="text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Switch to Supervisor View
+            </button>
+          </div>
         </div>
 
         <div className="worker-card">

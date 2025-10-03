@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import ProgressBar from '@/components/ui/ProgressBar'
 import StatusLight from '@/components/ui/StatusLight'
@@ -49,15 +50,23 @@ export function InspectionHeader({
       {/* Header */}
       <div className="bg-blue-600 text-white p-4">
         <div className="flex justify-between items-center mb-2">
-          <Button
-            onClick={onBack}
-            disabled={currentIndex === 0}
-            variant="neutral"
-            size="base"
-          >
-            ← Back
-          </Button>
-          
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              ← Back to Dashboard
+            </Link>
+            <Button
+              onClick={onBack}
+              disabled={currentIndex === 0}
+              variant="neutral"
+              size="base"
+            >
+              ← Back
+            </Button>
+          </div>
+
           <div className="flex gap-2">
             {canUndo && (
               <Button
