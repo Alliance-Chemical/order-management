@@ -10,6 +10,7 @@ import { FreightAlertProvider } from '@/providers/FreightAlertProvider';
 import { FreightAlertBadge } from '@/components/ui/freight-alert-badge';
 import { GloveModeProvider, GloveModeToggle } from '@/contexts/GloveModeProvider';
 import { WarehouseErrorBoundary } from '@/components/ui/WarehouseErrorBoundary';
+import { GlobalNav } from '@/components/navigation/GlobalNav';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -43,7 +44,10 @@ export default function RootLayout({
           <QueryProvider>
             <FreightAlertProvider>
               <WarehouseErrorBoundary level="page">
-                {children}
+                <GlobalNav />
+                <main className="min-h-screen pt-14">
+                  {children}
+                </main>
                 <MonitoringStatus />
                 <FreightAlertBadge />
                 <GloveModeToggle position="bottom-right" />
