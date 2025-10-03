@@ -47,7 +47,11 @@ export default function PhotoGallery({ orderId, moduleState }: PhotoGalleryProps
 
   useEffect(() => {
     loadPhotos();
-  }, [orderId, moduleState]);
+  // We intentionally avoid depending on moduleState; the SM view rehydrates a new
+  // object frequently even when photo data is unchanged, which caused the loader
+  // to flicker. Photos are refetched explicitly when needed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
 
   const loadPhotos = async () => {
     let hadModulePhotos = false;
