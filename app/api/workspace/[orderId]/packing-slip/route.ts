@@ -79,15 +79,13 @@ export async function GET(
 
     const filename = `packing-slip-${orderNumber}.pdf`;
 
-    const response = new Response(pdfBuffer, {
+    return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
-
-    return NextResponse.from(response);
   } catch (error) {
     console.error('[PACKING SLIP API] FATAL ERROR:', error);
     console.error('[PACKING SLIP API] Error stack:', (error as Error).stack);
