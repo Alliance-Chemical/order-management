@@ -7,15 +7,125 @@ import { eq } from 'drizzle-orm';
 type JsonMap = Record<string, unknown>;
 type JsonArray = JsonMap[];
 
+type FreightOrderInsert = typeof freightOrders.$inferInsert;
+type FreightAddress = NonNullable<FreightOrderInsert['originAddress']>;
+type FreightPackageDetails = NonNullable<FreightOrderInsert['packageDetails']>;
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim().length) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function coerceAddress(input?: JsonMap | null): FreightAddress | null {
+  if (!input) {
+    return null;
+  }
+
+  const address = isNonEmptyString(input.address) ? input.address.trim() : null;
+  const city = isNonEmptyString(input.city) ? input.city.trim() : null;
+  const state = isNonEmptyString(input.state) ? input.state.trim() : null;
+  const zipSource = isNonEmptyString(input.zipCode)
+    ? input.zipCode
+    : isNonEmptyString(input.zip)
+      ? input.zip
+      : null;
+
+  if (!address || !city || !state || !zipSource) {
+    return null;
+  }
+
+  const coerced: FreightAddress = {
+    address,
+    city,
+    state,
+    zipCode: zipSource.trim(),
+  };
+
+  if (isNonEmptyString(input.company)) {
+    coerced.company = input.company.trim();
+  }
+
+  if (isNonEmptyString(input.country)) {
+    coerced.country = input.country.trim();
+  }
+
+  return coerced;
+}
+
+function coercePackageDetails(input?: JsonMap | null): FreightPackageDetails | null {
+  if (!input) {
+    return null;
+  }
+
+  const weightSource = input.weight as JsonMap | undefined;
+  const dimensionsSource = input.dimensions as JsonMap | undefined;
+
+  const weightValue = toNumber(weightSource?.value);
+  const weightUnits = isNonEmptyString(weightSource?.units) ? weightSource?.units.trim() : null;
+
+  const length = toNumber(dimensionsSource?.length);
+  const width = toNumber(dimensionsSource?.width);
+  const height = toNumber(dimensionsSource?.height);
+  const dimensionUnits = isNonEmptyString(dimensionsSource?.units)
+    ? dimensionsSource?.units.trim()
+    : null;
+
+  const packageCount = toNumber(input.packageCount);
+
+  if (
+    weightValue === null ||
+    !weightUnits ||
+    length === null ||
+    width === null ||
+    height === null ||
+    !dimensionUnits ||
+    packageCount === null
+  ) {
+    return null;
+  }
+
+  const coerced: FreightPackageDetails = {
+    weight: {
+      value: weightValue,
+      units: weightUnits,
+    },
+    dimensions: {
+      length,
+      width,
+      height,
+      units: dimensionUnits,
+    },
+    packageCount,
+  };
+
+  if (isNonEmptyString(input.description)) {
+    coerced.description = input.description.trim();
+  }
+
+  return coerced;
+}
+
 interface FreightBookingData {
   orderId: number;
   orderNumber: string;
   carrierName?: string;
   serviceType?: string;
   estimatedCost?: number;
-  originAddress?: JsonMap;
-  destinationAddress?: JsonMap;
-  packageDetails?: JsonMap;
+  originAddress?: JsonMap | null;
+  destinationAddress?: JsonMap | null;
+  packageDetails?: JsonMap | null;
   specialInstructions?: string;
   aiSuggestions?: JsonArray;
   confidenceScore?: number;
@@ -55,9 +165,9 @@ export class WorkspaceFreightLinkingService {
           carrierName: freightData.carrierName,
           serviceType: freightData.serviceType,
           estimatedCost: freightData.estimatedCost?.toString(),
-          originAddress: freightData.originAddress ?? null,
-          destinationAddress: freightData.destinationAddress ?? null,
-          packageDetails: freightData.packageDetails ?? null,
+          originAddress: coerceAddress(freightData.originAddress),
+          destinationAddress: coerceAddress(freightData.destinationAddress),
+          packageDetails: coercePackageDetails(freightData.packageDetails),
           bookingStatus: 'pending',
           aiSuggestions: freightData.aiSuggestions ?? [],
           confidenceScore: freightData.confidenceScore?.toString(),
