@@ -77,11 +77,7 @@ export default function WorkspacePage() {
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     viewQuery === 'supervisor' ? 'supervisor' : 'worker'
   );
-  const [workerStep, setWorkerStep] = useState<AgentStep>(() => {
-    const hasQrParam = Boolean(searchParams?.get('sc'));
-    const explicitWorkerView = searchParams?.get('view') === 'worker';
-    return hasQrParam || explicitWorkerView ? 'inspection' : 'entry';
-  });
+  const [workerStep, setWorkerStep] = useState<AgentStep>('inspection');
   const [activeTab, setActiveTab] = useState('overview'); // For supervisor view
   const [selectedItem, setSelectedItem] = useState<SSItem | null>(null); // Track which item is being inspected
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -131,7 +127,7 @@ export default function WorkspacePage() {
   }, [updateViewMode]);
 
   const switchToWorker = useCallback(() => {
-    setWorkerStep('entry');
+    setWorkerStep('inspection');
     setRedirectCountdown(null);
     setAutoCompleteEnabled(true);
     updateViewMode('worker');
@@ -433,6 +429,7 @@ export default function WorkspacePage() {
             workflowType={workspace.workflowType || 'pump_and_fill'}
             items={inspectionItems}
             workspace={workerWorkspace}
+            qrScanned
             onComplete={(results) => {
               handleWorkerInspectionComplete(results);
               // Clear any item selection; redirect handled after completion

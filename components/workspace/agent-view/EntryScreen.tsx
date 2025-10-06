@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { EntryScreenProps } from '@/lib/types/agent-view';
 import TaskListItem from './TaskListItem';
 import { Button } from '../../ui/button';
-import { UnifiedQRScanner } from '@/components/qr/UnifiedQRScanner';
-import type { ValidatedQRData } from '@/hooks/useQRScanner';
 
 interface OrderItem extends Record<string, unknown> {
   lineItemKey?: string;
@@ -20,10 +18,6 @@ interface OrderItem extends Record<string, unknown> {
 
 export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, onSelectItem }: EntryScreenProps & { onSelectItem?: (item: OrderItem) => void }) {
   const [itemStatuses, setItemStatuses] = useState<Record<string, 'pending' | 'in_progress' | 'completed'>>({});
-  const [showQRScanner, setShowQRScanner] = useState(false);
-  const [pendingItem, setPendingItem] = useState<OrderItem | null>(null);
-  const [isValidatingQR, setIsValidatingQR] = useState(false);
-  const [qrError, setQrError] = useState<string | null>(null);
   const [showFloatingButton, setShowFloatingButton] = useState(true);
   const shopifyCdnBase = process.env.NEXT_PUBLIC_SHOPIFY_CDN_BASE;
 
@@ -74,60 +68,22 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
     return workspace.workflowType || 'pump_and_fill';
   };
   
-  // Handle QR scan completion
-  const handleQRScanComplete = async (_data: ValidatedQRData) => {
-    try {
-      setIsValidatingQR(true);
-      setQrError(null);
-
-      // Validate QR data matches the current workspace
-      if (_data.workspace && String(_data.workspace.orderId) !== String(workspace.orderId)) {
-        setQrError(`QR code is for order ${_data.workspace.orderNumber}, but you're viewing order ${workspace.orderNumber}`);
-        setIsValidatingQR(false);
-        return;
-      }
-
-      // Small delay to show validation feedback
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      setShowQRScanner(false);
-      setIsValidatingQR(false);
-
-      // Now proceed with the inspection
-      if (pendingItem && onSelectItem) {
-        // Mark item as in progress
-        const itemKey = pendingItem.lineItemKey || pendingItem.sku || pendingItem.name || 'unknown';
-        setItemStatuses(prev => ({
-          ...prev,
-          [itemKey]: 'in_progress'
-        }));
-        onSelectItem(pendingItem);
-      } else {
-        // Single item or general start
-        onStart();
-      }
-
-      // Clear pending item
-      setPendingItem(null);
-    } catch (error) {
-      console.error('Error validating QR:', error);
-      setQrError(error instanceof Error ? error.message : 'Failed to validate QR code');
-      setIsValidatingQR(false);
-    }
-  };
-
-  // Handle item selection - now requires QR scan first
   const handleSelectItem = (item: OrderItem) => {
-    // Store the item and show QR scanner
-    setPendingItem(item);
-    setShowQRScanner(true);
+    const itemKey = item.lineItemKey || item.sku || item.name || 'unknown';
+    setItemStatuses(prev => ({
+      ...prev,
+      [itemKey]: 'in_progress'
+    }));
+
+    if (onSelectItem) {
+      onSelectItem(item);
+    }
+    setShowFloatingButton(false);
   };
 
-  // Handle start inspection - now requires QR scan first
   const handleStartInspection = () => {
-    setPendingItem(null);
-    setShowQRScanner(true);
-    setShowFloatingButton(false); // Hide floating button when starting
+    setShowFloatingButton(false);
+    onStart();
   };
 
   // Memoize filtered items to avoid recalculating
@@ -343,73 +299,8 @@ export default function EntryScreen({ workspace, onStart, onSwitchToSupervisor, 
         </div>
       </div>
 
-      {/* QR Error Display */}
-      {qrError && (
-        <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-md">
-          <div className="bg-red-500 text-white rounded-lg p-4 shadow-lg">
-            <div className="flex items-start gap-3">
-              <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="flex-1">
-                <p className="font-semibold">QR Scan Error</p>
-                <p className="text-sm mt-1">{qrError}</p>
-              </div>
-              <button
-                onClick={() => setQrError(null)}
-                className="text-white hover:text-gray-200"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* QR Scanner Modal */}
-      {showQRScanner && (
-        <>
-          <UnifiedQRScanner
-            onScan={(data) => {
-              // For non-validated scans, we still accept them
-              handleQRScanComplete({
-                id: workspace.id,
-                shortCode: data,
-                type: 'workspace',
-                workspace: {
-                  id: workspace.id,
-                  orderId: String(workspace.orderId),
-                  orderNumber: workspace.orderNumber,
-                  status: workspace.status,
-                }
-              } as ValidatedQRData);
-            }}
-            onValidatedScan={handleQRScanComplete}
-            onClose={() => {
-              setShowQRScanner(false);
-              setPendingItem(null);
-              setQrError(null);
-            }}
-            validateQR={true}
-            allowManualEntry={true}
-            title="Scan QR Code to Start Inspection"
-          />
-
-          {/* Loading Overlay during validation */}
-          {isValidatingQR && (
-            <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center">
-              <div className="bg-white rounded-lg p-6 max-w-sm mx-4 text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-lg font-semibold text-gray-900">Validating QR Code...</p>
-                <p className="text-sm text-gray-600 mt-2">Please wait</p>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
       {/* Sticky Floating Action Button - Samsung Tablet Optimized */}
-      {showFloatingButton && !showQRScanner && (
+      {showFloatingButton && (
         <button
           onClick={handleStartInspection}
           className="fixed bottom-8 right-8 z-50 w-20 h-20 md:w-24 md:h-24 bg-warehouse-go hover:bg-warehouse-go/90 text-white rounded-full shadow-warehouse-xl flex items-center justify-center animate-pulse-strong active:scale-95 transition-transform"
