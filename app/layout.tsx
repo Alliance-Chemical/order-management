@@ -11,7 +11,7 @@ import { FreightAlertBadge } from '@/components/ui/freight-alert-badge';
 import { GloveModeProvider, GloveModeToggle } from '@/contexts/GloveModeProvider';
 import { WarehouseErrorBoundary } from '@/components/ui/WarehouseErrorBoundary';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Alliance Chemical - QR Workspace System',
