@@ -9,26 +9,6 @@ import {
 } from '@/lib/measurements/normalize';
 import type { NormalizedFinalMeasurements } from '@/lib/measurements/normalize';
 
-type CompleteMeasurements = NormalizedFinalMeasurements & {
-  weight: { value: number };
-  dimensions: { length: number; width: number; height: number };
-};
-
-function hasCompleteMeasurements(value: unknown): value is CompleteMeasurements {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<CompleteMeasurements>;
-
-  return (
-    typeof candidate.weight?.value === 'number' &&
-    typeof candidate.dimensions?.length === 'number' &&
-    typeof candidate.dimensions?.width === 'number' &&
-    typeof candidate.dimensions?.height === 'number'
-  );
-}
-
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ orderId: string }> }
@@ -119,7 +99,20 @@ export async function POST(
       await db.insert(activityLog).values(logEntry);
     }
 
-    const shouldNotify = !hasCompleteMeasurements(previousMeasurements);
+    // Type guard to check if previousMeasurements is NormalizedFinalMeasurements
+    const isNormalizedMeasurements = (
+      m: NormalizedFinalMeasurements | Record<string, unknown> | null
+    ): m is NormalizedFinalMeasurements => {
+      return m !== null && typeof m === 'object' && 'mode' in m;
+    };
+
+    const shouldNotify = !(
+      isNormalizedMeasurements(previousMeasurements) &&
+      previousMeasurements?.weight?.value &&
+      previousMeasurements?.dimensions?.length &&
+      previousMeasurements?.dimensions?.width &&
+      previousMeasurements?.dimensions?.height
+    );
 
     if (
       shouldNotify &&

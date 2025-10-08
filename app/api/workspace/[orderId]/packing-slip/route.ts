@@ -79,7 +79,7 @@ export async function GET(
 
     const filename = `packing-slip-${orderNumber}.pdf`;
 
-    return new NextResponse(pdfBuffer, {
+    return new Response(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

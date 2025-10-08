@@ -16,45 +16,27 @@ export const createLocalRenderer = (): PDFRenderer => ({
     });
 
     const page = await browser.newPage();
-    const pageWithMedia = page as unknown as {
-      emulateMedia?: (options?: { media?: 'screen' | 'print' }) => Promise<void>;
-      emulateMediaType?: (type: 'screen' | 'print') => Promise<void>;
-    };
 
-    if (typeof pageWithMedia.emulateMedia === 'function') {
-      await pageWithMedia.emulateMedia({ media: 'print' });
-    } else if (typeof pageWithMedia.emulateMediaType === 'function') {
-      await pageWithMedia.emulateMediaType('print');
+    if (typeof page.emulateMedia === 'function') {
+      await page.emulateMedia({ media: 'print' });
+    } else if (typeof (page as { emulateMediaType?: (type: 'screen' | 'print') => Promise<void> }).emulateMediaType === 'function') {
+      await (page as unknown as { emulateMediaType: (type: 'screen' | 'print') => Promise<void> }).emulateMediaType('print');
     }
 
     await page.setContent(htmlContent, { waitUntil: 'networkidle' });
 
-    type PlaywrightPdfOptions = NonNullable<Parameters<typeof page.pdf>[0]>;
-    const pdfOptions: PlaywrightPdfOptions = {};
-
-    if (options?.format) {
-      pdfOptions.format = options.format as PlaywrightPdfOptions['format'];
-    }
-
-    if (options?.width) {
-      pdfOptions.width = options.width;
-    }
-
-    if (options?.height) {
-      pdfOptions.height = options.height;
-    }
-
-    if (options?.margin) {
-      pdfOptions.margin = options.margin;
-    }
-
-    if (typeof options?.printBackground !== 'undefined') {
-      pdfOptions.printBackground = options.printBackground;
-    }
-
-    if (typeof options?.preferCSSPageSize !== 'undefined') {
-      pdfOptions.preferCSSPageSize = options.preferCSSPageSize;
-    }
+    const pdfOptions: Parameters<typeof page.pdf>[0] = {
+      ...(options?.format ? { format: options.format } : {}),
+      ...(options?.width ? { width: options.width } : {}),
+      ...(options?.height ? { height: options.height } : {}),
+      ...(options?.margin ? { margin: options.margin } : {}),
+      ...(typeof options?.printBackground !== 'undefined'
+        ? { printBackground: options.printBackground }
+        : {}),
+      ...(typeof options?.preferCSSPageSize !== 'undefined'
+        ? { preferCSSPageSize: options.preferCSSPageSize }
+        : {}),
+    };
 
     const pdfBuffer = await page.pdf(pdfOptions);
     await browser.close();

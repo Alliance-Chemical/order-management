@@ -29,45 +29,25 @@ export const createVercelRenderer = (): PDFRenderer => ({
     });
 
     const page = await browser.newPage();
-    const pageWithMedia = page as typeof page & {
-      emulateMedia?: (options?: { media?: 'screen' | 'print' }) => Promise<void>;
-      emulateMediaType?: (type: 'screen' | 'print') => Promise<void>;
-    };
 
-    if (typeof pageWithMedia.emulateMediaType === 'function') {
-      await pageWithMedia.emulateMediaType('print');
-    } else if (typeof pageWithMedia.emulateMedia === 'function') {
-      await pageWithMedia.emulateMedia({ media: 'print' });
+    if (typeof (page as any).emulateMediaType === 'function') {
+      await page.emulateMediaType('print');
     }
 
     await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
 
-    type PuppeteerPdfOptions = NonNullable<Parameters<typeof page.pdf>[0]>;
-    const pdfOptions: PuppeteerPdfOptions = {};
-
-    if (options?.format) {
-      pdfOptions.format = options.format as PuppeteerPdfOptions['format'];
-    }
-
-    if (options?.width) {
-      pdfOptions.width = options.width;
-    }
-
-    if (options?.height) {
-      pdfOptions.height = options.height;
-    }
-
-    if (options?.margin) {
-      pdfOptions.margin = options.margin;
-    }
-
-    if (typeof options?.printBackground !== 'undefined') {
-      pdfOptions.printBackground = options.printBackground;
-    }
-
-    if (typeof options?.preferCSSPageSize !== 'undefined') {
-      pdfOptions.preferCSSPageSize = options.preferCSSPageSize;
-    }
+    const pdfOptions: any = {
+      ...(options?.format ? { format: options.format } : {}),
+      ...(options?.width ? { width: options.width } : {}),
+      ...(options?.height ? { height: options.height } : {}),
+      ...(options?.margin ? { margin: options.margin } : {}),
+      ...(typeof options?.printBackground !== 'undefined'
+        ? { printBackground: options.printBackground }
+        : {}),
+      ...(typeof options?.preferCSSPageSize !== 'undefined'
+        ? { preferCSSPageSize: options.preferCSSPageSize }
+        : {}),
+    };
 
     const pdfBuffer = await page.pdf(pdfOptions);
     await browser.close();
