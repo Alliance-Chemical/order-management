@@ -1536,7 +1536,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   }, [selectedStepId, activeRun, setSelectedStepId])
 
   // Determine container type from item name/sku
-  const getContainerType = (item: any): 'tote' | 'drum' | 'pail' | 'bottle' => {
+  const getContainerType = (item: any): 'tote' | 'drum' | 'pail' | 'other' => {
     const name = (item?.name || '').toLowerCase()
     const sku = (item?.sku || '').toLowerCase()
     const combined = `${name} ${sku}`
@@ -1544,13 +1544,13 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     if (combined.includes('tote')) return 'tote'
     if (combined.includes('drum')) return 'drum'
     if (combined.includes('pail')) return 'pail'
-    if (combined.includes('bottle') || combined.includes('gallon') && !combined.includes('drum') && !combined.includes('pail')) return 'bottle'
+    if (combined.includes('bottle') || combined.includes('gallon')) return 'other'
 
     // Default based on quantity
     const qty = Number(item?.quantity || 1)
     if (qty >= 5) return 'drum'
     if (qty >= 2) return 'pail'
-    return 'bottle'
+    return 'other'
   }
 
   if (!activeRun) {
