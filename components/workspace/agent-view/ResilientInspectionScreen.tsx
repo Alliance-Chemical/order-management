@@ -21,8 +21,6 @@ import {
 } from '@/lib/inspection/cruz'
 import type { RecordStepParams } from '@/app/actions/cruz-inspection'
 import { Loader2 } from 'lucide-react'
-import MultiContainerInspection from './MultiContainerInspection'
-import ErrorBoundary from '@/components/error-boundary'
 
 interface ResilientInspectionScreenProps {
   orderId: string
@@ -1278,16 +1276,8 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
 
   const { toast } = useToast()
 
-  // Track which items have been inspected via multi-container flow
-  const [inspectedItems, setInspectedItems] = useState<Set<number>>(new Set())
-  const [currentItemIndex, setCurrentItemIndex] = useState<number>(0)
-
   const shipstationData = workspace?.shipstationData as any
   const shipToAddress = shipstationData?.shipTo ?? shipstationData?.billTo
-
-  // Determine if current item needs multi-container inspection
-  const currentItem = orderItems?.[currentItemIndex]
-  const needsMultiContainerInspection = currentItem && Number(currentItem.quantity) > 1
 
   // Default warehouse address - Alliance Chemical always ships from the same location
   const defaultWarehouseAddress: ShipmentAddress = {
@@ -1360,31 +1350,26 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
   const [creationError, setCreationError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Skip auto-creation if we're using multi-container inspection
-    if (needsMultiContainerInspection) {
-      return
-    }
-
     // If no runs exist and we haven't already tried to create one, do it now
     if (runs.length === 0 && !hasAutoCreated && !isPending) {
       setHasAutoCreated(true)
       setCreationError(null)
 
-      // Create real inspection runs only for items that don't need multi-container inspection
       const runsToCreate = orderItems && orderItems.length > 0
-        ? orderItems
-            .filter((item) => Number(item?.quantity || 1) === 1) // Only single-quantity items
-            .map((item, index) => ({
-              containerType: 'drum' as const,
-              containerCount: 1,
+        ? orderItems.map((item, index) => {
+            const quantity = Math.max(1, Number(item?.quantity || 1))
+            return {
+              containerType: getContainerType(item),
+              containerCount: quantity,
               sku: item?.sku || (item as Record<string, any>)?.SKU || '',
               materialName: item?.name || (item as Record<string, any>)?.description || `Item ${index + 1}`,
               metadata: {
                 unitOfMeasure: item?.unitOfMeasure || (item as Record<string, any>)?.uom || (item as Record<string, any>)?.UOM || 'EA',
                 orderItemIndex: index,
-                quantity: 1,
+                quantity,
               },
-            }))
+            }
+          })
         : [{
             containerType: 'drum' as const,
             containerCount: 1,
@@ -1412,7 +1397,7 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
         }
       }
     }
-  }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems, needsMultiContainerInspection, error])
+  }, [runs.length, hasAutoCreated, isPending, createRuns, orderItems, error])
 
   // Reset hasAutoCreated when retrying
   useEffect(() => {
@@ -1566,52 +1551,6 @@ export default function ResilientInspectionScreen(props: ResilientInspectionScre
     if (qty >= 5) return 'drum'
     if (qty >= 2) return 'pail'
     return 'bottle'
-  }
-
-  // Handle completion of multi-container inspection for one item
-  const handleMultiContainerComplete = useCallback((results: any) => {
-    // Mark this item as inspected
-    setInspectedItems(prev => new Set([...prev, currentItemIndex]))
-
-    // Move to next item
-    if (currentItemIndex < (orderItems?.length || 0) - 1) {
-      setCurrentItemIndex(currentItemIndex + 1)
-    } else {
-      // All items inspected - complete the entire inspection
-      onComplete({
-        checklist: {
-          containers_scanned: 'pass',
-          all_items_inspected: 'pass',
-        },
-        notes: `Multi-container inspection completed for ${orderItems?.length || 0} item(s)`,
-        completedAt: new Date().toISOString(),
-        completedBy: 'worker',
-        photos: results?.containers?.flatMap((c: any) => c.photos || []) || [],
-      })
-    }
-  }, [currentItemIndex, orderItems, onComplete])
-
-  // If current item needs multi-container inspection, show that flow
-  if (needsMultiContainerInspection && !inspectedItems.has(currentItemIndex)) {
-    return (
-      <ErrorBoundary>
-        <MultiContainerInspection
-          orderId={orderId}
-          orderNumber={orderNumber}
-          customerName={customerName}
-          item={currentItem}
-          workflowType={workspace?.workflowType || 'pump_and_fill'}
-          containerType={getContainerType(currentItem)}
-          qrScanned={qrScanned}
-          onComplete={handleMultiContainerComplete}
-          onSwitchToSupervisor={onSwitchToSupervisor}
-          onBackToEntry={() => {
-            // Reset to entry screen so user can scan QR
-            window.history.back();
-          }}
-        />
-      </ErrorBoundary>
-    )
   }
 
   if (!activeRun) {
